@@ -32,16 +32,8 @@ jobs:
       - name: Test
         run: |
           set -o pipefail
-          if ! dotnet test BJK.Modules.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=results" 2>&1 | tee test-output.txt; then
+          if ! dotnet test --solution BJK.Modules.slnx --configuration Release --no-build 2>&1 | tee test-output.txt; then
             # Surface the failure lines as annotations on the PR.
             grep -iE "error|fail|exception" test-output.txt | head -40 | sed 's/^/::error::/'
             exit 1
           fi
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: '**/TestResults/*.trx'
-          if-no-files-found: ignore

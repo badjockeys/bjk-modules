@@ -11,9 +11,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
 
     <!-- Tests -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <!-- xUnit v3 runs on Microsoft Testing Platform (opted in via global.json), so no VSTest adapter is needed. -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
   </ItemGroup>
 </Project>

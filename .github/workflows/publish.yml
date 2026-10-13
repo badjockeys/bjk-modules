@@ -30,7 +30,7 @@ jobs:
         run: dotnet build BJK.Modules.slnx --configuration Release --no-restore -p:Version=${{ steps.version.outputs.value }}
 
       - name: Test
-        run: dotnet test BJK.Modules.slnx --configuration Release --no-build
+        run: dotnet test --solution BJK.Modules.slnx --configuration Release --no-build
 
       - name: Pack
         run: dotnet pack BJK.Modules.slnx --configuration Release --no-build -p:Version=${{ steps.version.outputs.value }} --output artifacts
