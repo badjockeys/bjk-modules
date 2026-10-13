@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Missing XML doc comments shouldn't break the build. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Package metadata shared by every module. Version is set by the publish workflow from the git tag. -->
+    <Version>0.1.0-local</Version>
+    <Authors>Bad Jockeys</Authors>
+    <Company>Bad Jockeys</Company>
+    <RepositoryUrl>https://github.com/badjockeys/bjk-modules</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

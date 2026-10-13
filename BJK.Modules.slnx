@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BJK.Modules.Shared/BJK.Modules.Shared.csproj" />
+    <Project Path="src/BJK.Modules.User/BJK.Modules.User.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj" />
+  </Folder>
+</Solution>
