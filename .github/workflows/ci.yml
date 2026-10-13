@@ -30,7 +30,13 @@ jobs:
         run: dotnet build BJK.Modules.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test BJK.Modules.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=results"
+        run: |
+          set -o pipefail
+          if ! dotnet test BJK.Modules.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=results" 2>&1 | tee test-output.txt; then
+            # Surface the failure lines as annotations on the PR.
+            grep -iE "error|fail|exception" test-output.txt | head -40 | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Upload test results
         if: always()
