@@ -31,7 +31,7 @@ public sealed class UserMigrationsTests
     {
         using var db = new UserDbContextDesignTimeFactory().CreateDbContext([]);
 
-        var entity = db.Model.FindEntityType(typeof(Domain.UserProfile))!;
+        var entity = db.Model.FindEntityType(typeof(BJK.Modules.User.Domain.UserProfile))!;
 
         Assert.Equal(UserModule.Schema, entity.GetSchema());
         Assert.Equal("Users", entity.GetTableName());
