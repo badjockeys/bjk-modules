@@ -21,10 +21,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore BJK.Modules.slnx
+        run: |
+          dotnet restore BJK.Modules.slnx
+          dotnet tool restore
 
       - name: Build
         run: dotnet build BJK.Modules.slnx --configuration Release --no-restore
@@ -37,3 +39,10 @@ jobs:
             grep -iE "error|fail|exception" test-output.txt | head -40 | sed 's/^/::error::/'
             exit 1
           fi
+
+      # Fails if an entity or configuration changed without a matching migration.
+      - name: Check migrations are up to date
+        run: |
+          dotnet ef migrations has-pending-model-changes \
+            --project src/BJK.Modules.User --context UserDbContext \
+            --configuration Release --no-build

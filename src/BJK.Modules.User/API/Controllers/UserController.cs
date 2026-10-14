@@ -1,8 +1,11 @@
-using System.Security.Claims;
-using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared;
+using BJK.Modules.Shared.Security;
 using BJK.Modules.User.API.Contracts;
+using BJK.Modules.User.UseCases;
 using BJK.Modules.User.UseCases.Add;
 using BJK.Modules.User.UseCases.Delete;
+using BJK.Modules.User.UseCases.Get;
+using BJK.Modules.User.UseCases.List;
 using BJK.Modules.User.UseCases.Reset;
 using BJK.Modules.User.UseCases.Update;
 using MediatR;
@@ -13,21 +16,47 @@ using Microsoft.AspNetCore.Mvc;
 namespace BJK.Modules.User.API.Controllers;
 
 [ApiController]
-[Authorize]
 [Route("api/users")]
+[Authorize(AuthenticationSchemes = ModuleAuthentication.Scheme)]
 public sealed class UserController(ISender sender) : ControllerBase
 {
-    /// <summary>Creates the profile for the signed-in identity server account.</summary>
+    /// <summary>Registers a new user (sign-in account + profile).</summary>
     [HttpPost]
+    [AllowAnonymous]
     [ProducesResponseType<CreatedUserResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Add(AddUserRequest request, CancellationToken cancellationToken)
     {
-        var email = User.FindFirstValue("email") ?? User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
-        var id = await sender.Send(new AddUserCommand(CallerIdentityId(), email, request.DisplayName), cancellationToken);
+        var id = await sender.Send(
+            new AddUserCommand(request.Email, request.Password, request.DisplayName),
+            cancellationToken);
 
-        return Created($"/api/users/{id}", new CreatedUserResponse(id));
+        return CreatedAtAction(nameof(Get), new { id }, new CreatedUserResponse(id));
     }
+
+    /// <summary>Lists active users. Needs the bjk.users.manage scope.</summary>
+    [HttpGet]
+    [Authorize(Policy = UserModule.ManagePolicy)]
+    [ProducesResponseType<PagedResult<UserDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<UserDto>> List(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListUsersQuery(page, pageSize), cancellationToken);
+
+    /// <summary>The signed-in user's own profile.</summary>
+    [HttpGet("me")]
+    [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<UserDto> GetCurrent(CancellationToken cancellationToken) =>
+        await sender.Send(new GetCurrentUserQuery(), cancellationToken);
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<UserDto> Get(Guid id, CancellationToken cancellationToken) =>
+        await sender.Send(new GetUserQuery(id), cancellationToken);
 
     [HttpPut("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -36,33 +65,42 @@ public sealed class UserController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
     {
-        await sender.Send(new UpdateUserCommand(id, CallerIdentityId(), request.DisplayName), cancellationToken);
+        await sender.Send(new UpdateUserCommand(id, request.DisplayName), cancellationToken);
         return NoContent();
     }
 
-    [HttpPost("{id:guid}/password-reset")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> ResetPassword(Guid id, CancellationToken cancellationToken)
-    {
-        await sender.Send(new ResetUserPasswordCommand(id, CallerIdentityId()), cancellationToken);
-        return Accepted();
-    }
-
+    /// <summary>Soft-deletes the user and disables their sign-in.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        await sender.Send(new DeleteUserCommand(id, CallerIdentityId()), cancellationToken);
+        await sender.Send(new DeleteUserCommand(id), cancellationToken);
         return NoContent();
     }
 
-    // "sub" from the identity server token. ASP.NET Core maps it to NameIdentifier unless MapInboundClaims is off.
-    private string CallerIdentityId() =>
-        User.FindFirstValue("sub")
-        ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? throw new ForbiddenException("The access token has no subject.");
+    /// <summary>"Forgot password". Always returns 202, whether or not the email is registered.</summary>
+    [HttpPost("password-reset")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RequestPasswordReset(
+        RequestPasswordResetRequest request,
+        CancellationToken cancellationToken)
+    {
+        await sender.Send(new RequestPasswordResetCommand(request.Email), cancellationToken);
+        return Accepted();
+    }
+
+    /// <summary>Sets a new password using the emailed reset token.</summary>
+    [HttpPost("password-reset/confirm")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new ResetPasswordCommand(request.Email, request.Token, request.NewPassword), cancellationToken);
+        return NoContent();
+    }
 }
