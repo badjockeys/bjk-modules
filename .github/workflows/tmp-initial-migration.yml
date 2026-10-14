@@ -30,12 +30,15 @@ jobs:
       - name: Generate migration
         if: steps.check.outputs.exists != 'true'
         run: |
+          annotate() { echo "::error::$(tail -40 "$1" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"; }
           dotnet tool restore
           dotnet restore BJK.Modules.slnx
-          dotnet build src/BJK.Modules.User --no-restore 2>&1 | grep -E "error|warn" | sed 's/^/::error::/' || true
-          dotnet ef migrations add InitialCreate \
+          if ! dotnet ef migrations add InitialCreate \
             --project src/BJK.Modules.User --context UserDbContext \
-            --output-dir Infrastructure/Data/Migrations
+            --output-dir Infrastructure/Data/Migrations --verbose > ef.log 2>&1; then
+            annotate ef.log
+            exit 1
+          fi
 
       - name: Commit migration
         if: steps.check.outputs.exists != 'true'
