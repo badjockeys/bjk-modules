@@ -31,6 +31,8 @@ jobs:
         if: steps.check.outputs.exists != 'true'
         run: |
           dotnet tool restore
+          dotnet restore BJK.Modules.slnx
+          dotnet build src/BJK.Modules.User --no-restore 2>&1 | grep -E "error|warn" | sed 's/^/::error::/' || true
           dotnet ef migrations add InitialCreate \
             --project src/BJK.Modules.User --context UserDbContext \
             --output-dir Infrastructure/Data/Migrations
