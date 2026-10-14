@@ -74,4 +74,5 @@ CI fails if the model has changed without a migration, and a unit test fails if 
 
 - Work happens on `feature/*` branches merged into `master` by pull request (protect `master` in the repo settings).
 - CI builds and tests every pull request.
-- To publish packages, tag a commit with a version: `git tag v0.1.0 && git push origin v0.1.0`. Pre-release tags such as `v0.2.0-preview.1` publish pre-release packages.
+- To publish a release, tag a commit on `master`: `git tag v0.2.0 && git push origin v0.2.0`.
+- Every push to a `feature/*` branch publishes a preview package, `<VersionPrefix>-ci.<run number>` (e.g. `0.2.0-ci.7`), so other repos can test a branch before it merges. Bump `VersionPrefix` in `Directory.Build.props` after each release.

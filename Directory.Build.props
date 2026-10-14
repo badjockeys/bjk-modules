@@ -9,8 +9,8 @@
     <!-- Missing XML doc comments shouldn't break the build. -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
-    <!-- Package metadata shared by every module. Version is set by the publish workflow from the git tag. -->
-    <Version>0.1.0-local</Version>
+    <!-- Package metadata shared by every module. Release versions come from git tags; feature branch previews are <VersionPrefix>-ci.<run>. -->
+    <VersionPrefix>0.2.0</VersionPrefix>
     <Authors>Bad Jockeys</Authors>
     <Company>Bad Jockeys</Company>
     <RepositoryUrl>https://github.com/badjockeys/bjk-modules</RepositoryUrl>
