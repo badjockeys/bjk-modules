@@ -89,6 +89,8 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 | `GET /api/media/mine` | The signed-in user's own uploads, any state |
 | `DELETE /api/media/{id}` | Owner, or admin (`bjk.media.manage`) |
 
+Storage is Cloudflare R2. R2 speaks the S3 API and Cloudflare has no .NET SDK of its own, so the module uses the `AWSSDK.S3` client pointed at the R2 endpoint, as Cloudflare's R2 docs recommend. Nothing is sent to AWS and no AWS account is needed. The storage code sits behind `IMediaStorage`, so any S3-compatible store works by changing configuration.
+
 Configuration (user secrets locally, Key Vault in Azure):
 
 | Key | Notes |
