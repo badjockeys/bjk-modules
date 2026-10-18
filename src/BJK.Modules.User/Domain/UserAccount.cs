@@ -122,17 +122,17 @@ public sealed class UserAccount
             throw new InvalidOperationException("This account has already passed the age check.");
         }
 
-        var newStatus = result switch
+        AgeCheckStatus? decided = result switch
         {
             Domain.AgeCheckResult.Passed => AgeCheckStatus.Passed,
             Domain.AgeCheckResult.Under25 => AgeCheckStatus.DocumentRequired,
             Domain.AgeCheckResult.Underage => AgeCheckStatus.Failed,
-            _ => AgeCheckStatus,
+            _ => null,
         };
 
-        if (newStatus != AgeCheckStatus)
+        if (decided is { } status)
         {
-            AgeCheckStatus = newStatus;
+            AgeCheckStatus = status;
             AgeCheckMethod = method;
         }
 
