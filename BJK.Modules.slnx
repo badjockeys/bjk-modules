@@ -5,11 +5,13 @@
     <Project Path="src/BJK.Modules.Media/BJK.Modules.Media.csproj" />
     <Project Path="src/BJK.Modules.Profiles/BJK.Modules.Profiles.csproj" />
     <Project Path="src/BJK.Modules.Posts/BJK.Modules.Posts.csproj" />
+    <Project Path="src/BJK.Modules.Communications/BJK.Modules.Communications.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Profiles.Tests/BJK.Modules.Profiles.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Posts.Tests/BJK.Modules.Posts.Tests.csproj" />
+    <Project Path="tests/BJK.Modules.Communications.Tests/BJK.Modules.Communications.Tests.csproj" />
   </Folder>
 </Solution>

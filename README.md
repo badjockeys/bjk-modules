@@ -54,11 +54,18 @@ src/
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
     Domain/                      Post, PostMedia, Reaction, Comment, Report
     PostsModule.cs               Module entry point
+  BJK.Modules.Communications/    Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
+    Contracts/                   IEmailSender, ISmsSender, MessageDeliveryException, PhoneNumbers
+    Email/                       BrandedEmail: black-on-white email layout, text + HTML
+    Infrastructure/Email/        SendGrid sender; Log sender for local development
+    Infrastructure/Sms/          Twilio sender; Log sender for local development
+    CommunicationsModule.cs      Module entry point
 tests/
   BJK.Modules.User.Tests/
   BJK.Modules.Media.Tests/
   BJK.Modules.Profiles.Tests/
   BJK.Modules.Posts.Tests/
+  BJK.Modules.Communications.Tests/
 ```
 
 ## Hosting a module
@@ -257,3 +264,48 @@ CI fails if the model has changed without a migration, and a unit test fails if 
 - CI builds and tests every pull request.
 - To publish a release, tag a commit on `master`: `git tag v0.2.0 && git push origin v0.2.0`.
 - Every push to a `feature/*` branch publishes a preview package, `<VersionPrefix>-ci.<run number>` (e.g. `0.2.0-ci.7`), so other repos can test a branch before it merges. Bump `VersionPrefix` in `Directory.Build.props` after each release.
+
+## Communications module
+
+Email and SMS for the other modules and the hosts. It has no database and no endpoints: inject `IEmailSender` or `ISmsSender`.
+
+```csharp
+builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"), new CommunicationsModule());
+
+// Anywhere:
+var message = BrandedEmail.Create("Confirm your email address")
+    .Paragraph("Welcome to Bad Jockeys!")
+    .Button("Confirm email address", link)
+    .Note("If you didn't create an account, you can ignore this email.")
+    .ToMessage(email, "Confirm your Bad Jockeys email address", emailOptions.Value.LogoUrl);
+await emailSender.SendAsync(message, cancellationToken);
+
+await smsSender.SendAsync(new SmsMessage("+447700900123", "Your Bad Jockeys code is 123456"), cancellationToken);
+```
+
+- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `Sms:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
+- **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
+- **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds). A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException`, whose `IsTransient` says which it was.
+- **No click tracking.** Our emails carry sign-in, confirmation and reset codes in links, so SendGrid click and open tracking are switched off for every email.
+- **Privacy.** Outside Development, logs show masked addresses only (`r***@example.com`, `+44********23`) plus the provider's message id, so a delivery can be traced in SendGrid or Twilio without logging personal data.
+- **Branded emails.** `BrandedEmail` builds matching plain-text and HTML bodies (heading, paragraphs, a button, a large code, small print). All text is HTML-encoded, and buttons only accept http(s) links.
+
+Both providers are called over their REST APIs with `HttpClient`, so there are no vendor SDKs to keep up to date.
+
+| Key | Notes |
+|---|---|
+| `Email:Provider` | `Log` (default) or `SendGrid` |
+| `Email:FromAddress`, `Email:FromName` | Sender. The address (or its domain) must be verified in SendGrid. Name defaults to `Bad Jockeys`. |
+| `Email:ReplyToAddress` | Optional, e.g. `support@badjockeys.com` |
+| `Email:LogoUrl` | Optional absolute URL of a PNG logo for the top of branded emails (Gmail and Outlook don't show SVG) |
+| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. |
+| `Email:SendGrid:BaseUrl` | Default `https://api.sendgrid.com`; `https://api.eu.sendgrid.com` for an EU-pinned subuser |
+| `Email:SendGrid:SandboxMode` | `true` = SendGrid checks each request but delivers nothing |
+| `Sms:Provider` | `Log` (default) or `Twilio` |
+| `Sms:Twilio:AccountSid` | `AC…` |
+| `Sms:Twilio:ApiKeySid`, `Sms:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
+| `Sms:Twilio:AuthToken` | Secret. Used only if no API key is set. |
+| `Sms:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |
+| `Sms:Twilio:FromNumber` | E.164 number or alphanumeric sender ID, used when there's no Messaging Service |
+
+Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to check numbers you collect.
