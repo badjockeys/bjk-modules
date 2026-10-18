@@ -1,0 +1,49 @@
+using BJK.Modules.Media.Domain;
+using Microsoft.EntityFrameworkCore;
+
+namespace BJK.Modules.Media.Infrastructure.Data;
+
+public interface IMediaRepository
+{
+    /// <summary>Any media except deleted.</summary>
+    Task<MediaItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>A user's media (not deleted), newest first.</summary>
+    Task<(IReadOnlyList<MediaItem> Items, int TotalCount)> ListByUserAsync(
+        Guid userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    void Add(MediaItem media);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
+{
+    public Task<MediaItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Media.FirstOrDefaultAsync(m => m.Id == id && m.Status != MediaStatus.Deleted, cancellationToken);
+
+    public async Task<(IReadOnlyList<MediaItem> Items, int TotalCount)> ListByUserAsync(
+        Guid userId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = db.Media.AsNoTracking().Where(m => m.UserId == userId && m.Status != MediaStatus.Deleted);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(m => m.CreatedAt)
+            .ThenBy(m => m.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public void Add(MediaItem media) => db.Media.Add(media);
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+}
