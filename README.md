@@ -222,7 +222,7 @@ Every photo and video is blurred by the worker before anything is published (Onl
 **How it works**
 
 1. ffmpeg decodes the picture (photos: upright, at most 2048 px; videos: at most 720p and 30 fps) into memory over a pipe. Nothing unblurred is written out.
-2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus overlapping zoomed tiles for small, distant plates).
+2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus a 2x2 grid of overlapping zoomed tiles for small, distant plates).
 3. Each box is grown by 25% on every side (`BoxPadding`) and blurred irreversibly: reduced to a few large blocks of average colour (at most about 8 across and 3 down a plate) and then smoothed. A light Gaussian blur, which can be partly undone, isn't used.
 4. **Videos:** detection runs on every 5th frame (`DetectEveryNthFrame`). A tracker links boxes from one pass to the next (by overlap, or by distance for fast movers) and interpolates a box for every frame in between. A face or plate missed by up to 3 passes in a row (`MaxMissedDetections`) stays blurred across the gap, and each track starts one interval before its first detection and ends one after its last, following its motion, so blurs don't flicker, drop out or appear late. The video is read once; frames wait in memory only until detection has run far enough ahead (about 20 frames, ~55 MB at 720p).
 5. The blurred frames are encoded to H.264 as before. **The soundtrack is removed** (`-an`) unless `RemoveAudio` is false. Metadata (GPS, device) is stripped. Thumbnails are made from the blurred output only.
@@ -271,8 +271,16 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | `RemoveAudio` | true |
 | `ReviewEverything` | false |
 | `InferenceThreads` | 0 (ONNX Runtime decides: all cores) |
+| `VideoTimeout` | 25 minutes per video |
 
-**Timing.** CI runs a 60-second 1080p30 clip through the real models on a GitHub-hosted runner and writes the timing to the job summary; see the PR for figures. Detection dominates; raise `DetectEveryNthFrame` or turn off `PlateTiles` to trade safety for speed.
+**Timing** (measured in CI on a 2-vCPU GitHub runner, 60-second 1080p30 clips, the Media tests running alone):
+
+| | Per minute of video | 5-minute clip | Of which detection |
+|---|---|---|---|
+| Moving test pattern, no faces (baseline) | 141 s | ~12 min | 67 s/min |
+| Crowd photo panning, ~200 faces a frame (worst case for blurring) | 106 s | ~9 min | 67 s/min |
+
+Per 720p frame analysed: faces 43 ms, plates 129 ms with tiles (25 ms whole frame only). The rest is ffmpeg decoding and encoding. Speed scales roughly with cores, so a 4-vCPU worker should take about half as long. To go faster at some cost in safety: `PlateTiles=false` (saves about 3.5 minutes per 5-minute clip on 2 vCPUs) or `DetectEveryNthFrame=10` (about 3 minutes). `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
