@@ -62,3 +62,26 @@ public sealed class ReactivateUserCommandHandler(
         await lifecycle.ReactivateAsync(account, cancellationToken);
     }
 }
+
+/// <summary>
+/// Reactivates a deactivated account whose owner has just proved who they are some other way than a password, such
+/// as signing in with Google or Apple. Not exposed as an API endpoint; only the identity server's sign-in pages send
+/// it, after the external sign-in succeeded.
+/// </summary>
+public sealed record ReactivateVerifiedAccountCommand(Guid UserId) : IRequest<bool>;
+
+public sealed class ReactivateVerifiedAccountCommandHandler(IUserRepository users, AccountLifecycle lifecycle)
+    : IRequestHandler<ReactivateVerifiedAccountCommand, bool>
+{
+    public async Task<bool> Handle(ReactivateVerifiedAccountCommand request, CancellationToken cancellationToken)
+    {
+        var account = await users.GetByIdAsync(request.UserId, cancellationToken);
+        if (account is null || account.IsActive)
+        {
+            return false;
+        }
+
+        await lifecycle.ReactivateAsync(account, cancellationToken);
+        return true;
+    }
+}

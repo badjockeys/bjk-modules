@@ -294,6 +294,30 @@ public sealed class UserCommandHandlerTests
             () => handler.Handle(new ResetPasswordCommand("rider@example.com", "bad", "N3wPassw0rd!"), Ct));
     }
 
+    [Fact]
+    public async Task External_sign_up_creates_the_account_record_once()
+    {
+        var handler = new AddExternalUserCommandHandler(_users, _clock);
+
+        var id = await handler.Handle(new AddExternalUserCommand(User1), Ct);
+
+        Assert.Equal(Guid.Parse(User1), id);
+        _users.Received(1).Add(Arg.Is<UserAccount>(a => a.Id == id));
+    }
+
+    [Fact]
+    public async Task Verified_reactivation_only_applies_to_deactivated_accounts()
+    {
+        var account = Existing(User1);
+        var handler = new ReactivateVerifiedAccountCommandHandler(_users, _lifecycle);
+
+        Assert.False(await handler.Handle(new ReactivateVerifiedAccountCommand(account.Id), Ct));
+
+        account.Deactivate(Now.AddDays(-1), TimeSpan.FromDays(90));
+        Assert.True(await handler.Handle(new ReactivateVerifiedAccountCommand(account.Id), Ct));
+        Assert.True(account.IsActive);
+    }
+
     private void CallerIs(string identityId) => _caller.IdentityId.Returns(identityId);
 
     private void CallerIsStaff(string identityId, string role)
