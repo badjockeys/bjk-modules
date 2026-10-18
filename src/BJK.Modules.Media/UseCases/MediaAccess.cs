@@ -13,20 +13,27 @@ internal static class MediaAccess
             ? id
             : throw new ForbiddenException("This needs a signed-in user's token.");
 
-    public static bool IsAdmin(ICurrentUser caller) => caller.HasScope(MediaModule.ManageScope);
-
-    /// <summary>Media the caller may change: their own, or anyone's with the manage scope.</summary>
+    /// <summary>
+    /// Media the caller may change: their own on the public endpoints, or anyone's for a moderator on the admin
+    /// endpoints (<paramref name="asModerator"/>).
+    /// </summary>
     public static async Task<MediaItem> GetForChangeAsync(
         IMediaRepository media,
         ICurrentUser caller,
         Guid mediaId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool asModerator = false)
     {
+        if (asModerator)
+        {
+            caller.RequireModerator(MediaModule.ManageScope);
+        }
+
         var item = await media.GetByIdAsync(mediaId, cancellationToken)
             ?? throw new NotFoundException("Media", mediaId);
 
         var isOwner = Guid.TryParse(caller.IdentityId, out var userId) && item.IsOwnedBy(userId);
-        if (!isOwner && !IsAdmin(caller))
+        if (!isOwner && !asModerator)
         {
             throw new ForbiddenException("You can only change your own uploads.");
         }

@@ -31,8 +31,14 @@ public sealed class MediaModule(string connectionStringName) : IModule
     /// <summary>Scope the apps need to upload and view media.</summary>
     public const string ApiScope = "bjk.media";
 
-    /// <summary>Admin scope: see and delete anyone's media.</summary>
+    /// <summary>
+    /// Moderation scope, for the back-office: see and delete anyone's media. A user token also needs the Moderator or
+    /// Admin role and two-factor sign-in.
+    /// </summary>
     public const string ManageScope = "bjk.media.manage";
+
+    /// <summary>Policy for the moderation endpoints under <c>/api/admin/media</c>.</summary>
+    public const string ManagePolicy = "bjk.media.manage";
 
     /// <summary>Authorization policy requiring <see cref="ApiScope"/>.</summary>
     public const string UsePolicy = "bjk.media";
@@ -80,7 +86,11 @@ public sealed class MediaModule(string connectionStringName) : IModule
             .AddPolicy(UsePolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasScope(ApiScope)));
+                .RequireAssertion(context => context.User.HasScope(ApiScope)))
+            .AddPolicy(ManagePolicy, policy => policy
+                .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)));
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>

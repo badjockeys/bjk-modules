@@ -4,6 +4,7 @@ using BJK.Modules.User.API.Contracts;
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.UseCases;
 using BJK.Modules.User.UseCases.Add;
+using BJK.Modules.User.UseCases.Confirm;
 using BJK.Modules.User.UseCases.Deactivate;
 using BJK.Modules.User.UseCases.Delete;
 using BJK.Modules.User.UseCases.Get;
@@ -30,19 +31,8 @@ public sealed class UserController(ISender sender) : ControllerBase
     public async Task<IActionResult> Add(AddUserRequest request, CancellationToken cancellationToken)
     {
         var id = await sender.Send(new AddUserCommand(request.Email, request.Password), cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id }, new CreatedUserResponse(id));
+        return Created((string?)null, new CreatedUserResponse(id));
     }
-
-    /// <summary>Lists accounts, optionally by status. Needs the bjk.users.manage scope.</summary>
-    [HttpGet]
-    [Authorize(Policy = UserModule.ManagePolicy)]
-    [ProducesResponseType<PagedResult<UserDto>>(StatusCodes.Status200OK)]
-    public async Task<PagedResult<UserDto>> List(
-        [FromQuery] UserAccountStatus? status,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
-        CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListUsersQuery(status, page, pageSize), cancellationToken);
 
     /// <summary>The signed-in user's own account.</summary>
     [HttpGet("me")]
@@ -50,13 +40,6 @@ public sealed class UserController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<UserDto> GetCurrent(CancellationToken cancellationToken) =>
         await sender.Send(new GetCurrentUserQuery(), cancellationToken);
-
-    [HttpGet("{id:guid}")]
-    [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<UserDto> Get(Guid id, CancellationToken cancellationToken) =>
-        await sender.Send(new GetUserQuery(id), cancellationToken);
 
     /// <summary>
     /// Deactivate my account (confirm with my password). I'm signed out, my content is hidden, and everything is
@@ -82,36 +65,23 @@ public sealed class UserController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Admin: deactivate someone's account.</summary>
-    [HttpPost("{id:guid}/deactivate")]
-    [Authorize(Policy = UserModule.ManagePolicy)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken)
+    /// <summary>Email me another link to confirm my email address.</summary>
+    [HttpPost("me/confirmation-email")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> SendConfirmationEmail(CancellationToken cancellationToken)
     {
-        await sender.Send(new DeactivateUserCommand(id), cancellationToken);
-        return NoContent();
+        await sender.Send(new SendEmailConfirmationCommand(), cancellationToken);
+        return Accepted();
     }
 
-    /// <summary>Admin: reactivate someone's deactivated account.</summary>
-    [HttpPost("{id:guid}/reactivate")]
-    [Authorize(Policy = UserModule.ManagePolicy)]
+    /// <summary>Confirm an email address with the token from the confirmation email. Anonymous.</summary>
+    [HttpPost("confirm-email")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> ReactivateUser(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ConfirmEmail(ConfirmEmailRequest request, CancellationToken cancellationToken)
     {
-        await sender.Send(new ReactivateUserCommand(id), cancellationToken);
-        return NoContent();
-    }
-
-    /// <summary>Admin: permanently delete an account and all its data now, skipping the grace period.</summary>
-    [HttpDelete("{id:guid}")]
-    [Authorize(Policy = UserModule.ManagePolicy)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteNow(Guid id, CancellationToken cancellationToken)
-    {
-        await sender.Send(new DeleteUserNowCommand(id), cancellationToken);
+        await sender.Send(new ConfirmEmailCommand(request.UserId, request.Token), cancellationToken);
         return NoContent();
     }
 

@@ -8,9 +8,9 @@ namespace BJK.Modules.Posts.UseCases.Delete;
 
 /// <summary>
 /// Deletes a post and its photos and videos. The post row is kept (marked Deleted) for audit;
-/// the media files are removed. Author or admin.
+/// the media files are removed. The author (public endpoint) or a moderator (admin endpoint, <c>AsModerator</c>).
 /// </summary>
-public sealed record DeletePostCommand(Guid PostId) : IRequest;
+public sealed record DeletePostCommand(Guid PostId, bool AsModerator = false) : IRequest;
 
 public sealed class DeletePostCommandHandler(
     IPostRepository posts,
@@ -22,7 +22,7 @@ public sealed class DeletePostCommandHandler(
 {
     public async Task Handle(DeletePostCommand request, CancellationToken cancellationToken)
     {
-        var post = await PostAccess.GetForChangeAsync(posts, caller, request.PostId, cancellationToken);
+        var post = await PostAccess.GetForChangeAsync(posts, caller, request.PostId, cancellationToken, request.AsModerator);
         var mediaIds = post.Media.Select(m => m.MediaId).ToList();
 
         // Take the post down first; removing the files is best effort and can be retried by clean-up.

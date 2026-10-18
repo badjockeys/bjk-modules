@@ -35,6 +35,15 @@ public interface IIdentityService
     /// <summary>Permanently removes an account and its sessions and refresh tokens. Does nothing if it's already gone.</summary>
     Task DeleteAccountAsync(string identityId, CancellationToken cancellationToken);
 
+    /// <summary>Emails the account's owner a link to confirm their email address. Does nothing if it's already confirmed.</summary>
+    Task SendEmailConfirmationAsync(string identityId, CancellationToken cancellationToken);
+
+    /// <summary>Confirms the email address with the token from the confirmation email.</summary>
+    Task<AccountResult> ConfirmEmailAsync(string identityId, string token, CancellationToken cancellationToken);
+
+    /// <summary>Replaces the account's staff roles (<see cref="BJK.Modules.Shared.Security.StaffRoles"/>).</summary>
+    Task SetRolesAsync(string identityId, IReadOnlyCollection<string> roles, CancellationToken cancellationToken);
+
     /// <summary>
     /// Sends a password reset token to the account's owner. Does nothing (and doesn't say so)
     /// if no active account has that email, so callers can't probe for registered addresses.
@@ -46,7 +55,20 @@ public interface IIdentityService
 }
 
 /// <summary>A sign-in account, as the identity server holds it.</summary>
-public sealed record SignInAccount(string Id, string Email, bool EmailConfirmed);
+/// <param name="Id">The account id.</param>
+/// <param name="Email">The sign-in email address.</param>
+/// <param name="EmailConfirmed">Whether the owner has confirmed it.</param>
+/// <param name="TwoFactorEnabled">Whether sign-in needs a second factor.</param>
+/// <param name="Roles">Staff roles, if any (Moderator, Admin).</param>
+public sealed record SignInAccount(
+    string Id,
+    string Email,
+    bool EmailConfirmed,
+    bool TwoFactorEnabled,
+    IReadOnlyList<string> Roles)
+{
+    public bool IsStaff => Roles.Count > 0;
+}
 
 /// <summary>Outcome of an account operation. <see cref="Errors"/> is empty on success.</summary>
 public sealed record AccountResult(string? IdentityId, IReadOnlyList<AccountError> Errors)

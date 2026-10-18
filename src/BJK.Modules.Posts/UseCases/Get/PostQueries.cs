@@ -8,15 +8,18 @@ using MediatR;
 
 namespace BJK.Modules.Posts.UseCases.Get;
 
-/// <summary>One post. Open to anonymous callers. Hidden posts are only shown to their author and admins.</summary>
-public sealed record GetPostQuery(Guid PostId) : IRequest<PostDto>;
+/// <summary>
+/// One post. Open to anonymous callers. Hidden posts are only shown to their author, or to moderators through the
+/// admin endpoint (<c>AsModerator</c>).
+/// </summary>
+public sealed record GetPostQuery(Guid PostId, bool AsModerator = false) : IRequest<PostDto>;
 
 public sealed class GetPostQueryHandler(IPostRepository posts, PostViews views, ICurrentUser caller)
     : IRequestHandler<GetPostQuery, PostDto>
 {
     public async Task<PostDto> Handle(GetPostQuery request, CancellationToken cancellationToken)
     {
-        var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken);
+        var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken, request.AsModerator);
         return await views.BuildAsync(post, caller.UserId(), cancellationToken);
     }
 }

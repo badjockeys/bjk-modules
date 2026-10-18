@@ -158,15 +158,41 @@ public sealed class MediaHandlerTests
     }
 
     [Fact]
-    public async Task Admin_can_delete_anyones_media()
+    public async Task Moderator_can_delete_anyones_media_on_the_admin_endpoint()
     {
         var item = Existing(OtherUserId);
         _caller.HasScope(MediaModule.ManageScope).Returns(true);
+        _caller.HasRole("Moderator").Returns(true);
+        _caller.UsedMfa.Returns(true);
         var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
 
-        await handler.Handle(new DeleteMediaCommand(item.Id), Ct);
+        await handler.Handle(new DeleteMediaCommand(item.Id, AsModerator: true), Ct);
 
         Assert.Equal(MediaStatus.Deleted, item.Status);
+    }
+
+    [Fact]
+    public async Task Moderator_without_two_factor_sign_in_is_refused()
+    {
+        var item = Existing(OtherUserId);
+        _caller.HasScope(MediaModule.ManageScope).Returns(true);
+        _caller.HasRole("Moderator").Returns(true);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeleteMediaCommand(item.Id, AsModerator: true), Ct));
+        Assert.NotEqual(MediaStatus.Deleted, item.Status);
+    }
+
+    [Fact]
+    public async Task Staff_rights_dont_apply_on_the_public_endpoint()
+    {
+        var item = Existing(OtherUserId);
+        _caller.HasScope(MediaModule.ManageScope).Returns(true);
+        _caller.HasRole("Admin").Returns(true);
+        _caller.UsedMfa.Returns(true);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeleteMediaCommand(item.Id), Ct));
     }
 
     private CompleteUploadCommandHandler CompleteHandler() =>

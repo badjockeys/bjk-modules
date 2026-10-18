@@ -9,6 +9,14 @@ public interface ICurrentUser
     string? IdentityId { get; }
 
     bool HasScope(string scope);
+
+    bool HasRole(string role);
+
+    /// <summary>True if the user signed in with a second factor.</summary>
+    bool UsedMfa { get; }
+
+    /// <summary>True if the user has confirmed their email address.</summary>
+    bool EmailVerified { get; }
 }
 
 internal sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
@@ -16,4 +24,10 @@ internal sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : IC
     public string? IdentityId => accessor.HttpContext?.User.GetIdentityId();
 
     public bool HasScope(string scope) => accessor.HttpContext?.User.HasScope(scope) ?? false;
+
+    public bool HasRole(string role) => accessor.HttpContext?.User.HasRole(role) ?? false;
+
+    public bool UsedMfa => accessor.HttpContext?.User.UsedMfa() ?? false;
+
+    public bool EmailVerified => accessor.HttpContext?.User.IsEmailVerified() ?? false;
 }

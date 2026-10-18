@@ -10,6 +10,7 @@ using BJK.Modules.User.UseCases.Delete;
 using BJK.Modules.User.UseCases.Get;
 using BJK.Modules.User.UseCases.Reactivate;
 using BJK.Modules.User.UseCases.Reset;
+using BJK.Modules.User.UseCases.Roles;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -50,6 +51,7 @@ public sealed class UserCommandHandlerTests
         Assert.Equal(Guid.Parse(User1), id);
         _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await _identity.Received(1).SendEmailConfirmationAsync(User1, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -85,7 +87,7 @@ public sealed class UserCommandHandlerTests
     {
         var account = Existing(User1);
         CallerIs(User1);
-        _identity.GetAccountAsync(User1, Arg.Any<CancellationToken>()).Returns(new SignInAccount(User1, "rider@example.com", true));
+        _identity.GetAccountAsync(User1, Arg.Any<CancellationToken>()).Returns(new SignInAccount(User1, "rider@example.com", true, false, []));
         var handler = new GetCurrentUserQueryHandler(_users, _identity, _caller);
 
         var dto = await handler.Handle(new GetCurrentUserQuery(), Ct);
@@ -167,13 +169,84 @@ public sealed class UserCommandHandlerTests
     }
 
     [Fact]
-    public async Task Only_admins_deactivate_other_accounts()
+    public async Task Ordinary_users_cant_deactivate_other_accounts()
     {
         Existing(User2);
         CallerIs(User1);
-        var handler = new DeactivateUserCommandHandler(_users, _lifecycle, _caller);
+        var handler = new DeactivateUserCommandHandler(_users, _identity, _lifecycle, _caller);
 
         await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeactivateUserCommand(Guid.Parse(User2)), Ct));
+    }
+
+    [Fact]
+    public async Task Moderators_deactivate_ordinary_users()
+    {
+        var target = Existing(User2);
+        CallerIsStaff(User1, "Moderator");
+        SignInIs(User2);
+        var handler = new DeactivateUserCommandHandler(_users, _identity, _lifecycle, _caller);
+
+        await handler.Handle(new DeactivateUserCommand(target.Id), Ct);
+
+        Assert.Equal(UserAccountStatus.Deactivated, target.Status);
+    }
+
+    [Fact]
+    public async Task Moderators_cant_deactivate_other_staff()
+    {
+        var target = Existing(User2);
+        CallerIsStaff(User1, "Moderator");
+        SignInIs(User2, "Moderator");
+        var handler = new DeactivateUserCommandHandler(_users, _identity, _lifecycle, _caller);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeactivateUserCommand(target.Id), Ct));
+        Assert.True(target.IsActive);
+    }
+
+    [Fact]
+    public async Task Admins_can_deactivate_staff()
+    {
+        var target = Existing(User2);
+        CallerIsStaff(User1, "Admin");
+        SignInIs(User2, "Moderator");
+        var handler = new DeactivateUserCommandHandler(_users, _identity, _lifecycle, _caller);
+
+        await handler.Handle(new DeactivateUserCommand(target.Id), Ct);
+
+        Assert.False(target.IsActive);
+    }
+
+    [Fact]
+    public async Task Only_admins_set_roles()
+    {
+        var target = Existing(User2);
+        CallerIsStaff(User1, "Moderator");
+        var handler = new SetRolesCommandHandler(_users, _identity, _caller);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new SetRolesCommand(target.Id, ["Moderator"]), Ct));
+        await _identity.DidNotReceive().SetRolesAsync(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Admins_make_someone_a_moderator()
+    {
+        var target = Existing(User2);
+        CallerIsStaff(User1, "Admin");
+        var handler = new SetRolesCommandHandler(_users, _identity, _caller);
+
+        await handler.Handle(new SetRolesCommand(target.Id, ["Moderator"]), Ct);
+
+        await _identity.Received(1).SetRolesAsync(User2, Arg.Is<IReadOnlyCollection<string>>(r => r.Single() == "Moderator"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Admins_cant_remove_their_own_admin_role()
+    {
+        var me = Existing(User1);
+        CallerIsStaff(User1, "Admin");
+        var handler = new SetRolesCommandHandler(_users, _identity, _caller);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new SetRolesCommand(me.Id, []), Ct));
     }
 
     [Fact]
@@ -222,6 +295,18 @@ public sealed class UserCommandHandlerTests
     }
 
     private void CallerIs(string identityId) => _caller.IdentityId.Returns(identityId);
+
+    private void CallerIsStaff(string identityId, string role)
+    {
+        CallerIs(identityId);
+        _caller.HasScope(UserModule.ManageScope).Returns(true);
+        _caller.HasRole(role).Returns(true);
+        _caller.UsedMfa.Returns(true);
+    }
+
+    private void SignInIs(string identityId, params string[] roles) =>
+        _identity.GetAccountAsync(identityId, Arg.Any<CancellationToken>())
+            .Returns(new SignInAccount(identityId, identityId + "@example.com", true, false, roles));
 
     private UserAccount Existing(string identityId)
     {

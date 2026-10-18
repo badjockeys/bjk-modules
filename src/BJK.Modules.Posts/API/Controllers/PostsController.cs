@@ -91,7 +91,7 @@ public sealed class PostsController(ISender sender) : ControllerBase
                 request.PlaceName),
             cancellationToken);
 
-    /// <summary>Delete a post and its photos and videos. Author or admin.</summary>
+    /// <summary>Delete your post and its photos and videos.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -195,41 +195,6 @@ public sealed class PostsController(ISender sender) : ControllerBase
         await sender.Send(new ReportCommentCommand(id, commentId, request.Reason, request.Details), cancellationToken);
         return NoContent();
     }
-
-    /// <summary>Make a hidden post visible again. Admin only.</summary>
-    [HttpPost("{id:guid}/unhide")]
-    [Authorize(Policy = PostsModule.ManagePolicy)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Unhide(Guid id, CancellationToken cancellationToken)
-    {
-        await sender.Send(new UnhidePostCommand(id), cancellationToken);
-        return NoContent();
-    }
-}
-
-/// <summary>Admin review of reported posts and comments.</summary>
-[ApiController]
-[Route("api/posts/reports")]
-[Authorize(Policy = PostsModule.ManagePolicy)]
-public sealed class PostReportsController(ISender sender) : ControllerBase
-{
-    [HttpGet]
-    [ProducesResponseType<PagedResult<ReportDto>>(StatusCodes.Status200OK)]
-    public async Task<PagedResult<ReportDto>> List(
-        [FromQuery] ReportStatus status = ReportStatus.Open,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50,
-        CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListReportsQuery(status, page, pageSize), cancellationToken);
-
-    /// <summary>Dismiss the report, or hide the content (which closes every open report about it).</summary>
-    [HttpPost("{id:guid}/resolve")]
-    [ProducesResponseType<ReportDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ReportDto> Resolve(Guid id, ResolveReportRequest request, CancellationToken cancellationToken) =>
-        await sender.Send(new ResolveReportCommand(id, request.Action, request.Note), cancellationToken);
 }
 
 public sealed record UpdatePostRequest(

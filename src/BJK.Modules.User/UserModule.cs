@@ -29,10 +29,13 @@ public sealed class UserModule(string connectionStringName) : IModule
     /// <summary>Scope every caller of the users API needs in its access token.</summary>
     public const string ApiScope = "bjk.users";
 
-    /// <summary>Scope for administrative access: list accounts, deactivate, reactivate and delete them.</summary>
+    /// <summary>
+    /// Moderation scope, for the back-office: list accounts, deactivate and reactivate them (moderators and admins),
+    /// delete them and set roles (admins). A user token also needs the role and two-factor sign-in.
+    /// </summary>
     public const string ManageScope = "bjk.users.manage";
 
-    /// <summary>Authorization policy requiring <see cref="ManageScope"/>.</summary>
+    /// <summary>Policy for the endpoints under <c>/api/admin/users</c>: moderator rights.</summary>
     public const string ManagePolicy = "bjk.users.manage";
 
     public string Name => "User";
@@ -64,7 +67,7 @@ public sealed class UserModule(string connectionStringName) : IModule
             .AddPolicy(ManagePolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasScope(ManageScope)));
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)));
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>

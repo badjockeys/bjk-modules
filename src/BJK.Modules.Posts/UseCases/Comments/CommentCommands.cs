@@ -31,6 +31,7 @@ public sealed class AddCommentCommandHandler(
     public async Task<CommentDto> Handle(AddCommentCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
+        PostAccess.RequireVerifiedEmail(caller, "commenting");
         var post = await PostAccess.GetPublishedAsync(posts, request.PostId, cancellationToken);
 
         var author = await profiles.GetSummariesAsync([userId], cancellationToken);
@@ -89,8 +90,8 @@ public sealed class EditCommentCommandHandler(
     }
 }
 
-/// <summary>Deletes a comment. Its author or an admin.</summary>
-public sealed record DeleteCommentCommand(Guid PostId, Guid CommentId) : IRequest;
+/// <summary>Deletes a comment. Its author (public endpoint) or a moderator (admin endpoint, <c>AsModerator</c>).</summary>
+public sealed record DeleteCommentCommand(Guid PostId, Guid CommentId, bool AsModerator = false) : IRequest;
 
 public sealed class DeleteCommentCommandHandler(
     ICommentRepository comments,
@@ -100,11 +101,16 @@ public sealed class DeleteCommentCommandHandler(
 {
     public async Task Handle(DeleteCommentCommand request, CancellationToken cancellationToken)
     {
+        if (request.AsModerator)
+        {
+            caller.RequireModerator(PostsModule.ManageScope);
+        }
+
         var comment = await comments.GetAsync(request.PostId, request.CommentId, cancellationToken)
             ?? throw new NotFoundException("Comment", request.CommentId);
 
         var isAuthor = caller.UserId() is { } userId && comment.IsOwnedBy(userId);
-        if (!isAuthor && !PostAccess.IsAdmin(caller))
+        if (!isAuthor && !request.AsModerator)
         {
             throw new ForbiddenException("You can only delete your own comments.");
         }

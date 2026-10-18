@@ -7,27 +7,6 @@ namespace BJK.Modules.User.UseCases;
 
 internal static class UserAccess
 {
-    public static bool IsAdmin(ICurrentUser caller) => caller.HasScope(UserModule.ManageScope);
-
-    /// <summary>The caller's own account, or anyone's with the manage scope.</summary>
-    public static async Task<UserAccount> GetAccessibleAsync(
-        IUserRepository users,
-        ICurrentUser caller,
-        Guid userId,
-        CancellationToken cancellationToken)
-    {
-        var account = await users.GetByIdAsync(userId, cancellationToken)
-            ?? throw new NotFoundException("User", userId);
-
-        var isOwner = caller.UserId() is { } callerId && account.IsOwnedBy(callerId);
-        if (!isOwner && !IsAdmin(caller))
-        {
-            throw new ForbiddenException("You can only access your own account.");
-        }
-
-        return account;
-    }
-
     public static async Task<UserAccount> GetMineAsync(
         IUserRepository users,
         ICurrentUser caller,
@@ -38,11 +17,32 @@ internal static class UserAccess
             ?? throw new NotFoundException("User", userId);
     }
 
-    public static void RequireAdmin(ICurrentUser caller)
+    /// <summary>Any account, for a moderator or admin.</summary>
+    public static async Task<UserAccount> GetForModeratorAsync(
+        IUserRepository users,
+        ICurrentUser caller,
+        Guid userId,
+        CancellationToken cancellationToken)
     {
-        if (!IsAdmin(caller))
+        caller.RequireModerator(UserModule.ManageScope);
+        return await users.GetByIdAsync(userId, cancellationToken)
+            ?? throw new NotFoundException("User", userId);
+    }
+
+    /// <summary>
+    /// Moderators can act on ordinary users. Accounts with a staff role (moderators and admins) can only be
+    /// changed by an admin, so a moderator can't remove another moderator.
+    /// </summary>
+    public static async Task EnsureCanActOnAsync(
+        IIdentityService identity,
+        ICurrentUser caller,
+        UserAccount target,
+        CancellationToken cancellationToken)
+    {
+        var signIn = await identity.GetAccountAsync(target.Id.ToString("D"), cancellationToken);
+        if (signIn is { IsStaff: true })
         {
-            throw new ForbiddenException("Only admins can do this.");
+            caller.RequireAdmin(UserModule.ManageScope);
         }
     }
 }

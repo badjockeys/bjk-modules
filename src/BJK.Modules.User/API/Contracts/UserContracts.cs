@@ -11,3 +11,7 @@ public sealed record RequestPasswordResetRequest(string Email);
 public sealed record ResetPasswordRequest(string Email, string Token, string NewPassword);
 
 public sealed record CreatedUserResponse(Guid Id);
+
+public sealed record ConfirmEmailRequest(Guid UserId, string Token);
+
+public sealed record SetRolesRequest(IReadOnlyList<string> Roles);

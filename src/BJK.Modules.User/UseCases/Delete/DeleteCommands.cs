@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace BJK.Modules.User.UseCases.Delete;
 
 /// <summary>
-/// An admin permanently deletes an account straight away, skipping the grace period (for example for a legal
+/// An admin (not a moderator) permanently deletes an account straight away, skipping the grace period (for example for a legal
 /// request). The sign-in account and account record go now; bjk-core deletes the rest when it gets the event.
 /// </summary>
 public sealed record DeleteUserNowCommand(Guid UserId) : IRequest;
@@ -17,8 +17,8 @@ public sealed class DeleteUserNowCommandHandler(IUserRepository users, AccountLi
 {
     public async Task Handle(DeleteUserNowCommand request, CancellationToken cancellationToken)
     {
-        UserAccess.RequireAdmin(caller);
-        var account = await UserAccess.GetAccessibleAsync(users, caller, request.UserId, cancellationToken);
+        caller.RequireAdmin(UserModule.ManageScope);
+        var account = await UserAccess.GetForModeratorAsync(users, caller, request.UserId, cancellationToken);
         await lifecycle.DeletePermanentlyAsync(account, cancellationToken);
     }
 }

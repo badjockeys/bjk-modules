@@ -76,7 +76,7 @@ public sealed class ReportCommentCommandHandler(
     }
 }
 
-/// <summary>Reports for admins to review, oldest first. Admin only.</summary>
+/// <summary>Reports for moderators to review, oldest first. Moderators and admins.</summary>
 public sealed record ListReportsQuery(ReportStatus Status = ReportStatus.Open, int Page = 1, int PageSize = 50)
     : IRequest<PagedResult<ReportDto>>;
 
@@ -95,14 +95,14 @@ public sealed class ListReportsQueryHandler(IReportRepository reports, ICurrentU
 {
     public async Task<PagedResult<ReportDto>> Handle(ListReportsQuery request, CancellationToken cancellationToken)
     {
-        ReportRules.RequireAdmin(caller);
+        ReportRules.RequireModerator(caller);
         var (items, total) = await reports.ListAsync(request.Status, request.Page, request.PageSize, cancellationToken);
         return new PagedResult<ReportDto>(items.Select(ReportDto.From).ToList(), request.Page, request.PageSize, total);
     }
 }
 
 /// <summary>
-/// An admin's decision on a report. <see cref="ReportAction.HideContent"/> hides the post or comment and
+/// A moderator's decision on a report. <see cref="ReportAction.HideContent"/> hides the post or comment and
 /// closes every open report about it; <see cref="ReportAction.Dismiss"/> closes this report only.
 /// </summary>
 public sealed record ResolveReportCommand(Guid ReportId, ReportAction Action, string? Note) : IRequest<ReportDto>;
@@ -128,7 +128,7 @@ public sealed class ResolveReportCommandHandler(
 {
     public async Task<ReportDto> Handle(ResolveReportCommand request, CancellationToken cancellationToken)
     {
-        ReportRules.RequireAdmin(caller);
+        ReportRules.RequireModerator(caller);
         var now = clock.GetUtcNow();
 
         var report = await reports.GetAsync(request.ReportId, cancellationToken)
@@ -168,7 +168,7 @@ public sealed class ResolveReportCommandHandler(
     }
 }
 
-/// <summary>Makes a hidden post visible again. Admin only.</summary>
+/// <summary>Makes a hidden post visible again. Moderators and admins.</summary>
 public sealed record UnhidePostCommand(Guid PostId) : IRequest;
 
 public sealed class UnhidePostCommandHandler(IPostRepository posts, ICurrentUser caller, TimeProvider clock)
@@ -176,7 +176,7 @@ public sealed class UnhidePostCommandHandler(IPostRepository posts, ICurrentUser
 {
     public async Task Handle(UnhidePostCommand request, CancellationToken cancellationToken)
     {
-        ReportRules.RequireAdmin(caller);
+        ReportRules.RequireModerator(caller);
         var post = await posts.GetAsync(request.PostId, cancellationToken)
             ?? throw new NotFoundException("Post", request.PostId);
 
@@ -187,13 +187,7 @@ public sealed class UnhidePostCommandHandler(IPostRepository posts, ICurrentUser
 
 internal static class ReportRules
 {
-    public static void RequireAdmin(ICurrentUser caller)
-    {
-        if (!PostAccess.IsAdmin(caller))
-        {
-            throw new ForbiddenException("Only admins can do this.");
-        }
-    }
+    public static void RequireModerator(ICurrentUser caller) => caller.RequireModerator(PostsModule.ManageScope);
 
     public static async Task EnsureFirstReportAsync(
         IReportRepository reports,

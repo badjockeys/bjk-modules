@@ -6,7 +6,8 @@ using MediatR;
 namespace BJK.Modules.User.UseCases.Add;
 
 /// <summary>
-/// Registers a new user: creates their sign-in account and their account record. Returns the new user's id.
+/// Registers a new user: creates their sign-in account and their account record, and emails a link to confirm their
+/// email address (needed before posting or commenting). Returns the new user's id.
 /// Their public profile (handle, display name) is created afterwards in bjk-core.
 /// </summary>
 public sealed record AddUserCommand(string Email, string Password) : IRequest<Guid>;
@@ -47,6 +48,7 @@ public sealed class AddUserCommandHandler(IUserRepository users, IIdentityServic
             throw;
         }
 
+        await identity.SendEmailConfirmationAsync(identityId, cancellationToken);
         return user.Id;
     }
 }

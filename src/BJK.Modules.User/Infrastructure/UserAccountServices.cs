@@ -75,6 +75,8 @@ internal sealed class AccountPersonalDataExporter(IUserRepository users, IIdenti
             Id = userId,
             Email = signIn?.Email,
             EmailConfirmed = signIn?.EmailConfirmed ?? false,
+            TwoFactorEnabled = signIn?.TwoFactorEnabled ?? false,
+            Roles = signIn?.Roles ?? [],
             Status = account?.Status,
             CreatedAt = account?.CreatedAt,
             DeactivatedAt = account?.DeactivatedAt,

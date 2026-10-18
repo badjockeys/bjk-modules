@@ -4,7 +4,7 @@ using MediatR;
 
 namespace BJK.Modules.User.UseCases.Get;
 
-/// <summary>A user's account: your own, or anyone's with the manage scope.</summary>
+/// <summary>Anyone's account, for moderators and admins.</summary>
 public sealed record GetUserQuery(Guid UserId) : IRequest<UserDto>;
 
 public sealed class GetUserQueryHandler(IUserRepository users, IIdentityService identity, ICurrentUser caller)
@@ -12,7 +12,7 @@ public sealed class GetUserQueryHandler(IUserRepository users, IIdentityService 
 {
     public async Task<UserDto> Handle(GetUserQuery request, CancellationToken cancellationToken)
     {
-        var account = await UserAccess.GetAccessibleAsync(users, caller, request.UserId, cancellationToken);
+        var account = await UserAccess.GetForModeratorAsync(users, caller, request.UserId, cancellationToken);
         return UserDto.From(account, await identity.GetAccountAsync(account.Id.ToString("D"), cancellationToken));
     }
 }

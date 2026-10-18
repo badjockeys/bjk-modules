@@ -13,18 +13,25 @@ namespace BJK.Modules.Media.UseCases.Get;
 /// One piece of media. Owners and admins see it in any state; everyone else only once it's Ready,
 /// so half-processed uploads (still carrying GPS data in the original) are never exposed.
 /// </summary>
-public sealed record GetMediaQuery(Guid MediaId) : IRequest<MediaDto>;
+/// <param name="MediaId">The media to get.</param>
+/// <param name="AsModerator">True on the admin endpoint: a moderator sees media in any state.</param>
+public sealed record GetMediaQuery(Guid MediaId, bool AsModerator = false) : IRequest<MediaDto>;
 
 public sealed class GetMediaQueryHandler(IMediaRepository media, IMediaStorage storage, ICurrentUser caller)
     : IRequestHandler<GetMediaQuery, MediaDto>
 {
     public async Task<MediaDto> Handle(GetMediaQuery request, CancellationToken cancellationToken)
     {
+        if (request.AsModerator)
+        {
+            caller.RequireModerator(MediaModule.ManageScope);
+        }
+
         var item = await media.GetByIdAsync(request.MediaId, cancellationToken)
             ?? throw new NotFoundException("Media", request.MediaId);
 
         var isOwner = Guid.TryParse(caller.IdentityId, out var userId) && item.IsOwnedBy(userId);
-        if (item.Status != MediaStatus.Ready && !isOwner && !MediaAccess.IsAdmin(caller))
+        if (item.Status != MediaStatus.Ready && !isOwner && !request.AsModerator)
         {
             // Same response as missing, so other people can't probe for unpublished media.
             throw new NotFoundException("Media", request.MediaId);

@@ -27,7 +27,10 @@ public sealed class PostsModule(string connectionStringName) : IModule
     /// <summary>Scope the apps need to post, react, comment and report.</summary>
     public const string ApiScope = "bjk.posts";
 
-    /// <summary>Admin scope: review reports, hide and restore content, delete anyone's posts and comments.</summary>
+    /// <summary>
+    /// Moderation scope, for the back-office: review reports, hide and restore content, delete anyone's posts and
+    /// comments. A user token also needs the Moderator or Admin role and two-factor sign-in.
+    /// </summary>
     public const string ManageScope = "bjk.posts.manage";
 
     /// <summary>Policy for a signed-in user with <see cref="ApiScope"/>.</summary>
@@ -36,7 +39,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
     /// <summary>Policy for public reads. Anyone may call; a token, if sent, identifies the caller.</summary>
     public const string ReadPolicy = "bjk.posts.read";
 
-    /// <summary>Policy for admin actions: <see cref="ManageScope"/>.</summary>
+    /// <summary>Policy for the moderation endpoints under <c>/api/admin</c>.</summary>
     public const string ManagePolicy = "bjk.posts.manage";
 
     public string Name => "Posts";
@@ -69,7 +72,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
             .AddPolicy(ManagePolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasScope(ManageScope)))
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)))
             .AddPolicy(ReadPolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAssertion(_ => true));

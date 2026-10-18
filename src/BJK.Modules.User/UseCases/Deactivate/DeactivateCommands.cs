@@ -41,16 +41,23 @@ public sealed class DeactivateMyAccountCommandHandler(
     }
 }
 
-/// <summary>An admin deactivates someone's account. Same effect as the user doing it.</summary>
+/// <summary>
+/// A moderator or admin deactivates someone's account. Same effect as the user doing it. Only admins can deactivate
+/// staff (moderators and admins).
+/// </summary>
 public sealed record DeactivateUserCommand(Guid UserId) : IRequest;
 
-public sealed class DeactivateUserCommandHandler(IUserRepository users, AccountLifecycle lifecycle, ICurrentUser caller)
+public sealed class DeactivateUserCommandHandler(
+    IUserRepository users,
+    IIdentityService identity,
+    AccountLifecycle lifecycle,
+    ICurrentUser caller)
     : IRequestHandler<DeactivateUserCommand>
 {
     public async Task Handle(DeactivateUserCommand request, CancellationToken cancellationToken)
     {
-        UserAccess.RequireAdmin(caller);
-        var account = await UserAccess.GetAccessibleAsync(users, caller, request.UserId, cancellationToken);
+        var account = await UserAccess.GetForModeratorAsync(users, caller, request.UserId, cancellationToken);
+        await UserAccess.EnsureCanActOnAsync(identity, caller, account, cancellationToken);
         await lifecycle.DeactivateAsync(account, cancellationToken);
     }
 }

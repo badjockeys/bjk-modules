@@ -35,6 +35,7 @@ public sealed class PostHandlerTests
     public PostHandlerTests()
     {
         _caller.IdentityId.Returns(UserId.ToString());
+        _caller.EmailVerified.Returns(true);
         _profiles.ExistsAsync(UserId, Arg.Any<CancellationToken>()).Returns(true);
         _profiles.GetSummariesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, ProfileSummary>
@@ -158,15 +159,48 @@ public sealed class PostHandlerTests
     }
 
     [Fact]
-    public async Task Admins_can_delete_any_post()
+    public async Task Moderators_can_delete_any_post_on_the_admin_endpoint()
     {
         var post = Existing(OtherUserId);
-        _caller.HasScope(BJK.Modules.Posts.PostsModule.ManageScope).Returns(true);
+        CallerIsModerator();
         var handler = DeleteHandler();
 
-        await handler.Handle(new DeletePostCommand(post.Id), Ct);
+        await handler.Handle(new DeletePostCommand(post.Id, AsModerator: true), Ct);
 
         Assert.Equal(PostStatus.Deleted, post.Status);
+    }
+
+    [Fact]
+    public async Task Moderators_cant_use_the_public_endpoint_on_others_posts()
+    {
+        var post = Existing(OtherUserId);
+        CallerIsModerator();
+        var handler = DeleteHandler();
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeletePostCommand(post.Id), Ct));
+    }
+
+    [Fact]
+    public async Task The_admin_endpoint_needs_two_factor_sign_in()
+    {
+        var post = Existing(OtherUserId);
+        CallerIsModerator();
+        _caller.UsedMfa.Returns(false);
+        var handler = DeleteHandler();
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeletePostCommand(post.Id, AsModerator: true), Ct));
+        Assert.True(post.IsPublished);
+    }
+
+    [Fact]
+    public async Task Posting_needs_a_confirmed_email()
+    {
+        _caller.EmailVerified.Returns(false);
+        var handler = CreateHandler();
+
+        var ex = await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(Command(Guid.NewGuid()), Ct));
+
+        Assert.Contains(ex.Errors, e => e.PropertyName == "Email");
     }
 
     [Fact]
@@ -228,7 +262,7 @@ public sealed class PostHandlerTests
         _reports.GetAsync(report.Id, Arg.Any<CancellationToken>()).Returns(report);
         _reports.ListOpenForTargetAsync(ReportTargetType.Post, post.Id, Arg.Any<CancellationToken>())
             .Returns(new List<Report> { report, another });
-        _caller.HasScope(BJK.Modules.Posts.PostsModule.ManageScope).Returns(true);
+        CallerIsModerator();
         var handler = new ResolveReportCommandHandler(_reports, _posts, _comments, _caller, _clock);
 
         await handler.Handle(new ResolveReportCommand(report.Id, ReportAction.HideContent, "Shows a face"), Ct);
@@ -247,6 +281,13 @@ public sealed class PostHandlerTests
 
         await Assert.ThrowsAsync<ForbiddenException>(
             () => handler.Handle(new ResolveReportCommand(Guid.NewGuid(), ReportAction.Dismiss, null), Ct));
+    }
+
+    private void CallerIsModerator()
+    {
+        _caller.HasScope(BJK.Modules.Posts.PostsModule.ManageScope).Returns(true);
+        _caller.HasRole("Moderator").Returns(true);
+        _caller.UsedMfa.Returns(true);
     }
 
     private CreatePostCommandHandler CreateHandler() => new(_posts, _profiles, _media, _views, _caller, _clock);

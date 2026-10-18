@@ -45,16 +45,20 @@ public sealed class ReactivateAccountCommandHandler(
     }
 }
 
-/// <summary>An admin reactivates someone's deactivated account.</summary>
+/// <summary>A moderator or admin reactivates someone's deactivated account. Only admins can reactivate staff.</summary>
 public sealed record ReactivateUserCommand(Guid UserId) : IRequest;
 
-public sealed class ReactivateUserCommandHandler(IUserRepository users, AccountLifecycle lifecycle, ICurrentUser caller)
+public sealed class ReactivateUserCommandHandler(
+    IUserRepository users,
+    IIdentityService identity,
+    AccountLifecycle lifecycle,
+    ICurrentUser caller)
     : IRequestHandler<ReactivateUserCommand>
 {
     public async Task Handle(ReactivateUserCommand request, CancellationToken cancellationToken)
     {
-        UserAccess.RequireAdmin(caller);
-        var account = await UserAccess.GetAccessibleAsync(users, caller, request.UserId, cancellationToken);
+        var account = await UserAccess.GetForModeratorAsync(users, caller, request.UserId, cancellationToken);
+        await UserAccess.EnsureCanActOnAsync(identity, caller, account, cancellationToken);
         await lifecycle.ReactivateAsync(account, cancellationToken);
     }
 }
