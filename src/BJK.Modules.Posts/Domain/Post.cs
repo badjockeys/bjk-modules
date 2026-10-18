@@ -1,9 +1,12 @@
+using BJK.Modules.Shared.Safety;
+
 namespace BJK.Modules.Posts.Domain;
 
 /// <summary>
 /// A post of a driving incident with 1 to 10 photos or videos. Stored in <c>posts.Posts</c>, with its media
 /// in <c>posts.PostMedia</c>. Visible to everyone as soon as it's created, because its media must already be
-/// processed (Ready) by then.
+/// processed (Ready) by then, unless content screening holds it for review. Its map pin is rounded to about 500 m
+/// (<see cref="PinRounding"/>).
 /// </summary>
 public sealed class Post
 {
@@ -56,12 +59,37 @@ public sealed class Post
     /// <summary>True while the author's account is deactivated: the post is hidden from everyone else but kept.</summary>
     public bool IsAuthorDeactivated { get; private set; }
 
+    /// <summary>
+    /// Graphic content (injuries, serious crashes), set by the author or a moderator. Sensitive posts are never shown
+    /// to logged-out viewers.
+    /// </summary>
+    public bool IsSensitive { get; private set; }
+
+    /// <summary>Content screening flagged the text for a moderator to look at. Cleared when a moderator approves it.</summary>
+    public bool IsFlagged { get; private set; }
+
+    /// <summary>The latest screening score, 0 to 1.</summary>
+    public double? ScreeningScore { get; private set; }
+
+    /// <summary>Why the text scored as it did, comma-separated (threat, insult...).</summary>
+    public string? ScreeningLabels { get; private set; }
+
+    /// <summary>When a moderator last approved the post after screening.</summary>
+    public DateTimeOffset? ReviewedAt { get; private set; }
+
+    public Guid? ReviewedBy { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     /// <summary>The photos and videos, in the order the author chose.</summary>
     public IReadOnlyList<PostMedia> Media => _media;
 
-    public static Post Create(Guid authorId, PostDetails details, IReadOnlyList<Guid> mediaIds, DateTimeOffset now)
+    public static Post Create(
+        Guid authorId,
+        PostDetails details,
+        IReadOnlyList<Guid> mediaIds,
+        DateTimeOffset now,
+        bool isSensitive = false)
     {
         if (authorId == Guid.Empty)
         {
@@ -84,6 +112,7 @@ public sealed class Post
             AuthorId = authorId,
             Status = PostStatus.Published,
             CreatedAt = now,
+            IsSensitive = isSensitive,
         };
         post.SetDetails(details);
         for (var i = 0; i < mediaIds.Count; i++)
@@ -105,6 +134,57 @@ public sealed class Post
     {
         EnsureNotDeleted();
         SetDetails(details);
+        UpdatedAt = now;
+    }
+
+    /// <summary>Marks the post as sensitive (graphic) or not.</summary>
+    public void SetSensitive(bool isSensitive, DateTimeOffset now)
+    {
+        EnsureNotDeleted();
+        if (IsSensitive == isSensitive)
+        {
+            return;
+        }
+
+        IsSensitive = isSensitive;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Applies a content screening result to the post's text. <see cref="ScreeningVerdict.Hold"/> holds a published
+    /// post for review (only its author sees it); <see cref="ScreeningVerdict.Flag"/> flags it. A flag stays until a
+    /// moderator approves the post, even if a later edit scores lower.
+    /// </summary>
+    public void ApplyScreening(ScreeningResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        EnsureNotDeleted();
+        ScreeningScore = Math.Round(result.Score, 3);
+        ScreeningLabels = ScreeningText.Labels(result.Labels);
+        if (result.Verdict == ScreeningVerdict.Allow)
+        {
+            return;
+        }
+
+        IsFlagged = true;
+        if (result.Verdict == ScreeningVerdict.Hold && Status == PostStatus.Published)
+        {
+            Status = PostStatus.HeldForReview;
+        }
+    }
+
+    /// <summary>A moderator approves the post after screening: it's published (if held) and the flag is cleared.</summary>
+    public void Approve(Guid? moderatorId, DateTimeOffset now)
+    {
+        EnsureNotDeleted();
+        if (Status == PostStatus.HeldForReview)
+        {
+            Status = PostStatus.Published;
+        }
+
+        IsFlagged = false;
+        ReviewedAt = now;
+        ReviewedBy = moderatorId;
         UpdatedAt = now;
     }
 
@@ -152,8 +232,7 @@ public sealed class Post
         Description = string.IsNullOrWhiteSpace(details.Description) ? null : Limit(details.Description.Trim(), DescriptionMaxLength);
         Category = details.Category;
         IncidentAt = details.IncidentAt;
-        Latitude = decimal.Round(details.Latitude, 6);
-        Longitude = decimal.Round(details.Longitude, 6);
+        (Latitude, Longitude) = PinRounding.Round(details.Latitude, details.Longitude);
         PlaceName = string.IsNullOrWhiteSpace(details.PlaceName) ? null : Limit(details.PlaceName.Trim(), PlaceNameMaxLength);
     }
 
@@ -167,6 +246,54 @@ public sealed class Post
 
     private static string Limit(string value, int maxLength) =>
         value.Length <= maxLength ? value : throw new ArgumentException($"Must be {maxLength} characters or fewer.", nameof(value));
+}
+
+/// <summary>
+/// Rounds map pins to about 500 m, so a post never pinpoints a home or workplace. The latitude is snapped to a grid of
+/// <see cref="LatitudeStep"/> degrees (500 m north–south everywhere); the longitude to a grid of
+/// <see cref="LatitudeStep"/> / cos(rounded latitude) degrees, so cells are about 500 m east–west too. Rounding is
+/// half away from zero, the same as SQL Server's ROUND, which the OnlineSafety migration uses on existing rows.
+/// Rounding a rounded pin gives the same pin.
+/// </summary>
+public static class PinRounding
+{
+    /// <summary>500 m in degrees of latitude (one degree is about 111.32 km).</summary>
+    public const decimal LatitudeStep = 0.0045m;
+
+    // Stops the longitude step blowing up near the poles.
+    private const double MinCosine = 0.01;
+
+    public static (decimal Latitude, decimal Longitude) Round(decimal latitude, decimal longitude)
+    {
+        var lat = decimal.Round(
+            decimal.Round(latitude / LatitudeStep, 0, MidpointRounding.AwayFromZero) * LatitudeStep,
+            6,
+            MidpointRounding.AwayFromZero);
+        lat = Math.Clamp(lat, -90m, 90m);
+
+        var longitudeStep = (double)LatitudeStep / Math.Max(Math.Cos((double)lat * Math.PI / 180), MinCosine);
+        var lng = Math.Round(
+            Math.Round((double)longitude / longitudeStep, MidpointRounding.AwayFromZero) * longitudeStep,
+            6,
+            MidpointRounding.AwayFromZero);
+        return (lat, Math.Clamp(decimal.Round((decimal)lng, 6, MidpointRounding.AwayFromZero), -180m, 180m));
+    }
+}
+
+internal static class ScreeningText
+{
+    public const int LabelsMaxLength = 200;
+
+    public static string? Labels(IReadOnlyList<string> labels)
+    {
+        if (labels.Count == 0)
+        {
+            return null;
+        }
+
+        var joined = string.Join(",", labels);
+        return joined.Length <= LabelsMaxLength ? joined : joined[..LabelsMaxLength];
+    }
 }
 
 /// <summary>The parts of a post its author writes and can later edit.</summary>
