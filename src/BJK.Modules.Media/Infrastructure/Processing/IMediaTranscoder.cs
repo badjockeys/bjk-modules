@@ -3,6 +3,8 @@ namespace BJK.Modules.Media.Infrastructure.Processing;
 /// <summary>What ffprobe found in a file.</summary>
 /// <param name="HasVideo">False if the file has no picture at all (not a video or photo).</param>
 /// <param name="DurationSeconds">Null for photos.</param>
+/// <param name="Width">Width as seen, after any rotation.</param>
+/// <param name="Height">Height as seen, after any rotation.</param>
 public sealed record ProbeResult(bool HasVideo, decimal? DurationSeconds, int? Width, int? Height);
 
 /// <summary>Converts originals into the files we publish. Implemented with ffmpeg.</summary>
