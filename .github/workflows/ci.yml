@@ -47,7 +47,7 @@ jobs:
       - name: Test
         env:
           BJK_REDACTION_MODELS: ${{ runner.temp }}/models
-          BJK_REDACTION_PERF_SECONDS: "60"
+          BJK_REDACTION_PERF_SECONDS: "30"
           BJK_REDACTION_TIMING_FILE: ${{ runner.temp }}/redaction-timing.txt
         run: |
           set -o pipefail

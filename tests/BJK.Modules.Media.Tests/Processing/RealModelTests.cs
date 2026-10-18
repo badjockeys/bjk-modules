@@ -68,6 +68,51 @@ public sealed class RealModelTests : IDisposable
         Assert.InRange(plate.Width / plate.Height, 1.5f, 8f);
     }
 
+    [Fact]
+    public async Task Detector_cost_per_720p_frame_is_measured()
+    {
+        var models = Models();
+        var frame = Assert.Single(await Frames(Make(
+            Path.Combine(_folder, "frame.png"),
+            "-i", Path.Combine(models, "test-faces.jpg"), "-vf", "scale=1280:720", "-frames:v", "1")));
+        var options = Options(models);
+        var noTiles = Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions
+        {
+            PlateModelPath = options.Value.PlateModelPath,
+            PlateTiles = false,
+        });
+        using var faces = new YuNetFaceDetector(options, NullLogger<YuNetFaceDetector>.Instance);
+        using var plates = new LpdYuNetPlateDetector(options, NullLogger<LpdYuNetPlateDetector>.Instance);
+        using var platesWhole = new LpdYuNetPlateDetector(noTiles, NullLogger<LpdYuNetPlateDetector>.Instance);
+
+        var lines = new List<string>();
+        foreach (var (name, detector) in new (string, IRedactionDetector)[] { ("faces", faces), ("plates+tiles", plates), ("plates whole frame", platesWhole) })
+        {
+            detector.Detect(frame, 0.5f);
+            var timer = Stopwatch.StartNew();
+            for (var i = 0; i < 10; i++)
+            {
+                detector.Detect(frame, 0.5f);
+            }
+
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"{name} {timer.Elapsed.TotalMilliseconds / 10:0}ms"));
+        }
+
+        await Report($"Detector cost per 720p frame ({Environment.ProcessorCount} CPUs, nothing else running in this test): {string.Join(", ", lines)}.");
+    }
+
+    private static async Task Report(string report)
+    {
+        TestContext.Current.SendDiagnosticMessage(report);
+        foreach (var file in new[] { "GITHUB_STEP_SUMMARY", "BJK_REDACTION_TIMING_FILE" }.Select(Environment.GetEnvironmentVariable))
+        {
+            if (!string.IsNullOrEmpty(file))
+            {
+                await File.AppendAllTextAsync(file, report + Environment.NewLine, Ct);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("crowd")]
     [InlineData("scene")]
@@ -117,14 +162,6 @@ public sealed class RealModelTests : IDisposable
             $"{timer.Elapsed.TotalSeconds:0.0}s total, {result.DetectionTime.TotalSeconds:0.0}s detecting " +
             $"({perMinute:0.0}s per minute of video, ~{perMinute * 5:0}s for 5 minutes), " +
             $"{Environment.ProcessorCount} CPUs, {result.FacesBlurred} faces, {result.PlatesBlurred} plates tracked.");
-        TestContext.Current.SendDiagnosticMessage(report);
-        Console.WriteLine(report);
-        foreach (var file in new[] { "GITHUB_STEP_SUMMARY", "BJK_REDACTION_TIMING_FILE" }.Select(Environment.GetEnvironmentVariable))
-        {
-            if (!string.IsNullOrEmpty(file))
-            {
-                await File.AppendAllTextAsync(file, report + Environment.NewLine, Ct);
-            }
-        }
+        await Report(report);
     }
 }
