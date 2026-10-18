@@ -103,7 +103,7 @@ public sealed class MediaProcessorTests
         Assert.Null(item.DurationSeconds);
         Assert.Equal(new[] { "image/webp", "image/webp" }, _uploads.Select(u => u.Type));
         Assert.EndsWith("/image.webp", item.PlaybackKey);
-        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, default);
+        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, Ct);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class MediaProcessorTests
         Assert.Equal(ProcessingOutcome.Failed, outcome);
         Assert.Equal(MediaStatus.Failed, item.Status);
         Assert.Contains("5 minutes", item.FailureReason);
-        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, default);
+        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, Ct);
         Assert.Empty(_uploads);
     }
 
@@ -179,7 +179,7 @@ public sealed class MediaProcessorTests
         var outcome = await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
         Assert.Equal(ProcessingOutcome.Completed, outcome);
-        await _storage.DidNotReceiveWithAnyArgs().DownloadOriginalAsync(default!, default!, default);
+        await _storage.DidNotReceiveWithAnyArgs().DownloadOriginalAsync(default!, default!, Ct);
     }
 
     [Fact]
