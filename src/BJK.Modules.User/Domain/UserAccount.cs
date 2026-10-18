@@ -38,7 +38,126 @@ public sealed class UserAccount
 
     public byte[] RowVersion { get; private set; } = [];
 
+    /// <summary>Age check (minimum age 18). Only the outcome is kept: never the video, the photo, the estimate or ID details.</summary>
+    public AgeCheckStatus AgeCheckStatus { get; private set; } = AgeCheckStatus.NotChecked;
+
+    /// <summary>How the current <see cref="AgeCheckStatus"/> was reached, if any attempt was made.</summary>
+    public AgeCheckMethod? AgeCheckMethod { get; private set; }
+
+    /// <summary>The outcome of the most recent attempt.</summary>
+    public AgeCheckResult? AgeCheckResult { get; private set; }
+
+    /// <summary>Which provider gave the most recent result, e.g. "Development" or the estimator's name.</summary>
+    public string? AgeCheckProvider { get; private set; }
+
+    /// <summary>When the most recent result was recorded.</summary>
+    public DateTimeOffset? AgeCheckRecordedAt { get; private set; }
+
+    /// <summary>Attempts made since <see cref="AgeCheckAttemptsSince"/>, for the daily limit.</summary>
+    public int AgeCheckAttempts { get; private set; }
+
+    /// <summary>Start of the current 24-hour attempts window.</summary>
+    public DateTimeOffset? AgeCheckAttemptsSince { get; private set; }
+
     public bool IsActive => Status == UserAccountStatus.Active;
+
+    /// <summary>True once the account has passed the age check; tokens then carry age_verified=true.</summary>
+    public bool IsAgeVerified => AgeCheckStatus == AgeCheckStatus.Passed;
+
+    /// <summary>
+    /// The head-turn selfie is only for a first check: once the estimate says 18 to 24 (or under 18), photo ID is the
+    /// only way forward, so repeating the selfie can't be used to fish for a higher estimate.
+    /// </summary>
+    public bool CanUseFaceCheck => AgeCheckStatus == AgeCheckStatus.NotChecked;
+
+    /// <summary>Photo ID: any time before passing, except after photo ID has already shown the user is under 18.</summary>
+    public bool CanUseDocumentCheck => AgeCheckStatus switch
+    {
+        AgeCheckStatus.NotChecked or AgeCheckStatus.DocumentRequired => true,
+        AgeCheckStatus.Failed => AgeCheckMethod == Domain.AgeCheckMethod.FaceEstimate,
+        _ => false,
+    };
+
+    /// <summary>How many more attempts (face or photo ID) the user can make in the current 24 hours.</summary>
+    /// <param name="now">The current time.</param>
+    /// <param name="maxPerDay">The daily limit.</param>
+    public int AgeCheckAttemptsLeft(DateTimeOffset now, int maxPerDay) =>
+        AgeCheckAttemptsSince is { } since && now - since < TimeSpan.FromDays(1)
+            ? Math.Max(0, maxPerDay - AgeCheckAttempts)
+            : maxPerDay;
+
+    /// <summary>Counts an attempt against the daily limit. Returns false (and counts nothing) if none are left.</summary>
+    /// <param name="now">The current time.</param>
+    /// <param name="maxPerDay">The daily limit.</param>
+    public bool TryStartAgeCheckAttempt(DateTimeOffset now, int maxPerDay)
+    {
+        if (AgeCheckAttemptsSince is not { } since || now - since >= TimeSpan.FromDays(1))
+        {
+            AgeCheckAttemptsSince = now;
+            AgeCheckAttempts = 0;
+        }
+
+        if (AgeCheckAttempts >= maxPerDay)
+        {
+            return false;
+        }
+
+        AgeCheckAttempts++;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// Records an attempt's outcome. A pass, a "needs photo ID" or an under-18 result moves the status; an
+    /// inconclusive attempt (liveness failed, uncertain estimate, unreadable ID) leaves it where it was.
+    /// </summary>
+    /// <param name="method">Face estimate or photo ID.</param>
+    /// <param name="result">The outcome.</param>
+    /// <param name="provider">Which provider decided it.</param>
+    /// <param name="now">The current time.</param>
+    public void RecordAgeCheck(AgeCheckMethod method, AgeCheckResult result, string provider, DateTimeOffset now)
+    {
+        if (IsAgeVerified)
+        {
+            throw new InvalidOperationException("This account has already passed the age check.");
+        }
+
+        var newStatus = result switch
+        {
+            Domain.AgeCheckResult.Passed => AgeCheckStatus.Passed,
+            Domain.AgeCheckResult.Under25 => AgeCheckStatus.DocumentRequired,
+            Domain.AgeCheckResult.Underage => AgeCheckStatus.Failed,
+            _ => AgeCheckStatus,
+        };
+
+        if (newStatus != AgeCheckStatus)
+        {
+            AgeCheckStatus = newStatus;
+            AgeCheckMethod = method;
+        }
+
+        AgeCheckResult = result;
+        AgeCheckProvider = provider.Length > ProviderMaxLength ? provider[..ProviderMaxLength] : provider;
+        AgeCheckRecordedAt = now;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Admins: clears the age check so the user takes it again, with a fresh set of attempts.</summary>
+    /// <param name="now">The current time.</param>
+    public void ResetAgeCheck(DateTimeOffset now)
+    {
+        AgeCheckStatus = AgeCheckStatus.NotChecked;
+        AgeCheckMethod = null;
+        AgeCheckResult = null;
+        AgeCheckProvider = null;
+        AgeCheckRecordedAt = null;
+        AgeCheckAttempts = 0;
+        AgeCheckAttemptsSince = null;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Longest provider name stored.</summary>
+    public const int ProviderMaxLength = 100;
 
     /// <summary>Creates the account record for a newly registered sign-in account.</summary>
     /// <param name="identityId">The sign-in account's id. Must be a GUID; it becomes this record's id.</param>
