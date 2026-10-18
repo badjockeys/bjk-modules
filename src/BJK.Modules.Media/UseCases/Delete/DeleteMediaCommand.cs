@@ -23,12 +23,7 @@ public sealed class DeleteMediaCommandHandler(
         var item = await MediaAccess.GetForChangeAsync(media, caller, request.MediaId, cancellationToken);
 
         // Remove the files first: if that fails the record is untouched and the delete can be retried.
-        await storage.DeleteOriginalAsync(item.OriginalKey, cancellationToken);
-        var published = new[] { item.PlaybackKey, item.ThumbnailKey }.OfType<string>().ToList();
-        if (published.Count > 0)
-        {
-            await storage.DeletePublicAsync(published, cancellationToken);
-        }
+        await MediaFiles.DeleteAllAsync(storage, item, cancellationToken);
 
         item.Delete(clock.GetUtcNow());
         await media.SaveChangesAsync(cancellationToken);

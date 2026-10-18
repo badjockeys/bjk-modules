@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>BJK.Modules.Posts</PackageId>
+    <Description>Posts module for Bad Jockeys: incident posts with photos and videos, reactions, comments and reports. Hosted by the bjk-core API.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <!-- Only for `dotnet ef migrations add`; not passed on to hosts that use the package. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
+    <ProjectReference Include="..\BJK.Modules.Media\BJK.Modules.Media.csproj" />
+    <ProjectReference Include="..\BJK.Modules.Profiles\BJK.Modules.Profiles.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BJK.Modules.Posts.Tests" />
+    <!-- NSubstitute needs this to mock internal interfaces. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+</Project>

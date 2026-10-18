@@ -49,3 +49,9 @@ jobs:
           dotnet ef migrations has-pending-model-changes \
             --project src/BJK.Modules.Media --context MediaDbContext \
             --configuration Release --no-build
+          dotnet ef migrations has-pending-model-changes \
+            --project src/BJK.Modules.Profiles --context ProfilesDbContext \
+            --configuration Release --no-build
+          dotnet ef migrations has-pending-model-changes \
+            --project src/BJK.Modules.Posts --context PostsDbContext \
+            --configuration Release --no-build

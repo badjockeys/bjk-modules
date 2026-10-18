@@ -41,7 +41,11 @@ public sealed class UserProfile
 
     public DateTimeOffset? DeletedAt { get; private set; }
 
+    /// <summary>Creates a profile for a newly registered sign-in account.</summary>
     /// <param name="identityId">The sign-in account's id. Must be a GUID; it becomes the profile's id too.</param>
+    /// <param name="email">The account's email address.</param>
+    /// <param name="displayName">The name shown on the user's posts.</param>
+    /// <param name="now">The creation time.</param>
     public static UserProfile Create(string identityId, string email, string displayName, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identityId);
