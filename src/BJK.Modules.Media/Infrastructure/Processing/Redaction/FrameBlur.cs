@@ -82,7 +82,10 @@ public static class FrameBlur
         }
     }
 
-    /// <summary>Two passes (horizontal then vertical) of a box blur, confined to the region.</summary>
+    /// <summary>
+    /// Two passes (horizontal then vertical) of a box blur, confined to the region. Uses running sums, so the cost
+    /// doesn't grow with the radius.
+    /// </summary>
     private static void BoxBlur(RgbFrame frame, int left, int top, int right, int bottom, int radius)
     {
         var pixels = frame.Pixels;
@@ -95,24 +98,7 @@ public static class FrameBlur
         {
             var row = y * stride;
             Buffer.BlockCopy(pixels, row + (left * 3), line, 0, width * 3);
-            for (var x = 0; x < width; x++)
-            {
-                var from = Math.Max(0, x - radius);
-                var to = Math.Min(width - 1, x + radius);
-                int r = 0, g = 0, b = 0;
-                for (var k = from; k <= to; k++)
-                {
-                    r += line[k * 3];
-                    g += line[(k * 3) + 1];
-                    b += line[(k * 3) + 2];
-                }
-
-                var n = to - from + 1;
-                var i = row + ((left + x) * 3);
-                pixels[i] = (byte)(r / n);
-                pixels[i + 1] = (byte)(g / n);
-                pixels[i + 2] = (byte)(b / n);
-            }
+            BlurLine(line, width, radius, pixels, row + (left * 3), 3);
         }
 
         for (var x = left; x < right; x++)
@@ -125,23 +111,50 @@ public static class FrameBlur
                 line[(y * 3) + 2] = pixels[i + 2];
             }
 
-            for (var y = 0; y < height; y++)
-            {
-                var from = Math.Max(0, y - radius);
-                var to = Math.Min(height - 1, y + radius);
-                int r = 0, g = 0, b = 0;
-                for (var k = from; k <= to; k++)
-                {
-                    r += line[k * 3];
-                    g += line[(k * 3) + 1];
-                    b += line[(k * 3) + 2];
-                }
+            BlurLine(line, height, radius, pixels, (top * stride) + (x * 3), stride);
+        }
+    }
 
-                var n = to - from + 1;
-                var i = ((top + y) * stride) + (x * 3);
-                pixels[i] = (byte)(r / n);
-                pixels[i + 1] = (byte)(g / n);
-                pixels[i + 2] = (byte)(b / n);
+    /// <summary>
+    /// Averages each of <paramref name="count"/> RGB values in <paramref name="line"/> with its neighbours within
+    /// <paramref name="radius"/> (clipped at the ends) and writes them to <paramref name="target"/>, starting at
+    /// <paramref name="offset"/>, <paramref name="step"/> bytes apart.
+    /// </summary>
+    private static void BlurLine(byte[] line, int count, int radius, byte[] target, int offset, int step)
+    {
+        int r = 0, g = 0, b = 0;
+        var to = Math.Min(count - 1, radius);
+        for (var k = 0; k <= to; k++)
+        {
+            r += line[k * 3];
+            g += line[(k * 3) + 1];
+            b += line[(k * 3) + 2];
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            var from = Math.Max(0, i - radius);
+            var n = to - from + 1;
+            var o = offset + (i * step);
+            target[o] = (byte)(r / n);
+            target[o + 1] = (byte)(g / n);
+            target[o + 2] = (byte)(b / n);
+
+            // Slide the window one along: add the next value on the right, drop the one leaving on the left.
+            if (i + radius + 1 < count)
+            {
+                to = i + radius + 1;
+                r += line[to * 3];
+                g += line[(to * 3) + 1];
+                b += line[(to * 3) + 2];
+            }
+
+            if (i - radius >= 0)
+            {
+                var drop = i - radius;
+                r -= line[drop * 3];
+                g -= line[(drop * 3) + 1];
+                b -= line[(drop * 3) + 2];
             }
         }
     }

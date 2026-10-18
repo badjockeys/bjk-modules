@@ -14,13 +14,15 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// <param name="Frames">Frames written (1 for a photo).</param>
 /// <param name="FramesAnalysed">Frames the detectors ran on.</param>
 /// <param name="Elapsed">Time taken.</param>
+/// <param name="DetectionTime">Part of <paramref name="Elapsed"/> spent running the detection models.</param>
 public sealed record RedactionResult(
     int FacesBlurred,
     int PlatesBlurred,
     IReadOnlyList<string> ReviewReasons,
     int Frames,
     int FramesAnalysed,
-    TimeSpan Elapsed)
+    TimeSpan Elapsed,
+    TimeSpan DetectionTime = default)
 {
     public bool NeedsReview => ReviewReasons.Count > 0;
 }
@@ -215,10 +217,11 @@ internal sealed class MediaRedactor(
             timer.Elapsed);
 
         logger.LogInformation(
-            "Blurred {Frames} frames ({Analysed} analysed) in {Elapsed}: {Faces} faces, {Plates} plates, {Uncertain} uncertain.",
+            "Blurred {Frames} frames ({Analysed} analysed) in {Elapsed} ({Detection} detecting): {Faces} faces, {Plates} plates, {Uncertain} uncertain.",
             frames,
             analysed,
             timer.Elapsed,
+            result.DetectionTime,
             result.FacesBlurred,
             result.PlatesBlurred,
             uncertain);
@@ -309,7 +312,7 @@ internal sealed class MediaRedactor(
             reasons.Add("Every upload is set to be reviewed (Media:Redaction:ReviewEverything).");
         }
 
-        return new RedactionResult(faces, plates, reasons, frames, analysed, elapsed);
+        return new RedactionResult(faces, plates, reasons, frames, analysed, elapsed, pass.Elapsed);
     }
 
     /// <summary>
@@ -320,6 +323,7 @@ internal sealed class MediaRedactor(
     {
         private readonly List<IRedactionDetector> _active = [];
         private readonly List<string> _problems = [];
+        private readonly Stopwatch _timer = new();
         private readonly MediaRedactionOptions _options;
         private readonly ILogger _logger;
 
@@ -347,7 +351,22 @@ internal sealed class MediaRedactor(
 
         public IReadOnlyList<string> Problems => _problems;
 
+        public TimeSpan Elapsed => _timer.Elapsed;
+
         public List<DetectionBox> Detect(RgbFrame frame)
+        {
+            _timer.Start();
+            try
+            {
+                return DetectAll(frame);
+            }
+            finally
+            {
+                _timer.Stop();
+            }
+        }
+
+        private List<DetectionBox> DetectAll(RgbFrame frame)
         {
             var boxes = new List<DetectionBox>();
             foreach (var detector in _active.ToList())

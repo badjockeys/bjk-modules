@@ -68,18 +68,27 @@ public sealed class RealModelTests : IDisposable
         Assert.InRange(plate.Width / plate.Height, 1.5f, 8f);
     }
 
-    [Fact]
-    public async Task A_moving_clip_is_blurred_with_the_real_models_and_timed()
+    [Theory]
+    [InlineData("crowd")]
+    [InlineData("scene")]
+    public async Task A_moving_clip_is_blurred_with_the_real_models_and_timed(string kind)
     {
         var models = Models();
         var seconds = int.TryParse(Environment.GetEnvironmentVariable("BJK_REDACTION_PERF_SECONDS"), out var s) ? s : 20;
+        var duration = seconds.ToString(CultureInfo.InvariantCulture);
 
-        // The group photo panning slowly across a 1080p, 30 fps frame: faces move, so tracking is exercised.
-        var input = Make(
-            Path.Combine(_folder, "clip.mp4"),
-            "-loop", "1", "-framerate", "30", "-t", seconds.ToString(CultureInfo.InvariantCulture), "-i", Path.Combine(models, "test-faces.jpg"),
-            "-vf", "scale=2400:1350,crop=1920:1080:'mod(t*40,480)':100,format=yuv420p",
-            "-c:v", "libx264", "-preset", "ultrafast");
+        // crowd: the crowd photo (a couple of hundred faces) panning across a 1080p30 frame, a worst case that also
+        // exercises tracking. scene: a moving test pattern with no faces or plates, the baseline cost of every clip.
+        var input = kind == "crowd"
+            ? Make(
+                Path.Combine(_folder, "clip.mp4"),
+                "-loop", "1", "-framerate", "30", "-t", duration, "-i", Path.Combine(models, "test-faces.jpg"),
+                "-vf", "scale=2400:1350,crop=1920:1080:'mod(t*40,480)':100,format=yuv420p",
+                "-c:v", "libx264", "-preset", "ultrafast")
+            : Make(
+                Path.Combine(_folder, "clip.mp4"),
+                "-f", "lavfi", "-i", $"testsrc2=size=1920x1080:rate=30:duration={duration}",
+                "-c:v", "libx264", "-preset", "ultrafast");
         var options = Options(models);
         using var faces = new YuNetFaceDetector(options, NullLogger<YuNetFaceDetector>.Instance);
         using var plates = new LpdYuNetPlateDetector(options, NullLogger<LpdYuNetPlateDetector>.Instance);
@@ -94,14 +103,19 @@ public sealed class RealModelTests : IDisposable
             input, new ProbeResult(true, seconds, 1920, 1080, 30), [], Path.Combine(_folder, "720p.mp4"), Ct);
         timer.Stop();
 
-        Assert.True(result.FacesBlurred >= 3);
+        if (kind == "crowd")
+        {
+            Assert.True(result.FacesBlurred >= 3);
+        }
+
         Assert.Equal(seconds * 30, result.Frames);
 
         var perMinute = timer.Elapsed.TotalSeconds / seconds * 60;
         var report = string.Create(
             CultureInfo.InvariantCulture,
-            $"Redaction timing: {seconds}s 1080p30 clip -> 720p, {result.Frames} frames, {result.FramesAnalysed} analysed, " +
-            $"{timer.Elapsed.TotalSeconds:0.0}s total ({perMinute:0.0}s per minute of video, ~{perMinute * 5:0}s for 5 minutes), " +
+            $"Redaction timing ({kind}): {seconds}s 1080p30 clip -> 720p, {result.Frames} frames, {result.FramesAnalysed} analysed, " +
+            $"{timer.Elapsed.TotalSeconds:0.0}s total, {result.DetectionTime.TotalSeconds:0.0}s detecting " +
+            $"({perMinute:0.0}s per minute of video, ~{perMinute * 5:0}s for 5 minutes), " +
             $"{Environment.ProcessorCount} CPUs, {result.FacesBlurred} faces, {result.PlatesBlurred} plates tracked.");
         TestContext.Current.SendDiagnosticMessage(report);
         Console.WriteLine(report);
