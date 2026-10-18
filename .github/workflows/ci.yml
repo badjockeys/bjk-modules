@@ -33,7 +33,12 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore BJK.Modules.slnx
+          set -o pipefail
+          if ! dotnet restore BJK.Modules.slnx 2>&1 | tee restore-output.txt; then
+            # Surface the failure lines as annotations on the PR.
+            grep -iE "error|warn" restore-output.txt | sort -u | head -20 | sed 's/^/::error::/'
+            exit 1
+          fi
           dotnet tool restore
 
       - name: Build
