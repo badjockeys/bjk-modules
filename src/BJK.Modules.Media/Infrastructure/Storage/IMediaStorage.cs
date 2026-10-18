@@ -18,6 +18,12 @@ public interface IMediaStorage
 
     Task DeleteOriginalAsync(string key, CancellationToken cancellationToken);
 
+    /// <summary>Copies an original into <paramref name="destination"/>. Used by the processing worker.</summary>
+    Task DownloadOriginalAsync(string key, Stream destination, CancellationToken cancellationToken);
+
+    /// <summary>Publishes a processed file to the public bucket, cached by browsers and Cloudflare for a year.</summary>
+    Task UploadPublicAsync(string key, string filePath, string contentType, CancellationToken cancellationToken);
+
     Task DeletePublicAsync(IEnumerable<string> keys, CancellationToken cancellationToken);
 
     /// <summary>

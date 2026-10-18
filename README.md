@@ -164,7 +164,33 @@ Photos and videos follow the same flow; only the worker's processing differs.
 1. `POST /api/media/uploads` with `{ fileName, contentType, sizeBytes }` creates a `media.Media` row (`Uploading`) and returns a signed link, valid for 15 minutes, to PUT the file straight into the private **originals** bucket. The API never handles the file.
 2. The app PUTs the file to that link, sending the `Content-Type` header it was given.
 3. `POST /api/media/{id}/complete` checks the file is in storage and within the size limit, sets `Processing`, and puts a job on the RabbitMQ queue.
-4. A worker (built next) processes the file into the **public** bucket and sets `Ready`. Only `Ready` media is visible to other users.
+4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, converts the file and publishes it to the **public** bucket, then sets `Ready`. Only `Ready` media is visible to other users.
+
+### Processing
+
+| | Video | Photo |
+|---|---|---|
+| Output | `720p.mp4`: H.264 + AAC, at most 720 pixels high and 30 fps, fast start for streaming | `image.webp`: at most 2048 pixels on its longest side |
+| Thumbnail | `thumbnail.jpg`, from one second in | `thumbnail.webp`, at most 640 pixels |
+| Checks | Must contain a picture; no longer than `Media:MaxVideoDurationSeconds` (5 minutes) | Must contain a picture |
+
+- **Metadata is stripped** from every published file, so no GPS position, device or owner details go public. The original keeps them, in the private bucket, until it's deleted after 90 days.
+- **SHA-256** of each original is recorded, for spotting duplicates later.
+- **Failures.** A file ffmpeg can't read, with no picture, or too long fails straight away, with a reason the app can show. Anything temporary (storage or database unavailable) is retried; the job is delivered at most 3 times, and the last attempt marks the media `Failed`, so nothing stays at `Processing`.
+- **Deleted meanwhile.** If the owner deletes the media while it's being processed, the worker removes what it published.
+- ffmpeg runs as a child process with its arguments passed as a list, never through a shell.
+- The worker doesn't load the Media API, migrations or the user lifecycle consumer. The API does those, so account events aren't split between the two.
+
+| Setting (`Media:Processing:*`, worker only) | Default |
+|---|---|
+| `FfmpegPath`, `FfprobePath` | `ffmpeg`, `ffprobe` on the PATH |
+| `MaxConcurrentJobs` | 1 (encoding already uses every core) |
+| `VideoHeight`, `VideoCrf` | 720, 23 |
+| `ImageMaxSize`, `ThumbnailMaxSize` | 2048, 640 |
+| `CommandTimeout` | 15 minutes |
+| `WorkingDirectory` | The system temp folder |
+
+HEIC photos from iPhones need an ffmpeg built with HEIF support (ffmpeg 7.1 or later); with an older ffmpeg they fail with a "couldn't read" reason.
 
 Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader's account id (the token's `sub`) and file names are ours (`original.mov`, `720p.mp4`, `thumbnail.jpg`, `image.webp`, `thumbnail.webp`).
 

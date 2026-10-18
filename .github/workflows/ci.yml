@@ -23,6 +23,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      # For the media processing tests, which run the real ffmpeg.
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+
       - name: Restore
         run: |
           dotnet restore BJK.Modules.slnx
