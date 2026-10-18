@@ -1,8 +1,8 @@
 name: CI
 
 on:
+  # Every pull request, including ones stacked on another feature branch.
   pull_request:
-    branches: [master]
   push:
     branches: [master]
 
@@ -45,4 +45,7 @@ jobs:
         run: |
           dotnet ef migrations has-pending-model-changes \
             --project src/BJK.Modules.User --context UserDbContext \
+            --configuration Release --no-build
+          dotnet ef migrations has-pending-model-changes \
+            --project src/BJK.Modules.Media --context MediaDbContext \
             --configuration Release --no-build
