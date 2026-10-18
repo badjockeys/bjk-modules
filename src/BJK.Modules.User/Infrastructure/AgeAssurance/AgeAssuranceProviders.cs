@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
@@ -29,16 +30,19 @@ public sealed class AgeAssuranceProviders(
 /// Checks the age check settings at startup: each selected provider must exist, development stand-ins are refused
 /// outside the Development environment, and the HTTP estimator must have its endpoint and key.
 /// </summary>
-internal sealed class AgeAssuranceOptionsValidator(
-    IHostEnvironment environment,
-    IEnumerable<ILivenessChecker> liveness,
-    IEnumerable<IAgeEstimator> estimators,
-    IEnumerable<IDocumentAgeCheck> documents)
+/// <remarks>
+/// The providers are looked up when validating, not injected: they depend on these options themselves, so injecting
+/// them would be a dependency cycle.
+/// </remarks>
+internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment, IServiceProvider services)
     : IValidateOptions<AgeAssuranceOptions>
 {
     public ValidateOptionsResult Validate(string? name, AgeAssuranceOptions options)
     {
         var failures = new List<string>();
+        var liveness = services.GetServices<ILivenessChecker>().ToList();
+        var estimators = services.GetServices<IAgeEstimator>().ToList();
+        var documents = services.GetServices<IDocumentAgeCheck>().ToList();
 
         if (options.ChallengeAge < Domain.AgeCheckRules.MinimumAge)
         {

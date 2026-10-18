@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using BJK.Modules.User.Infrastructure.AgeAssurance;
 using BJK.Modules.User.Tests.UseCases;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -158,6 +159,26 @@ public sealed class AgeAssuranceProviderTests
         Assert.Throws<InvalidOperationException>(() => providers.Estimator);
     }
 
+    [Fact]
+    public void The_registered_services_resolve_and_validate_without_a_cycle()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var environment = Substitute.For<IHostEnvironment>();
+        environment.EnvironmentName.Returns("Development");
+        services.AddSingleton(environment);
+        UserModule.AddAgeAssurance(services, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgeAssuranceOptions>>().Value;
+        var providers = provider.GetRequiredService<AgeAssuranceProviders>();
+
+        Assert.Equal(25, options.ChallengeAge);
+        Assert.Equal("Development", providers.Liveness.Name);
+        Assert.Equal("Development", providers.Estimator.Name);
+        Assert.Equal("Development", providers.Document.Name);
+    }
+
     private static AgeAssuranceOptionsValidator Validator(string environmentName, ILivenessChecker? liveness = null, IDocumentAgeCheck? document = null)
     {
         var monitor = new StaticOptionsMonitor<AgeAssuranceOptions>(new AgeAssuranceOptions());
@@ -182,7 +203,15 @@ public sealed class AgeAssuranceProviderTests
             new HttpAgeEstimator(Substitute.For<IHttpClientFactory>(), monitor, NullLogger<HttpAgeEstimator>.Instance),
         ];
 
-        return new AgeAssuranceOptionsValidator(environment, livenessCheckers, estimators, documents);
+        var services = new ServiceCollection();
+        livenessCheckers.ForEach(c => services.AddSingleton(c));
+        documents.ForEach(d => services.AddSingleton(d));
+        foreach (var estimator in estimators)
+        {
+            services.AddSingleton(estimator);
+        }
+
+        return new AgeAssuranceOptionsValidator(environment, services.BuildServiceProvider());
     }
 
     private sealed class RecordingHandler(string responseJson) : HttpMessageHandler

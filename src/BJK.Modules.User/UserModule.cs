@@ -82,7 +82,7 @@ public sealed class UserModule(string connectionStringName) : IModule
     /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons;
     /// <c>AgeAssurance:*:Provider</c> picks one of each by name.
     /// </summary>
-    private static void AddAgeAssurance(IServiceCollection services, IConfiguration configuration)
+    internal static void AddAgeAssurance(IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<AgeAssuranceOptions>()
             .Bind(configuration.GetSection(AgeAssuranceOptions.SectionName))
