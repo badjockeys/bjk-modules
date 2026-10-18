@@ -262,11 +262,14 @@ public sealed class PlateDetectorGeometryTests
     }
 
     [Fact]
-    public void Tiles_overlap_by_half_and_reach_the_far_edge()
+    public void A_720p_frame_is_searched_in_a_2x2_grid_of_overlapping_tiles_reaching_the_far_edges()
     {
-        Assert.Equal(new[] { 0, 320, 640 }, LpdYuNetPlateDetector.Offsets(1280, 640));
-        Assert.Equal(new[] { 0, 240 }, LpdYuNetPlateDetector.Offsets(720, 480));
+        Assert.Equal(704, LpdYuNetPlateDetector.TileSize(1280, 704));
+        Assert.Equal(396, LpdYuNetPlateDetector.TileSize(720, 528));
+        Assert.Equal(new[] { 0, 576 }, LpdYuNetPlateDetector.Offsets(1280, 704));
+        Assert.Equal(new[] { 0, 324 }, LpdYuNetPlateDetector.Offsets(720, 396));
         Assert.Equal(new[] { 0 }, LpdYuNetPlateDetector.Offsets(400, 480));
+        Assert.Equal(4, LpdYuNetPlateDetector.Offsets(2048, 704).Count);
     }
 
     [Theory]

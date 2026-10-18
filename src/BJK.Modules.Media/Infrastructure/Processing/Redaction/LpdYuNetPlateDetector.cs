@@ -44,8 +44,10 @@ internal sealed class LpdYuNetPlateDetector : OnnxDetector
 
         if (_tiles && (frame.Width >= width * 2 || frame.Height >= height * 2))
         {
-            var tileW = Math.Min(frame.Width, width * 2);
-            var tileH = Math.Min(frame.Height, height * 2);
+            // A 2x2 grid for 720p video (more for big photos) of tiles at most 2.2 times the model's input size,
+            // overlapping by about a tenth so a plate on a seam is whole in one of them.
+            var tileW = TileSize(frame.Width, (int)(width * 2.2));
+            var tileH = TileSize(frame.Height, (int)(height * 2.2));
             foreach (var top in Offsets(frame.Height, tileH))
             {
                 foreach (var left in Offsets(frame.Width, tileW))
@@ -58,7 +60,18 @@ internal sealed class LpdYuNetPlateDetector : OnnxDetector
         return BoxMath.NonMaxSuppression(found, NmsThreshold);
     }
 
-    /// <summary>Tile positions with half-tile overlap, the last one flush with the far edge.</summary>
+    /// <summary>
+    /// Tile length along one side: half the frame plus a tenth overlap, but no more than <paramref name="maxTile"/>
+    /// (about twice the model's input) so small plates stay big enough to find.
+    /// </summary>
+    /// <param name="total">Frame length.</param>
+    /// <param name="maxTile">Longest tile.</param>
+    internal static int TileSize(int total, int maxTile) =>
+        Math.Min(total, Math.Max(Math.Min(maxTile, (int)Math.Ceiling(total * 0.55)), Math.Min(total, maxTile / 2)));
+
+    /// <summary>Tile positions with about a tenth overlap, the last one flush with the far edge.</summary>
+    /// <param name="total">Frame length.</param>
+    /// <param name="tile">Tile length.</param>
     internal static List<int> Offsets(int total, int tile)
     {
         var offsets = new List<int>();
@@ -68,12 +81,13 @@ internal sealed class LpdYuNetPlateDetector : OnnxDetector
             return offsets;
         }
 
-        for (var offset = 0; offset < total - tile; offset += tile / 2)
+        var count = (int)Math.Ceiling((total - (tile * 0.1)) / (tile * 0.9));
+        var step = (total - tile) / (double)(count - 1);
+        for (var i = 0; i < count; i++)
         {
-            offsets.Add(offset);
+            offsets.Add((int)Math.Round(i * step));
         }
 
-        offsets.Add(total - tile);
         return offsets;
     }
 

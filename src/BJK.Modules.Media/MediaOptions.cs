@@ -171,6 +171,12 @@ public sealed class MediaRedactionOptions
     /// <summary>Send every upload to review even when detection was confident. For launch or incident periods.</summary>
     public bool ReviewEverything { get; set; }
 
+    /// <summary>
+    /// Gives up blurring one video after this long (then retried, and Failed after the last attempt). Keep it under
+    /// RabbitMQ's consumer acknowledgement timeout (30 minutes by default).
+    /// </summary>
+    public TimeSpan VideoTimeout { get; set; } = TimeSpan.FromMinutes(25);
+
     /// <summary>Threads ONNX Runtime may use per detection; 0 lets it decide (all cores).</summary>
     [Range(0, 64)]
     public int InferenceThreads { get; set; }

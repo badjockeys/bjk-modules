@@ -96,6 +96,9 @@ internal abstract class OnnxDetector : IRedactionDetector, IDisposable
                 GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
                 IntraOpNumThreads = threads,
             };
+
+            // ffmpeg runs alongside on the same cores; idle ONNX Runtime threads mustn't spin and steal its CPU.
+            options.AddSessionConfigEntry("session.intra_op.allow_spinning", "0");
             return new InferenceSession(_modelPath, options);
         }
         catch (Exception ex) when (ex is OnnxRuntimeException or IOException or UnauthorizedAccessException)

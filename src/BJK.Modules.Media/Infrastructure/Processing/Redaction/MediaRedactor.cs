@@ -129,7 +129,7 @@ internal sealed class MediaRedactor(
     {
         var timer = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_processing.CommandTimeout);
+        timeout.CancelAfter(_options.VideoTimeout);
         var token = timeout.Token;
 
         var fps = FrameRate(probe.FrameRate);
@@ -175,7 +175,7 @@ internal sealed class MediaRedactor(
                 }
             }
 
-            await decoder.WaitAsync(_processing.CommandTimeout, "decode the video", token);
+            await decoder.WaitAsync(_options.VideoTimeout, "decode the video", token);
             if (encoder is null)
             {
                 throw new UnreadableMediaException("ffmpeg found no frames in the video.");
@@ -188,11 +188,11 @@ internal sealed class MediaRedactor(
 
             await encoder.Input.FlushAsync(token);
             encoder.Input.Close();
-            await encoder.WaitAsync(_processing.CommandTimeout, "encode the video", token);
+            await encoder.WaitAsync(_options.VideoTimeout, "encode the video", token);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException($"Blurring the video took longer than {_processing.CommandTimeout}.");
+            throw new TimeoutException($"Blurring the video took longer than {_options.VideoTimeout}.");
         }
         catch (IOException ex)
         {

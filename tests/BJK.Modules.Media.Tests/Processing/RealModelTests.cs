@@ -12,8 +12,9 @@ namespace BJK.Modules.Media.Tests.Processing;
 /// <summary>
 /// The real YuNet and LPD-YuNet models with ONNX Runtime. Run when <c>BJK_REDACTION_MODELS</c> names a folder filled
 /// by <c>scripts/download-redaction-models.sh &lt;folder&gt; --test-images</c> (CI does this); skipped otherwise.
-/// The timing test's clip length is <c>BJK_REDACTION_PERF_SECONDS</c> (default 20).
+/// The timing tests run only when <c>BJK_REDACTION_PERF_SECONDS</c> (the clip length) is set as well.
 /// </summary>
+[Collection(nameof(RealModelTests))]
 public sealed class RealModelTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("bjk-model-tests-").FullName;
@@ -68,10 +69,21 @@ public sealed class RealModelTests : IDisposable
         Assert.InRange(plate.Width / plate.Height, 1.5f, 8f);
     }
 
+    private static int PerfSeconds()
+    {
+        if (!int.TryParse(Environment.GetEnvironmentVariable("BJK_REDACTION_PERF_SECONDS"), out var seconds) || seconds <= 0)
+        {
+            Assert.Skip("Timing runs only when BJK_REDACTION_PERF_SECONDS is set.");
+        }
+
+        return seconds;
+    }
+
     [Fact]
     public async Task Detector_cost_per_720p_frame_is_measured()
     {
         var models = Models();
+        PerfSeconds();
         var frame = Assert.Single(await Frames(Make(
             Path.Combine(_folder, "frame.png"),
             "-i", Path.Combine(models, "test-faces.jpg"), "-vf", "scale=1280:720", "-frames:v", "1")));
@@ -98,7 +110,7 @@ public sealed class RealModelTests : IDisposable
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"{name} {timer.Elapsed.TotalMilliseconds / 10:0}ms"));
         }
 
-        await Report($"Detector cost per 720p frame ({Environment.ProcessorCount} CPUs, nothing else running in this test): {string.Join(", ", lines)}.");
+        await Report($"Detector cost per 720p frame ({Environment.ProcessorCount} CPUs): {string.Join(", ", lines)}.");
     }
 
     private static async Task Report(string report)
@@ -119,7 +131,7 @@ public sealed class RealModelTests : IDisposable
     public async Task A_moving_clip_is_blurred_with_the_real_models_and_timed(string kind)
     {
         var models = Models();
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("BJK_REDACTION_PERF_SECONDS"), out var s) ? s : 20;
+        var seconds = PerfSeconds();
         var duration = seconds.ToString(CultureInfo.InvariantCulture);
 
         // crowd: the crowd photo (a couple of hundred faces) panning across a 1080p30 frame, a worst case that also
@@ -165,3 +177,7 @@ public sealed class RealModelTests : IDisposable
         await Report(report);
     }
 }
+
+/// <summary>Runs the real-model tests on their own, after the rest, so the timings aren't skewed by other tests.</summary>
+[CollectionDefinition(nameof(RealModelTests), DisableParallelization = true)]
+public sealed class RealModelTestsCollection;

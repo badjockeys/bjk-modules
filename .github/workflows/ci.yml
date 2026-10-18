@@ -47,8 +47,6 @@ jobs:
       - name: Test
         env:
           BJK_REDACTION_MODELS: ${{ runner.temp }}/models
-          BJK_REDACTION_PERF_SECONDS: "30"
-          BJK_REDACTION_TIMING_FILE: ${{ runner.temp }}/redaction-timing.txt
         run: |
           set -o pipefail
           if ! dotnet test --solution BJK.Modules.slnx --configuration Release --no-build 2>&1 | tee test-output.txt; then
@@ -57,9 +55,16 @@ jobs:
             exit 1
           fi
 
-      - name: Report redaction timing
-        if: always()
-        run: sed 's/^/::notice::/' "$RUNNER_TEMP/redaction-timing.txt" 2>/dev/null || true
+      # The Media tests again, alone, with the timed runs of the real models switched on, so nothing else competes
+      # for the CPU. Timings are written to the job summary and shown as notices.
+      - name: Redaction timing
+        env:
+          BJK_REDACTION_MODELS: ${{ runner.temp }}/models
+          BJK_REDACTION_PERF_SECONDS: "60"
+          BJK_REDACTION_TIMING_FILE: ${{ runner.temp }}/redaction-timing.txt
+        run: |
+          dotnet test --project tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj --configuration Release --no-build > timing-output.txt 2>&1 || { tail -40 timing-output.txt; exit 1; }
+          sed 's/^/::notice::/' "$RUNNER_TEMP/redaction-timing.txt"
 
       # Fails if an entity or configuration changed without a matching migration.
       - name: Check migrations are up to date
