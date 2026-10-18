@@ -48,6 +48,10 @@ app.MapControllers();
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 
+### One id per person
+
+A user's profile id is the same GUID as their sign-in account id, which is the `sub` claim in every token. Every module (users, media, and posts later) identifies a person by that one id, so no module ever needs to look up another id.
+
 ### Access
 
 | Scope | Gives |

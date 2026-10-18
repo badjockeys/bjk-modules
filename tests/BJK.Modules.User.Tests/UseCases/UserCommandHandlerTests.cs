@@ -29,12 +29,12 @@ public sealed class UserCommandHandlerTests
     public async Task Add_creates_account_then_profile()
     {
         _identity.CreateAccountAsync("rider@example.com", "Passw0rd!", Arg.Any<CancellationToken>())
-            .Returns(AccountResult.Success("sub-1"));
+            .Returns(AccountResult.Success("00000000-0000-4000-8000-000000000001"));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!", "Road Hog"), Ct);
 
-        _users.Received(1).Add(Arg.Is<UserProfile>(u => u.Id == id && u.IdentityId == "sub-1"));
+        _users.Received(1).Add(Arg.Is<UserProfile>(u => u.Id == id && u.IdentityId == "00000000-0000-4000-8000-000000000001"));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
@@ -56,21 +56,21 @@ public sealed class UserCommandHandlerTests
     public async Task Add_removes_the_account_if_the_profile_cannot_be_saved()
     {
         _identity.CreateAccountAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(AccountResult.Success("sub-1"));
+            .Returns(AccountResult.Success("00000000-0000-4000-8000-000000000001"));
         _users.SaveChangesAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("db down"));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!", "Road Hog"), Ct));
 
-        await _identity.Received(1).DeleteAccountAsync("sub-1", Arg.Any<CancellationToken>());
+        await _identity.Received(1).DeleteAccountAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Update_by_owner_changes_display_name()
     {
-        var user = ExistingUser("sub-1");
-        CallerIs("sub-1");
+        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
+        CallerIs("00000000-0000-4000-8000-000000000001");
         var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
 
         await handler.Handle(new UpdateUserCommand(user.Id, "Lane Hogger"), Ct);
@@ -82,8 +82,8 @@ public sealed class UserCommandHandlerTests
     [Fact]
     public async Task Update_by_someone_else_is_forbidden()
     {
-        var user = ExistingUser("sub-1");
-        CallerIs("sub-2");
+        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
+        CallerIs("00000000-0000-4000-8000-000000000002");
         var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
 
         await Assert.ThrowsAsync<ForbiddenException>(
@@ -95,7 +95,7 @@ public sealed class UserCommandHandlerTests
     [Fact]
     public async Task Update_by_admin_is_allowed()
     {
-        var user = ExistingUser("sub-1");
+        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
         _caller.HasScope(UserModule.ManageScope).Returns(true);
         var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
 
@@ -107,7 +107,7 @@ public sealed class UserCommandHandlerTests
     [Fact]
     public async Task Get_of_missing_user_is_not_found()
     {
-        CallerIs("sub-1");
+        CallerIs("00000000-0000-4000-8000-000000000001");
         var handler = new GetUserQueryHandler(_users, _caller);
 
         await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(new GetUserQuery(Guid.NewGuid()), Ct));
@@ -116,9 +116,9 @@ public sealed class UserCommandHandlerTests
     [Fact]
     public async Task GetCurrent_returns_callers_profile()
     {
-        var user = ExistingUser("sub-1");
-        _users.GetByIdentityIdAsync("sub-1", Arg.Any<CancellationToken>()).Returns(user);
-        CallerIs("sub-1");
+        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
+        _users.GetByIdentityIdAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>()).Returns(user);
+        CallerIs("00000000-0000-4000-8000-000000000001");
         var handler = new GetCurrentUserQueryHandler(_users, _caller);
 
         var dto = await handler.Handle(new GetCurrentUserQuery(), Ct);
@@ -129,14 +129,14 @@ public sealed class UserCommandHandlerTests
     [Fact]
     public async Task Delete_disables_account_and_soft_deletes_profile()
     {
-        var user = ExistingUser("sub-1");
-        CallerIs("sub-1");
+        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
+        CallerIs("00000000-0000-4000-8000-000000000001");
         var handler = new DeleteUserCommandHandler(_users, _identity, _caller, _clock);
 
         await handler.Handle(new DeleteUserCommand(user.Id), Ct);
 
         Assert.True(user.IsDeleted);
-        await _identity.Received(1).DisableAccountAsync("sub-1", Arg.Any<CancellationToken>());
+        await _identity.Received(1).DisableAccountAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>());
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 

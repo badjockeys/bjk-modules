@@ -1,8 +1,9 @@
 namespace BJK.Modules.User.Domain;
 
 /// <summary>
-/// A Bad Jockeys user profile. Credentials live in the identity server;
-/// this record is linked to the identity account by <see cref="IdentityId"/> (the token's "sub" claim).
+/// A Bad Jockeys user profile. Credentials live in the identity server.
+/// The profile's <see cref="Id"/> is the same GUID as the sign-in account (the token's "sub" claim),
+/// so every module identifies a person by one id. <see cref="IdentityId"/> holds the same value as text.
 /// </summary>
 public sealed class UserProfile
 {
@@ -40,17 +41,23 @@ public sealed class UserProfile
 
     public DateTimeOffset? DeletedAt { get; private set; }
 
+    /// <param name="identityId">The sign-in account's id. Must be a GUID; it becomes the profile's id too.</param>
     public static UserProfile Create(string identityId, string email, string displayName, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identityId);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
-        return new UserProfile(Guid.CreateVersion7(now), identityId, email.Trim(), displayName.Trim(), now);
+        if (!Guid.TryParse(identityId, out var id) || id == Guid.Empty)
+        {
+            throw new ArgumentException("The account id must be a GUID.", nameof(identityId));
+        }
+
+        return new UserProfile(id, id.ToString("D"), email.Trim(), displayName.Trim(), now);
     }
 
     public bool IsOwnedBy(string identityId) =>
-        string.Equals(IdentityId, identityId, StringComparison.Ordinal);
+        Guid.TryParse(identityId, out var id) && id == Id;
 
     public void UpdateProfile(string displayName, DateTimeOffset now)
     {
