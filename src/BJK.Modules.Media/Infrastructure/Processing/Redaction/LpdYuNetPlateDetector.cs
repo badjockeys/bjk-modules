@@ -67,7 +67,7 @@ internal sealed class LpdYuNetPlateDetector : OnnxDetector
     /// <param name="total">Frame length.</param>
     /// <param name="maxTile">Longest tile.</param>
     internal static int TileSize(int total, int maxTile) =>
-        Math.Min(total, Math.Max(Math.Min(maxTile, (int)Math.Ceiling(total * 0.55)), Math.Min(total, maxTile / 2)));
+        Math.Min(total, Math.Max(Math.Min(maxTile, ((total * 11) + 19) / 20), Math.Min(total, maxTile / 2)));
 
     /// <summary>Tile positions with about a tenth overlap, the last one flush with the far edge.</summary>
     /// <param name="total">Frame length.</param>
