@@ -1,4 +1,5 @@
 using BJK.Modules.Profiles.Domain;
+using BJK.Modules.Shared.Safety;
 using FluentValidation;
 
 namespace BJK.Modules.Profiles.UseCases;
@@ -29,6 +30,11 @@ public abstract class ProfileDetailsValidator<T> : AbstractValidator<T>
         RuleFor(x => x.Location)
             .Must(l => l is null || l.Trim().Length <= Profile.LocationMaxLength)
             .WithMessage($"Locations are {Profile.LocationMaxLength} characters or fewer.");
+
+        // No number plates, phone numbers, emails, street addresses or social handles in anything public.
+        RuleFor(x => x.DisplayName).NoPersonalDetails();
+        RuleFor(x => x.Bio).NoPersonalDetails();
+        RuleFor(x => x.Location).NoPersonalDetails();
     }
 }
 
