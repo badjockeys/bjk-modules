@@ -15,7 +15,7 @@ public sealed class AddUserCommandValidatorTests
         var validator = new AddUserCommandValidator(_users);
 
         var result = await validator.ValidateAsync(
-            new AddUserCommand("sub-1", "rider@example.com", "Road Hog"),
+            new AddUserCommand("rider@example.com", "Passw0rd!", "Road Hog"),
             TestContext.Current.CancellationToken);
 
         Assert.True(result.IsValid);
@@ -28,35 +28,22 @@ public sealed class AddUserCommandValidatorTests
         var validator = new AddUserCommandValidator(_users);
 
         var result = await validator.ValidateAsync(
-            new AddUserCommand("sub-1", "rider@example.com", "Road Hog"),
+            new AddUserCommand(" rider@example.com ", "Passw0rd!", "Road Hog"),
             TestContext.Current.CancellationToken);
 
         Assert.Contains(result.Errors, e => e.PropertyName == nameof(AddUserCommand.Email));
     }
 
-    [Fact]
-    public async Task Existing_identity_fails()
-    {
-        _users.IdentityExistsAsync("sub-1", Arg.Any<CancellationToken>()).Returns(true);
-        var validator = new AddUserCommandValidator(_users);
-
-        var result = await validator.ValidateAsync(
-            new AddUserCommand("sub-1", "rider@example.com", "Road Hog"),
-            TestContext.Current.CancellationToken);
-
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(AddUserCommand.IdentityId));
-    }
-
     [Theory]
-    [InlineData("", "rider@example.com", "Road Hog", nameof(AddUserCommand.IdentityId))]
-    [InlineData("sub-1", "not-an-email", "Road Hog", nameof(AddUserCommand.Email))]
-    [InlineData("sub-1", "rider@example.com", "", nameof(AddUserCommand.DisplayName))]
-    public async Task Invalid_fields_fail(string identityId, string email, string displayName, string expectedProperty)
+    [InlineData("not-an-email", "Passw0rd!", "Road Hog", nameof(AddUserCommand.Email))]
+    [InlineData("rider@example.com", "", "Road Hog", nameof(AddUserCommand.Password))]
+    [InlineData("rider@example.com", "Passw0rd!", "", nameof(AddUserCommand.DisplayName))]
+    public async Task Invalid_fields_fail(string email, string password, string displayName, string expectedProperty)
     {
         var validator = new AddUserCommandValidator(_users);
 
         var result = await validator.ValidateAsync(
-            new AddUserCommand(identityId, email, displayName),
+            new AddUserCommand(email, password, displayName),
             TestContext.Current.CancellationToken);
 
         Assert.Contains(result.Errors, e => e.PropertyName == expectedProperty);

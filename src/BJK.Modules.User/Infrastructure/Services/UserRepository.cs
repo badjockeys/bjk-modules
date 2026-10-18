@@ -9,10 +9,27 @@ internal sealed class UserRepository(UserDbContext db) : IUserRepository
     public Task<UserProfile?> GetByIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
-    // Uniqueness checks include soft-deleted rows, because the unique indexes do.
-    public Task<bool> IdentityExistsAsync(string identityId, CancellationToken cancellationToken) =>
-        db.Users.IgnoreQueryFilters().AnyAsync(u => u.IdentityId == identityId, cancellationToken);
+    public Task<UserProfile?> GetByIdentityIdAsync(string identityId, CancellationToken cancellationToken) =>
+        db.Users.FirstOrDefaultAsync(u => u.IdentityId == identityId, cancellationToken);
 
+    public async Task<(IReadOnlyList<UserProfile> Items, int TotalCount)> ListAsync(
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = db.Users.AsNoTracking();
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(u => u.CreatedAt)
+            .ThenBy(u => u.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    // Includes soft-deleted rows, because the unique index does.
     public Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken) =>
         db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == email, cancellationToken);
 

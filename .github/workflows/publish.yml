@@ -1,13 +1,19 @@
 name: Publish packages
 
-# Tag master with a semantic version to publish, e.g.  git tag v0.1.0 && git push origin v0.1.0
+# Releases: tag a commit on master, e.g.  git tag v0.2.0 && git push origin v0.2.0
+# Previews: every push to a feature/* branch publishes <VersionPrefix>-ci.<run number>
+#           (VersionPrefix is in Directory.Build.props), so other repos can test a branch before it merges.
 on:
   push:
     tags: ['v*.*.*']
+    branches: ['feature/**']
 
 permissions:
   contents: read
   packages: write
+
+concurrency:
+  group: publish-${{ github.ref }}
 
 jobs:
   publish:
@@ -17,11 +23,19 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
-      - name: Work out version from tag
+      - name: Work out version
         id: version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            prefix=$(dotnet msbuild src/BJK.Modules.Shared -getProperty:VersionPrefix)
+            version="${prefix}-ci.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "### Publishing $version" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Restore
         run: dotnet restore BJK.Modules.slnx
@@ -41,3 +55,6 @@ jobs:
           --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           --api-key "${{ secrets.GITHUB_TOKEN }}"
           --skip-duplicate
+
+      - name: Report version
+        run: echo "::notice::Published BJK.Modules.* ${{ steps.version.outputs.value }}"

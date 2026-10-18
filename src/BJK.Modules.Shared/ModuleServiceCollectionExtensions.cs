@@ -1,9 +1,12 @@
 using System.Reflection;
 using BJK.Modules.Shared.Behaviours;
 using BJK.Modules.Shared.Errors;
+using BJK.Modules.Shared.Security;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace BJK.Modules.Shared;
 
@@ -16,10 +19,15 @@ public static class ModuleServiceCollectionExtensions
     /// Registers every module, then wires MediatR, FluentValidation and MVC controllers
     /// across all module assemblies in one place.
     /// </summary>
+    /// <remarks>
+    /// The host must register a bearer token handler under <see cref="ModuleAuthentication.Scheme"/>,
+    /// then call <see cref="InitialiseBjkModulesAsync"/> after building the app.
+    /// </remarks>
     /// <example>
     /// <code>
-    /// builder.Services.AddBjkModules(builder.Configuration, new UserModule());
-    /// ...
+    /// builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"));
+    /// var app = builder.Build();
+    /// await app.Services.InitialiseBjkModulesAsync();
     /// app.UseExceptionHandler();
     /// app.MapControllers();
     /// </code>
@@ -43,6 +51,7 @@ public static class ModuleServiceCollectionExtensions
         var mvc = services.AddControllers();
         foreach (var module in modules)
         {
+            services.AddSingleton(module);
             module.AddServices(services, configuration);
         }
 
@@ -50,6 +59,10 @@ public static class ModuleServiceCollectionExtensions
         {
             mvc.AddApplicationPart(assembly);
         }
+
+        services.AddHttpContextAccessor();
+        services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
+        services.TryAddSingleton(TimeProvider.System);
 
         // MediatR is registered once for all modules so pipeline behaviours aren't duplicated.
         services.AddMediatR(cfg =>
@@ -65,5 +78,19 @@ public static class ModuleServiceCollectionExtensions
         services.AddExceptionHandler<ModuleExceptionHandler>();
 
         return services;
+    }
+
+    /// <summary>Runs each module's startup work, such as applying database migrations, in registration order.</summary>
+    public static async Task InitialiseBjkModulesAsync(
+        this IServiceProvider services,
+        CancellationToken cancellationToken = default)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(ModuleServiceCollectionExtensions));
+
+        foreach (var module in services.GetServices<IModule>())
+        {
+            logger.LogInformation("Initialising module {Module}.", module.Name);
+            await module.InitialiseAsync(services, cancellationToken);
+        }
     }
 }
