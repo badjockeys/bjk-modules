@@ -15,6 +15,9 @@ public interface IMediaRepository
         int pageSize,
         CancellationToken cancellationToken);
 
+    /// <summary>Several media by id, except deleted. Tracked, so changes can be saved.</summary>
+    Task<IReadOnlyList<MediaItem>> GetManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     void Add(MediaItem media);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
@@ -42,6 +45,13 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
 
         return (items, total);
     }
+
+    public async Task<IReadOnlyList<MediaItem>> GetManyAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken) =>
+        await db.Media
+            .Where(m => ids.Contains(m.Id) && m.Status != MediaStatus.Deleted)
+            .ToListAsync(cancellationToken);
 
     public void Add(MediaItem media) => db.Media.Add(media);
 

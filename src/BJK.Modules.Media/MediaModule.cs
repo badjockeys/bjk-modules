@@ -1,4 +1,6 @@
 using Amazon.S3;
+using BJK.Modules.Media.Contracts;
+using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
@@ -47,6 +49,7 @@ public sealed class MediaModule(string connectionStringName) : IModule
                 sql.EnableRetryOnFailure();
             }));
         services.AddScoped<IMediaRepository, MediaRepository>();
+        services.AddScoped<IMediaDirectory, MediaDirectory>();
 
         services.AddOptions<MediaOptions>()
             .Bind(configuration.GetSection(MediaOptions.SectionName))
