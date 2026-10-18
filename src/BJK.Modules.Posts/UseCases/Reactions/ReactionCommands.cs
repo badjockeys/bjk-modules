@@ -1,13 +1,18 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Profiles.Contracts;
+using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
 
 namespace BJK.Modules.Posts.UseCases.Reactions;
 
-/// <summary>Sets the signed-in user's reaction to a post, replacing any earlier one.</summary>
-public sealed record ReactToPostCommand(Guid PostId, ReactionType Type) : IRequest;
+/// <summary>
+/// Sets the signed-in user's reaction to a post, replacing any earlier one. Needs a passed age check; refused on the
+/// posts of someone who has blocked the user.
+/// </summary>
+public sealed record ReactToPostCommand(Guid PostId, ReactionType Type) : IRequest, IRequiresAgeVerification;
 
 public sealed class ReactToPostCommandValidator : AbstractValidator<ReactToPostCommand>
 {
@@ -20,6 +25,7 @@ public sealed class ReactToPostCommandValidator : AbstractValidator<ReactToPostC
 public sealed class ReactToPostCommandHandler(
     IPostRepository posts,
     IReactionRepository reactions,
+    IBlockDirectory blocks,
     ICurrentUser caller,
     TimeProvider clock)
     : IRequestHandler<ReactToPostCommand>
@@ -28,6 +34,7 @@ public sealed class ReactToPostCommandHandler(
     {
         var userId = caller.RequireUserId();
         var post = await PostAccess.GetPublishedAsync(posts, request.PostId, cancellationToken);
+        await PostAccess.EnsureNotBlockedByAuthorAsync(blocks, post, userId, cancellationToken);
 
         var existing = await reactions.GetAsync(post.Id, userId, cancellationToken);
         if (existing is null)

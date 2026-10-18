@@ -1,4 +1,5 @@
 using BJK.Modules.Posts.Domain;
+using BJK.Modules.Shared.Safety;
 using FluentValidation;
 
 namespace BJK.Modules.Posts.UseCases;
@@ -50,6 +51,11 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
         RuleFor(x => x.PlaceName)
             .Must(p => p is null || p.Trim().Length <= Post.PlaceNameMaxLength)
             .WithMessage($"Place names are {Post.PlaceNameMaxLength} characters or fewer.");
+
+        // No number plates, phone numbers, emails, street addresses or social handles.
+        RuleFor(x => x.Title).NoPersonalDetails();
+        RuleFor(x => x.Description).NoPersonalDetails();
+        RuleFor(x => x.PlaceName).NoPersonalDetails();
     }
 }
 

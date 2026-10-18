@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Posts</PackageId>
-    <Description>Posts module for Bad Jockeys: incident posts with photos and videos, reactions, comments and reports. Hosted by the bjk-core API.</Description>
+    <Description>Posts module for Bad Jockeys: incident posts with photos and videos, reactions, comments, reports, appeals, content screening and the moderation audit log. Hosted by the bjk-core API.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +23,7 @@
     <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
     <ProjectReference Include="..\BJK.Modules.Media\BJK.Modules.Media.csproj" />
     <ProjectReference Include="..\BJK.Modules.Profiles\BJK.Modules.Profiles.csproj" />
+    <ProjectReference Include="..\BJK.Modules.Email\BJK.Modules.Email.csproj" />
   </ItemGroup>
 
   <ItemGroup>
