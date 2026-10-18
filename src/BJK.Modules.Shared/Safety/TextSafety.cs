@@ -65,7 +65,7 @@ public static partial class TextSafety
         "BRO", "BUS", "BUT", "CAB", "CAN", "CAR", "COP", "CUP", "CUT", "DAD", "DAY", "DRY", "EAR", "END", "ETA",
         "ETC", "EUR", "EYE", "FAR", "FEW", "FFS", "FIB", "FIG", "FOG", "FOR", "GAP", "GBP", "GET", "GIG", "GOT", "GTD",
         "GTR", "GUY", "HAD", "HAS", "HER", "HEY",
-        "HGV", "HOT", "HOW", "HRS", "JCT", "JIG", "JOB", "KOI", "KMH", "KPH", "LAD", "LAP", "LAW", "LAY", "LBS", "LEG", "LET", "LGV", "LOL", "LOT",
+        "HGV", "HOT", "HOW", "HRS", "JCT", "JIG", "JOB", "KIA", "KOI", "KMH", "KPH", "LAD", "LAP", "LAW", "LAY", "LBS", "LEG", "LET", "LGV", "LOL", "LOT",
         "MAD", "MAN", "MAY", "MEN", "MET", "MOT", "MPG", "MPH", "MPV", "MUM", "NAH", "NEW", "NIL", "NOR", "NOT", "NOW", "ODD",
         "OFF", "OIL", "OLD", "OMG", "ONE", "OUR", "OUT", "OWN", "PAL", "PER", "PIG", "PUT", "RAN", "RBT", "RED", "REG",
         "RIB", "RIG", "ROW",

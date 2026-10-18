@@ -6,6 +6,7 @@ using BJK.Modules.Media.UseCases.Delete;
 using BJK.Modules.Media.UseCases.Get;
 using BJK.Modules.Media.UseCases.Upload;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using NSubstitute;
@@ -19,6 +20,7 @@ public sealed class MediaHandlerTests
     private readonly IMediaRepository _media = Substitute.For<IMediaRepository>();
     private readonly IMediaStorage _storage = Substitute.For<IMediaStorage>();
     private readonly IMediaJobQueue _queue = Substitute.For<IMediaJobQueue>();
+    private readonly IModerationAuditLog _audit = Substitute.For<IModerationAuditLog>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
 
@@ -146,7 +148,7 @@ public sealed class MediaHandlerTests
         var item = Existing(UserId);
         item.MarkUploaded(1, Now, TimeSpan.FromDays(90));
         item.MarkReady(10, 30m, 1280, 720, null, Now);
-        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         await handler.Handle(new DeleteMediaCommand(item.Id), Ct);
 
@@ -164,11 +166,24 @@ public sealed class MediaHandlerTests
         _caller.HasScope(MediaModule.ManageScope).Returns(true);
         _caller.HasRole("Moderator").Returns(true);
         _caller.UsedMfa.Returns(true);
-        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
-        await handler.Handle(new DeleteMediaCommand(item.Id, AsModerator: true), Ct);
+        await handler.Handle(new DeleteMediaCommand(item.Id, AsModerator: true, Reason: "Shows a face"), Ct);
 
         Assert.Equal(MediaStatus.Deleted, item.Status);
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Module == "Media" && e.Action == ModerationActions.DeleteMedia && e.TargetId == item.Id.ToString() && e.Reason == "Shows a face"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Moderator_deletes_need_a_reason()
+    {
+        var validator = new DeleteMediaCommandValidator();
+
+        Assert.False(validator.Validate(new DeleteMediaCommand(Guid.NewGuid(), AsModerator: true)).IsValid);
+        Assert.True(validator.Validate(new DeleteMediaCommand(Guid.NewGuid(), AsModerator: true, Reason: "Spam")).IsValid);
+        Assert.True(validator.Validate(new DeleteMediaCommand(Guid.NewGuid())).IsValid);
     }
 
     [Fact]
@@ -177,7 +192,7 @@ public sealed class MediaHandlerTests
         var item = Existing(OtherUserId);
         _caller.HasScope(MediaModule.ManageScope).Returns(true);
         _caller.HasRole("Moderator").Returns(true);
-        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeleteMediaCommand(item.Id, AsModerator: true), Ct));
         Assert.NotEqual(MediaStatus.Deleted, item.Status);
@@ -190,7 +205,7 @@ public sealed class MediaHandlerTests
         _caller.HasScope(MediaModule.ManageScope).Returns(true);
         _caller.HasRole("Admin").Returns(true);
         _caller.UsedMfa.Returns(true);
-        var handler = new DeleteMediaCommandHandler(_media, _storage, _caller, _clock);
+        var handler = new DeleteMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeleteMediaCommand(item.Id), Ct));
     }

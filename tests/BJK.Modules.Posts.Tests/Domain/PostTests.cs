@@ -37,14 +37,42 @@ public sealed class PostTests
     }
 
     [Fact]
-    public void Location_is_rounded_to_six_decimal_places()
+    public void Location_is_rounded_to_about_500_metres()
     {
         var details = Details() with { Latitude = 53.12345678m, Longitude = -2.98765432m };
 
         var post = Post.Create(UserId, details, [Guid.NewGuid()], Now);
 
-        Assert.Equal(53.123457m, post.Latitude);
-        Assert.Equal(-2.987654m, post.Longitude);
+        Assert.Equal(53.1225m, post.Latitude);
+        Assert.InRange(post.Longitude, -2.984473m, -2.984471m);
+    }
+
+    [Theory]
+    [InlineData(53.5933, -2.2966)]
+    [InlineData(51.5007, -0.1246)]
+    [InlineData(-33.8568, 151.2153)]
+    [InlineData(0.0001, 0.0001)]
+    [InlineData(89.9999, 179.9999)]
+    public void Rounded_pins_are_within_about_400_metres_and_stable(double latitude, double longitude)
+    {
+        var (lat, lng) = PinRounding.Round((decimal)latitude, (decimal)longitude);
+
+        // Half a 500 m grid cell in each direction is at most about 354 m away.
+        var northSouthMetres = Math.Abs((double)lat - latitude) * 111_320;
+        var eastWestMetres = Math.Abs((double)lng - longitude) * 111_320 * Math.Cos(latitude * Math.PI / 180);
+        Assert.True(Math.Sqrt((northSouthMetres * northSouthMetres) + (eastWestMetres * eastWestMetres)) < 400 || latitude > 89);
+        Assert.Equal((lat, lng), PinRounding.Round(lat, lng));
+        Assert.InRange(lat, -90m, 90m);
+        Assert.InRange(lng, -180m, 180m);
+    }
+
+    [Fact]
+    public void Nearby_pins_round_to_the_same_point()
+    {
+        var a = PinRounding.Round(53.59330m, -2.29660m);
+        var b = PinRounding.Round(53.59340m, -2.29650m);
+
+        Assert.Equal(a, b);
     }
 
     [Fact]

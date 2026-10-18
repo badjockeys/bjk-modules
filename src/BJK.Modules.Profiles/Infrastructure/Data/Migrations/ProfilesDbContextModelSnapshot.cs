@@ -23,6 +23,24 @@ namespace BJK.Modules.Profiles.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BJK.Modules.Profiles.Domain.Block", b =>
+                {
+                    b.Property<Guid>("BlockerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BlockedId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("BlockerId", "BlockedId");
+
+                    b.HasIndex("BlockedId");
+
+                    b.ToTable("Blocks", "profiles");
+                });
+
             modelBuilder.Entity("BJK.Modules.Profiles.Domain.Profile", b =>
                 {
                     b.Property<Guid>("Id")
