@@ -26,6 +26,7 @@ public sealed class BrandedEmail
 
     private readonly string heading;
     private readonly List<Block> blocks = [];
+    private string footer = "You're getting this email because of activity on your Bad Jockeys account.";
 
     private BrandedEmail(string heading) => this.heading = heading;
 
@@ -62,6 +63,14 @@ public sealed class BrandedEmail
 
     /// <summary>Small grey text, for "if this wasn't you" lines.</summary>
     public BrandedEmail Note(string text) => Add(new Block(Kind.Note, text));
+
+    /// <summary>Replaces the small print at the bottom, e.g. for people who wrote to us without an account.</summary>
+    public BrandedEmail Footer(string text)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        footer = text;
+        return this;
+    }
 
     /// <param name="to">Recipient address.</param>
     /// <param name="subject">Subject line.</param>
@@ -138,7 +147,7 @@ public sealed class BrandedEmail
 
         html.Append("</td></tr>")
             .Append("<tr><td style=\"padding:16px 32px 28px 32px;border-top:1px solid ").Append(Line).Append(";font-family:").Append(FontStack)
-            .Append(";font-size:12px;line-height:1.5;color:").Append(Muted).Append(";\">You're getting this email because of activity on your Bad Jockeys account.</td></tr>")
+            .Append(";font-size:12px;line-height:1.5;color:").Append(Muted).Append(";\">").Append(E(footer)).Append("</td></tr>")
             .Append("</table></td></tr></table></body></html>");
         return html.ToString();
     }
