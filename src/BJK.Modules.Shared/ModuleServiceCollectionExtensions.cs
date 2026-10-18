@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json.Serialization;
 using BJK.Modules.Shared.Behaviours;
 using BJK.Modules.Shared.Errors;
 using BJK.Modules.Shared.Security;
@@ -48,7 +49,9 @@ public static class ModuleServiceCollectionExtensions
             .Distinct()
             .ToArray();
 
-        var mvc = services.AddControllers();
+        // Enums travel as names ("Deactivated", "RoadRage"), not numbers, in every module API.
+        var mvc = services.AddControllers()
+            .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         foreach (var module in modules)
         {
             services.AddSingleton(module);
