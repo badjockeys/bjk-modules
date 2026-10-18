@@ -14,6 +14,8 @@ public interface IProfileRepository
 
     void Add(Profile profile);
 
+    void Remove(Profile profile);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
@@ -31,6 +33,8 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
         await db.Profiles.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(cancellationToken);
 
     public void Add(Profile profile) => db.Profiles.Add(profile);
+
+    public void Remove(Profile profile) => db.Profiles.Remove(profile);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

@@ -6,28 +6,20 @@ using MediatR;
 namespace BJK.Modules.User.UseCases.Add;
 
 /// <summary>
-/// Registers a new user: creates their sign-in account in the identity server and their
-/// Bad Jockeys profile. Returns the new user's id.
+/// Registers a new user: creates their sign-in account and their account record. Returns the new user's id.
+/// Their public profile (handle, display name) is created afterwards in bjk-core.
 /// </summary>
-public sealed record AddUserCommand(string Email, string Password, string DisplayName) : IRequest<Guid>;
+public sealed record AddUserCommand(string Email, string Password) : IRequest<Guid>;
 
 public sealed class AddUserCommandValidator : AbstractValidator<AddUserCommand>
 {
-    public AddUserCommandValidator(IUserRepository users)
+    public const int EmailMaxLength = 256;
+
+    public AddUserCommandValidator()
     {
-        RuleFor(c => c.Email)
-            .NotEmpty()
-            .EmailAddress()
-            .MaximumLength(UserProfile.EmailMaxLength)
-            .MustAsync(async (email, ct) => !await users.EmailExistsAsync(email.Trim(), ct))
-            .WithMessage("This email address is already in use.");
-
-        // Strength rules are enforced by the identity server's password policy.
+        // Uniqueness and password strength are checked by the identity server.
+        RuleFor(c => c.Email).NotEmpty().EmailAddress().MaximumLength(EmailMaxLength);
         RuleFor(c => c.Password).NotEmpty();
-
-        RuleFor(c => c.DisplayName)
-            .NotEmpty()
-            .MaximumLength(UserProfile.DisplayNameMaxLength);
     }
 }
 
@@ -36,14 +28,12 @@ public sealed class AddUserCommandHandler(IUserRepository users, IIdentityServic
 {
     public async Task<Guid> Handle(AddUserCommand request, CancellationToken cancellationToken)
     {
-        var email = request.Email.Trim();
-
-        var account = await identity.CreateAccountAsync(email, request.Password, cancellationToken);
+        var account = await identity.CreateAccountAsync(request.Email.Trim(), request.Password, cancellationToken);
         AccountErrors.ThrowIfFailed(account);
         var identityId = account.IdentityId
             ?? throw new InvalidOperationException("The identity server didn't return an account id.");
 
-        var user = UserProfile.Create(identityId, email, request.DisplayName, clock.GetUtcNow());
+        var user = UserAccount.Create(identityId, clock.GetUtcNow());
         users.Add(user);
 
         try
@@ -52,7 +42,7 @@ public sealed class AddUserCommandHandler(IUserRepository users, IIdentityServic
         }
         catch
         {
-            // Don't leave a sign-in account with no profile behind.
+            // Don't leave a sign-in account with no account record behind.
             await identity.DeleteAccountAsync(identityId, CancellationToken.None);
             throw;
         }

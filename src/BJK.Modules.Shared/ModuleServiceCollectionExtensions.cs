@@ -60,6 +60,14 @@ public static class ModuleServiceCollectionExtensions
             mvc.AddApplicationPart(assembly);
         }
 
+        // Shared endpoints, such as GET /api/me/data-export.
+        mvc.AddApplicationPart(typeof(ModuleServiceCollectionExtensions).Assembly);
+        services.AddAuthorizationBuilder()
+            .AddPolicy(ModuleAuthentication.SignedInUserPolicy, policy => policy
+                .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => context.User.GetIdentityId() is not null));
+
         services.AddHttpContextAccessor();
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.TryAddSingleton(TimeProvider.System);

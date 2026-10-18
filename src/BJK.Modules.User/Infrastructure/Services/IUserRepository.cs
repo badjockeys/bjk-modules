@@ -1,19 +1,31 @@
+using BJK.Modules.Shared.Users;
 using BJK.Modules.User.Domain;
 
 namespace BJK.Modules.User.Infrastructure.Services;
 
 public interface IUserRepository
 {
-    Task<UserProfile?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+    Task<UserAccount?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 
-    Task<UserProfile?> GetByIdentityIdAsync(string identityId, CancellationToken cancellationToken);
+    /// <summary>Accounts newest first, optionally only those in one status.</summary>
+    Task<(IReadOnlyList<UserAccount> Items, int TotalCount)> ListAsync(
+        UserAccountStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
 
-    /// <summary>Active users, newest first.</summary>
-    Task<(IReadOnlyList<UserProfile> Items, int TotalCount)> ListAsync(int page, int pageSize, CancellationToken cancellationToken);
+    /// <summary>Deactivated accounts whose grace period has ended, oldest first.</summary>
+    Task<IReadOnlyList<UserAccount>> ListDueForDeletionAsync(DateTimeOffset now, int max, CancellationToken cancellationToken);
 
-    Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken);
+    void Add(UserAccount account);
 
-    void Add(UserProfile user);
+    void Remove(UserAccount account);
+
+    /// <summary>Queues an event in the outbox. It's saved with the next <see cref="SaveChangesAsync"/> and then published.</summary>
+    void AddEvent(UserLifecycleEvent userEvent);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Forgets unsaved changes, after a save failed, so the next unit of work starts clean.</summary>
+    void DiscardChanges();
 }

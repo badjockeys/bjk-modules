@@ -8,4 +8,7 @@ namespace BJK.Modules.Shared.Security;
 public static class ModuleAuthentication
 {
     public const string Scheme = "BjkApi";
+
+    /// <summary>Policy for endpoints any signed-in user may call about themselves, whatever the scopes.</summary>
+    public const string SignedInUserPolicy = "bjk.signed-in-user";
 }

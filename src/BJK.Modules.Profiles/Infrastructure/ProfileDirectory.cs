@@ -9,7 +9,7 @@ namespace BJK.Modules.Profiles.Infrastructure;
 internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirectory media) : IProfileDirectory
 {
     public async Task<bool> ExistsAsync(Guid userId, CancellationToken cancellationToken) =>
-        await profiles.GetByIdAsync(userId, cancellationToken) is not null;
+        await profiles.GetByIdAsync(userId, cancellationToken) is { IsActive: true };
 
     public async Task<IReadOnlyDictionary<Guid, ProfileSummary>> GetSummariesAsync(
         IReadOnlyCollection<Guid> userIds,
@@ -20,7 +20,7 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
             return new Dictionary<Guid, ProfileSummary>();
         }
 
-        var found = await profiles.GetManyAsync(userIds, cancellationToken);
+        var found = (await profiles.GetManyAsync(userIds, cancellationToken)).Where(p => p.IsActive).ToList();
         var avatars = await Avatars.GetUrlsAsync(media, found, cancellationToken);
 
         return found.ToDictionary(
@@ -37,7 +37,7 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
         }
 
         var profile = await profiles.GetByHandleAsync(normalised, cancellationToken);
-        if (profile is null)
+        if (profile is not { IsActive: true })
         {
             return null;
         }

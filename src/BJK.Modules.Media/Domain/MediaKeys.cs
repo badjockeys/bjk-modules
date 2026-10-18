@@ -11,6 +11,9 @@ public static class MediaKeys
     public const string ImageFile = "image.webp";
     public const string ImageThumbnailFile = "thumbnail.webp";
 
+    /// <summary>Everything a user has uploaded sits under this prefix.</summary>
+    public static string UserFolder(Guid userId) => $"{userId:D}/";
+
     public static string Folder(Guid userId, Guid mediaId) => $"{userId:D}/{mediaId:D}";
 
     /// <summary>The uploaded file, in the private originals bucket.</summary>

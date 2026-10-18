@@ -6,6 +6,9 @@ using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -63,11 +66,15 @@ public sealed class MediaModule(string connectionStringName) : IModule
             .Bind(configuration.GetSection(MediaQueueOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddBjkMessaging(configuration);
 
         services.AddSingleton<IAmazonS3>(sp =>
             S3MediaStorage.CreateClient(sp.GetRequiredService<IOptions<MediaStorageOptions>>().Value));
         services.AddSingleton<IMediaStorage, S3MediaStorage>();
         services.AddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+
+        services.AddScoped<IPersonalDataExporter, MediaPersonalDataExporter>();
+        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

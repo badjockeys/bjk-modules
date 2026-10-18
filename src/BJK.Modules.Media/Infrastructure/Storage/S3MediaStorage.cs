@@ -2,6 +2,7 @@ using System.Net;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using BJK.Modules.Media.Domain;
 using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Media.Infrastructure.Storage;
@@ -77,6 +78,44 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
         {
             await s3.DeleteObjectAsync(_options.PublicBucket, key, cancellationToken);
         }
+    }
+
+    public async Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var prefix = MediaKeys.UserFolder(userId);
+        foreach (var bucket in new[] { _options.OriginalsBucket!, _options.PublicBucket! })
+        {
+            string? continuation = null;
+            do
+            {
+                var page = await s3.ListObjectsV2Async(
+                    new ListObjectsV2Request { BucketName = bucket, Prefix = prefix, ContinuationToken = continuation },
+                    cancellationToken);
+
+                // One at a time: R2 and the SDK's multi-delete checksums don't always agree, and users have few files.
+                foreach (var key in page.S3Objects?.Select(o => o.Key) ?? Enumerable.Empty<string>())
+                {
+                    await s3.DeleteObjectAsync(bucket, key, cancellationToken);
+                }
+
+                continuation = page.IsTruncated == true ? page.NextContinuationToken : null;
+            }
+            while (continuation is not null);
+        }
+    }
+
+    public async Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken)
+    {
+        var url = await s3.GetPreSignedURLAsync(new GetPreSignedUrlRequest
+        {
+            BucketName = _options.OriginalsBucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = (clock.GetUtcNow() + lifetime).UtcDateTime,
+            Protocol = Protocol.HTTPS,
+        });
+
+        return new Uri(url);
     }
 
     // Tolerates the base address being configured with or without a trailing slash.

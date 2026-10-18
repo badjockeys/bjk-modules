@@ -1,13 +1,18 @@
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.Infrastructure.Services;
+using BJK.Modules.User.UseCases;
 using BJK.Modules.User.UseCases.Add;
+using BJK.Modules.User.UseCases.Deactivate;
 using BJK.Modules.User.UseCases.Delete;
 using BJK.Modules.User.UseCases.Get;
+using BJK.Modules.User.UseCases.Reactivate;
 using BJK.Modules.User.UseCases.Reset;
-using BJK.Modules.User.UseCases.Update;
 using FluentValidation;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
@@ -16,25 +21,34 @@ namespace BJK.Modules.User.Tests.UseCases;
 
 public sealed class UserCommandHandlerTests
 {
-    private static readonly DateTimeOffset Now = new(2026, 10, 14, 12, 0, 0, TimeSpan.Zero);
+    private const string User1 = "00000000-0000-4000-8000-000000000001";
+    private const string User2 = "00000000-0000-4000-8000-000000000002";
+    private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
 
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IIdentityService _identity = Substitute.For<IIdentityService>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
+    private readonly AccountLifecycle _lifecycle;
+
+    public UserCommandHandlerTests()
+    {
+        _lifecycle = new AccountLifecycle(_users, _identity, Options.Create(new UserOptions()), _clock);
+    }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Add_creates_account_then_profile()
+    public async Task Add_creates_sign_in_account_then_account_record()
     {
         _identity.CreateAccountAsync("rider@example.com", "Passw0rd!", Arg.Any<CancellationToken>())
-            .Returns(AccountResult.Success("00000000-0000-4000-8000-000000000001"));
+            .Returns(AccountResult.Success(User1));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
-        var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!", "Road Hog"), Ct);
+        var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!"), Ct);
 
-        _users.Received(1).Add(Arg.Is<UserProfile>(u => u.Id == id && u.IdentityId == "00000000-0000-4000-8000-000000000001"));
+        Assert.Equal(Guid.Parse(User1), id);
+        _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
@@ -42,102 +56,158 @@ public sealed class UserCommandHandlerTests
     public async Task Add_turns_identity_errors_into_validation_errors()
     {
         _identity.CreateAccountAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(AccountResult.Failed([new AccountError("Password", "Too weak.")]));
+            .Returns(AccountResult.Failed([new AccountError("Email", "Email is already taken.")]));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         var ex = await Assert.ThrowsAsync<ValidationException>(
-            () => handler.Handle(new AddUserCommand("rider@example.com", "weak", "Road Hog"), Ct));
+            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!"), Ct));
 
-        Assert.Contains(ex.Errors, e => e.PropertyName == "Password");
-        _users.DidNotReceive().Add(Arg.Any<UserProfile>());
+        Assert.Contains(ex.Errors, e => e.PropertyName == "Email");
+        _users.DidNotReceive().Add(Arg.Any<UserAccount>());
     }
 
     [Fact]
-    public async Task Add_removes_the_account_if_the_profile_cannot_be_saved()
+    public async Task Add_removes_the_sign_in_account_if_the_record_cannot_be_saved()
     {
         _identity.CreateAccountAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(AccountResult.Success("00000000-0000-4000-8000-000000000001"));
+            .Returns(AccountResult.Success(User1));
         _users.SaveChangesAsync(Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("db down"));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!", "Road Hog"), Ct));
+            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!"), Ct));
 
-        await _identity.Received(1).DeleteAccountAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>());
+        await _identity.Received(1).DeleteAccountAsync(User1, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Update_by_owner_changes_display_name()
+    public async Task GetCurrent_combines_account_and_sign_in_details()
     {
-        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
-        CallerIs("00000000-0000-4000-8000-000000000001");
-        var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
-
-        await handler.Handle(new UpdateUserCommand(user.Id, "Lane Hogger"), Ct);
-
-        Assert.Equal("Lane Hogger", user.DisplayName);
-        await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Update_by_someone_else_is_forbidden()
-    {
-        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
-        CallerIs("00000000-0000-4000-8000-000000000002");
-        var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
-
-        await Assert.ThrowsAsync<ForbiddenException>(
-            () => handler.Handle(new UpdateUserCommand(user.Id, "Hijacked"), Ct));
-
-        await _users.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Update_by_admin_is_allowed()
-    {
-        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
-        _caller.HasScope(UserModule.ManageScope).Returns(true);
-        var handler = new UpdateUserCommandHandler(_users, _caller, _clock);
-
-        await handler.Handle(new UpdateUserCommand(user.Id, "Renamed by admin"), Ct);
-
-        Assert.Equal("Renamed by admin", user.DisplayName);
-    }
-
-    [Fact]
-    public async Task Get_of_missing_user_is_not_found()
-    {
-        CallerIs("00000000-0000-4000-8000-000000000001");
-        var handler = new GetUserQueryHandler(_users, _caller);
-
-        await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(new GetUserQuery(Guid.NewGuid()), Ct));
-    }
-
-    [Fact]
-    public async Task GetCurrent_returns_callers_profile()
-    {
-        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
-        _users.GetByIdentityIdAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>()).Returns(user);
-        CallerIs("00000000-0000-4000-8000-000000000001");
-        var handler = new GetCurrentUserQueryHandler(_users, _caller);
+        var account = Existing(User1);
+        CallerIs(User1);
+        _identity.GetAccountAsync(User1, Arg.Any<CancellationToken>()).Returns(new SignInAccount(User1, "rider@example.com", true));
+        var handler = new GetCurrentUserQueryHandler(_users, _identity, _caller);
 
         var dto = await handler.Handle(new GetCurrentUserQuery(), Ct);
 
-        Assert.Equal(user.Id, dto.Id);
+        Assert.Equal(account.Id, dto.Id);
+        Assert.Equal("rider@example.com", dto.Email);
+        Assert.Equal(UserAccountStatus.Active, dto.Status);
     }
 
     [Fact]
-    public async Task Delete_disables_account_and_soft_deletes_profile()
+    public async Task Get_someone_elses_account_is_forbidden()
     {
-        var user = ExistingUser("00000000-0000-4000-8000-000000000001");
-        CallerIs("00000000-0000-4000-8000-000000000001");
-        var handler = new DeleteUserCommandHandler(_users, _identity, _caller, _clock);
+        Existing(User2);
+        CallerIs(User1);
+        var handler = new GetUserQueryHandler(_users, _identity, _caller);
 
-        await handler.Handle(new DeleteUserCommand(user.Id), Ct);
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new GetUserQuery(Guid.Parse(User2)), Ct));
+    }
 
-        Assert.True(user.IsDeleted);
-        await _identity.Received(1).DisableAccountAsync("00000000-0000-4000-8000-000000000001", Arg.Any<CancellationToken>());
+    [Fact]
+    public async Task Deactivate_needs_the_right_password()
+    {
+        var account = Existing(User1);
+        CallerIs(User1);
+        var handler = new DeactivateMyAccountCommandHandler(_users, _identity, _lifecycle, _caller);
+
+        await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(new DeactivateMyAccountCommand("wrong"), Ct));
+
+        Assert.True(account.IsActive);
+        await _identity.DidNotReceive().DisableAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Deactivate_stops_sign_in_and_publishes_an_event()
+    {
+        var account = Existing(User1);
+        CallerIs(User1);
+        _identity.CheckPasswordAsync(User1, "Passw0rd!", Arg.Any<CancellationToken>()).Returns(true);
+        var handler = new DeactivateMyAccountCommandHandler(_users, _identity, _lifecycle, _caller);
+
+        await handler.Handle(new DeactivateMyAccountCommand("Passw0rd!"), Ct);
+
+        Assert.Equal(UserAccountStatus.Deactivated, account.Status);
+        Assert.Equal(Now.AddDays(90), account.DeletionDueAt);
+        await _identity.Received(1).DisableAccountAsync(User1, Arg.Any<CancellationToken>());
+        _users.Received(1).AddEvent(Arg.Is<UserLifecycleEvent>(e => e.UserId == account.Id && e.Type == UserLifecycleEventType.Deactivated));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Reactivate_with_the_right_credentials_brings_the_account_back()
+    {
+        var account = Existing(User1);
+        account.Deactivate(Now.AddDays(-10), TimeSpan.FromDays(90));
+        _identity.FindByCredentialsAsync("rider@example.com", "Passw0rd!", Arg.Any<CancellationToken>()).Returns(User1);
+        var handler = new ReactivateAccountCommandHandler(_users, _identity, _lifecycle);
+
+        await handler.Handle(new ReactivateAccountCommand("rider@example.com", "Passw0rd!"), Ct);
+
+        Assert.True(account.IsActive);
+        await _identity.Received(1).EnableAccountAsync(User1, Arg.Any<CancellationToken>());
+        _users.Received(1).AddEvent(Arg.Is<UserLifecycleEvent>(e => e.Type == UserLifecycleEventType.Reactivated));
+    }
+
+    [Fact]
+    public async Task Reactivate_gives_the_same_answer_for_wrong_password_and_active_accounts()
+    {
+        Existing(User1);
+        _identity.FindByCredentialsAsync("rider@example.com", "Passw0rd!", Arg.Any<CancellationToken>()).Returns(User1);
+        var handler = new ReactivateAccountCommandHandler(_users, _identity, _lifecycle);
+
+        var active = await Assert.ThrowsAsync<ValidationException>(
+            () => handler.Handle(new ReactivateAccountCommand("rider@example.com", "Passw0rd!"), Ct));
+        var wrong = await Assert.ThrowsAsync<ValidationException>(
+            () => handler.Handle(new ReactivateAccountCommand("rider@example.com", "nope"), Ct));
+
+        Assert.Equal(active.Errors.Single().ErrorMessage, wrong.Errors.Single().ErrorMessage);
+        await _identity.DidNotReceive().EnableAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Only_admins_deactivate_other_accounts()
+    {
+        Existing(User2);
+        CallerIs(User1);
+        var handler = new DeactivateUserCommandHandler(_users, _lifecycle, _caller);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new DeactivateUserCommand(Guid.Parse(User2)), Ct));
+    }
+
+    [Fact]
+    public async Task Retention_deletes_expired_accounts_and_publishes_deleted_events()
+    {
+        var expired = Existing(User1);
+        expired.Deactivate(Now.AddDays(-91), TimeSpan.FromDays(90));
+        _users.ListDueForDeletionAsync(Now, Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new List<UserAccount> { expired });
+        var handler = new DeleteExpiredAccountsCommandHandler(_users, _lifecycle, _clock, NullLogger<DeleteExpiredAccountsCommandHandler>.Instance);
+
+        var deleted = await handler.Handle(new DeleteExpiredAccountsCommand(), Ct);
+
+        Assert.Equal(1, deleted);
+        await _identity.Received(1).DeleteAccountAsync(User1, Arg.Any<CancellationToken>());
+        _users.Received(1).Remove(expired);
+        _users.Received(1).AddEvent(Arg.Is<UserLifecycleEvent>(e => e.UserId == expired.Id && e.Type == UserLifecycleEventType.Deleted));
+    }
+
+    [Fact]
+    public async Task Retention_carries_on_past_an_account_that_fails()
+    {
+        var first = Existing(User1);
+        first.Deactivate(Now.AddDays(-91), TimeSpan.FromDays(90));
+        var second = Existing(User2);
+        second.Deactivate(Now.AddDays(-91), TimeSpan.FromDays(90));
+        _users.ListDueForDeletionAsync(Now, Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new List<UserAccount> { first, second });
+        _identity.DeleteAccountAsync(User1, Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("boom"));
+        var handler = new DeleteExpiredAccountsCommandHandler(_users, _lifecycle, _clock, NullLogger<DeleteExpiredAccountsCommandHandler>.Instance);
+
+        var deleted = await handler.Handle(new DeleteExpiredAccountsCommand(), Ct);
+
+        Assert.Equal(1, deleted);
+        _users.Received(1).DiscardChanges();
+        _users.Received(1).Remove(second);
     }
 
     [Fact]
@@ -153,10 +223,10 @@ public sealed class UserCommandHandlerTests
 
     private void CallerIs(string identityId) => _caller.IdentityId.Returns(identityId);
 
-    private UserProfile ExistingUser(string identityId)
+    private UserAccount Existing(string identityId)
     {
-        var user = UserProfile.Create(identityId, "rider@example.com", "Road Hog", Now);
-        _users.GetByIdAsync(user.Id, Arg.Any<CancellationToken>()).Returns(user);
-        return user;
+        var account = UserAccount.Create(identityId, Now.AddYears(-1));
+        _users.GetByIdAsync(account.Id, Arg.Any<CancellationToken>()).Returns(account);
+        return account;
     }
 }

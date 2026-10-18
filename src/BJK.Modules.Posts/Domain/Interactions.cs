@@ -60,6 +60,9 @@ public sealed class Comment
 
     public DateTimeOffset? DeletedAt { get; private set; }
 
+    /// <summary>True while the author's account is deactivated: the comment is hidden but kept.</summary>
+    public bool IsAuthorDeactivated { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     public static Comment Create(Guid postId, Guid authorId, string body, DateTimeOffset now) => new()

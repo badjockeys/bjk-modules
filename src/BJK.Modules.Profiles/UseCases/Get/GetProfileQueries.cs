@@ -34,7 +34,8 @@ public sealed class GetProfileQueryHandler(IProfileRepository profiles, IMediaDi
             ? await profiles.GetByHandleAsync(handle, cancellationToken)
             : null;
 
-        return profile is null
+        // A deactivated user's profile looks exactly like one that doesn't exist.
+        return profile is not { IsActive: true }
             ? throw new NotFoundException("Profile", request.Handle)
             : await Avatars.ToDtoAsync(media, profile, cancellationToken);
     }

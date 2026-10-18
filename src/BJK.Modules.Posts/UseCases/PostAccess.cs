@@ -12,7 +12,7 @@ internal static class PostAccess
     public static bool IsAdmin(ICurrentUser caller) => caller.HasScope(PostsModule.ManageScope);
 
     public static bool CanSee(Post post, ICurrentUser caller) =>
-        post.IsPublished || IsAuthorOrAdmin(post, caller);
+        post.IsPublic || IsAuthorOrAdmin(post, caller);
 
     public static bool IsAuthorOrAdmin(Post post, ICurrentUser caller) =>
         (caller.UserId() is { } userId && post.IsOwnedBy(userId)) || IsAdmin(caller);
@@ -31,14 +31,14 @@ internal static class PostAccess
         return post is not null && CanSee(post, caller) ? post : throw new NotFoundException("Post", postId);
     }
 
-    /// <summary>A published post, for reacting, commenting and reporting.</summary>
+    /// <summary>A post anyone can see, for reacting, commenting and reporting.</summary>
     public static async Task<Post> GetPublishedAsync(
         IPostRepository posts,
         Guid postId,
         CancellationToken cancellationToken)
     {
         var post = await posts.GetAsync(postId, cancellationToken);
-        return post is { IsPublished: true } ? post : throw new NotFoundException("Post", postId);
+        return post is { IsPublic: true } ? post : throw new NotFoundException("Post", postId);
     }
 
     /// <summary>A post the caller may change: their own, or anyone's for an admin.</summary>

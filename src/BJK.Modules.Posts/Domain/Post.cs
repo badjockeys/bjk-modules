@@ -53,6 +53,9 @@ public sealed class Post
 
     public DateTimeOffset? DeletedAt { get; private set; }
 
+    /// <summary>True while the author's account is deactivated: the post is hidden from everyone else but kept.</summary>
+    public bool IsAuthorDeactivated { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     /// <summary>The photos and videos, in the order the author chose.</summary>
@@ -94,6 +97,9 @@ public sealed class Post
     public bool IsOwnedBy(Guid userId) => AuthorId == userId;
 
     public bool IsPublished => Status == PostStatus.Published;
+
+    /// <summary>Published and its author's account is active: anyone can see it.</summary>
+    public bool IsPublic => IsPublished && !IsAuthorDeactivated;
 
     public void Update(PostDetails details, DateTimeOffset now)
     {

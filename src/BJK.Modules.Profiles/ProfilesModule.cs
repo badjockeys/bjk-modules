@@ -3,6 +3,8 @@ using BJK.Modules.Profiles.Infrastructure;
 using BJK.Modules.Profiles.Infrastructure.Data;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -47,6 +49,8 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
             }));
         services.AddScoped<IProfileRepository, ProfileRepository>();
         services.AddScoped<IProfileDirectory, ProfileDirectory>();
+        services.AddScoped<IPersonalDataExporter, ProfilePersonalDataExporter>();
+        services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

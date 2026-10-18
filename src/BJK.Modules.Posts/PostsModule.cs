@@ -1,7 +1,10 @@
+using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +58,8 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
         services.AddScoped<PostViews>();
+        services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
+        services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

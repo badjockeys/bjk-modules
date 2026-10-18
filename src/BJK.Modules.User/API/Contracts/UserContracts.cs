@@ -1,8 +1,10 @@
 namespace BJK.Modules.User.API.Contracts;
 
-public sealed record AddUserRequest(string Email, string Password, string DisplayName);
+public sealed record AddUserRequest(string Email, string Password);
 
-public sealed record UpdateUserRequest(string DisplayName);
+public sealed record DeactivateAccountRequest(string Password);
+
+public sealed record ReactivateAccountRequest(string Email, string Password);
 
 public sealed record RequestPasswordResetRequest(string Email);
 
