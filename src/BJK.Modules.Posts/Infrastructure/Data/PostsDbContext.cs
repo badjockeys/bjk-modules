@@ -16,6 +16,10 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<Report> Reports => Set<Report>();
 
+    public DbSet<Appeal> Appeals => Set<Appeal>();
+
+    public DbSet<ModerationAuditRecord> ModerationAuditLog => Set<ModerationAuditRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -40,6 +44,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.Longitude).HasPrecision(9, 6);
         builder.Property(p => p.PlaceName).HasMaxLength(Post.PlaceNameMaxLength);
         builder.Property(p => p.HiddenReason).HasMaxLength(Post.HiddenReasonMaxLength);
+        builder.Property(p => p.ScreeningLabels).HasMaxLength(ScreeningText.LabelsMaxLength);
         builder.Property(p => p.RowVersion).IsRowVersion();
 
         builder.HasMany(p => p.Media)
@@ -53,6 +58,9 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.HasIndex(p => new { p.Category, p.Status, p.CreatedAt });
         builder.HasIndex(p => new { p.AuthorId, p.CreatedAt });
         builder.HasIndex(p => new { p.Latitude, p.Longitude });
+
+        // The content screening queues (held, flagged).
+        builder.HasIndex(p => new { p.IsFlagged, p.Status, p.CreatedAt });
     }
 }
 
@@ -94,6 +102,7 @@ internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
         builder.Property(c => c.Body).HasMaxLength(Comment.BodyMaxLength).IsRequired();
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(c => c.HiddenReason).HasMaxLength(Comment.HiddenReasonMaxLength);
+        builder.Property(c => c.ScreeningLabels).HasMaxLength(ScreeningText.LabelsMaxLength);
         builder.Property(c => c.RowVersion).IsRowVersion();
 
         builder.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
@@ -101,6 +110,9 @@ internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
         // A post's comments, oldest first.
         builder.HasIndex(c => new { c.PostId, c.Status, c.CreatedAt });
         builder.HasIndex(c => new { c.AuthorId, c.CreatedAt });
+
+        // The content screening queues (held, flagged).
+        builder.HasIndex(c => new { c.IsFlagged, c.Status, c.CreatedAt });
     }
 }
 
@@ -115,17 +127,77 @@ internal sealed class ReportConfiguration : IEntityTypeConfiguration<Report>
         builder.Property(r => r.TargetType).HasConversion<string>().HasMaxLength(20);
         builder.Property(r => r.Reason).HasConversion<string>().HasMaxLength(40);
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(r => r.Source).HasConversion<string>().HasMaxLength(20);
+        builder.Property(r => r.Priority).HasConversion<string>().HasMaxLength(20);
         builder.Property(r => r.Details).HasMaxLength(Report.DetailsMaxLength);
         builder.Property(r => r.ResolutionNote).HasMaxLength(Report.ResolutionNoteMaxLength);
+        builder.Property(r => r.ReporterName).HasMaxLength(Report.ReporterNameMaxLength);
+        builder.Property(r => r.ContactEmail).HasMaxLength(Report.ContactEmailMaxLength);
+        builder.Property(r => r.TargetUrl).HasMaxLength(Report.TargetUrlMaxLength);
+        builder.Ignore(r => r.Reference);
 
-        builder.HasOne<Post>().WithMany().HasForeignKey(r => r.PostId).OnDelete(DeleteBehavior.Cascade);
+        // Profile reports have no post.
+        builder.HasOne<Post>().WithMany().HasForeignKey(r => r.PostId).IsRequired(false).OnDelete(DeleteBehavior.Cascade);
 
-        // One report per user per post or comment.
-        builder.HasIndex(r => new { r.ReporterId, r.TargetType, r.TargetId }).IsUnique();
+        // One report per signed-in user per post, comment or profile. Public-form reports have no reporter id.
+        builder.HasIndex(r => new { r.ReporterId, r.TargetType, r.TargetId })
+            .IsUnique()
+            .HasFilter("[ReporterId] IS NOT NULL");
 
-        // The admin queue, oldest first; and all reports about one item.
+        // The moderators' queue, urgent first; and all reports about one item.
         builder.HasIndex(r => new { r.Status, r.CreatedAt });
+        builder.HasIndex(r => new { r.Status, r.Priority, r.DueAt });
         builder.HasIndex(r => new { r.TargetType, r.TargetId, r.Status });
+    }
+}
+
+internal sealed class AppealConfiguration : IEntityTypeConfiguration<Appeal>
+{
+    public void Configure(EntityTypeBuilder<Appeal> builder)
+    {
+        builder.ToTable("Appeals");
+
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.TargetType).HasConversion<string>().HasMaxLength(20);
+        builder.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(a => a.Statement).HasMaxLength(Appeal.StatementMaxLength).IsRequired();
+        builder.Property(a => a.ContactEmail).HasMaxLength(Report.ContactEmailMaxLength);
+        builder.Property(a => a.DecisionNote).HasMaxLength(Appeal.DecisionNoteMaxLength);
+        builder.Ignore(a => a.Reference);
+
+        builder.HasOne<Post>().WithMany().HasForeignKey(a => a.PostId).OnDelete(DeleteBehavior.Cascade);
+
+        // One appeal per user per post or comment.
+        builder.HasIndex(a => new { a.AppellantId, a.TargetType, a.TargetId }).IsUnique();
+
+        // The moderators' queue, oldest due first.
+        builder.HasIndex(a => new { a.Status, a.DueAt });
+    }
+}
+
+internal sealed class ModerationAuditRecordConfiguration : IEntityTypeConfiguration<ModerationAuditRecord>
+{
+    public void Configure(EntityTypeBuilder<ModerationAuditRecord> builder)
+    {
+        builder.ToTable("ModerationAuditLog");
+
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.ActorRole).HasMaxLength(ModerationAuditRecord.ActorRoleMaxLength).IsRequired();
+        builder.Property(a => a.Module).HasMaxLength(ModerationAuditRecord.ModuleMaxLength).IsRequired();
+        builder.Property(a => a.Action).HasMaxLength(ModerationAuditRecord.ActionMaxLength).IsRequired();
+        builder.Property(a => a.TargetType).HasMaxLength(ModerationAuditRecord.TargetTypeMaxLength).IsRequired();
+        builder.Property(a => a.TargetId).HasMaxLength(ModerationAuditRecord.TargetIdMaxLength).IsRequired();
+        builder.Property(a => a.Reason).HasMaxLength(ModerationAuditRecord.ReasonMaxLength).IsRequired();
+        builder.Property(a => a.Before).HasMaxLength(ModerationAuditRecord.SummaryMaxLength);
+        builder.Property(a => a.After).HasMaxLength(ModerationAuditRecord.SummaryMaxLength);
+
+        // Newest first, filtered by actor, action or target.
+        builder.HasIndex(a => a.OccurredAt);
+        builder.HasIndex(a => new { a.ActorId, a.OccurredAt });
+        builder.HasIndex(a => new { a.Action, a.OccurredAt });
+        builder.HasIndex(a => new { a.TargetType, a.TargetId });
     }
 }
 

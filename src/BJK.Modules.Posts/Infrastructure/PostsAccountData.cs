@@ -38,6 +38,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
                 p.Longitude,
                 p.PlaceName,
                 p.Status,
+                p.IsSensitive,
                 p.HiddenReason,
                 p.CreatedAt,
                 p.UpdatedAt,
@@ -61,9 +62,15 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
         var reports = await db.Reports.AsNoTracking()
             .Where(r => r.ReporterId == userId)
             .OrderBy(r => r.CreatedAt)
-            .Select(r => new { r.Id, r.TargetType, r.TargetId, r.PostId, r.Reason, r.Details, r.Status, r.CreatedAt, r.ResolvedAt })
+            .Select(r => new { r.Id, r.TargetType, r.TargetId, r.PostId, r.Reason, r.Details, r.ContactEmail, r.Status, r.CreatedAt, r.ResolvedAt })
             .ToListAsync(cancellationToken);
 
-        return new { posts, comments, reactions, reportsMade = reports };
+        var appeals = await db.Appeals.AsNoTracking()
+            .Where(a => a.AppellantId == userId)
+            .OrderBy(a => a.CreatedAt)
+            .Select(a => new { a.Id, a.TargetType, a.TargetId, a.PostId, a.Statement, a.ContactEmail, a.Status, a.CreatedAt, a.DecidedAt })
+            .ToListAsync(cancellationToken);
+
+        return new { posts, comments, reactions, reportsMade = reports, appeals };
     }
 }

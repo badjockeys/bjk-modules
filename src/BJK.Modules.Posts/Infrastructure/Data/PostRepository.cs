@@ -7,8 +7,16 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="AuthorId">Only this author's posts.</param>
 /// <param name="Category">Only this kind of incident.</param>
 /// <param name="Area">Only incidents inside this box.</param>
-/// <param name="IncludeHidden">Include hidden posts (for an author's own list).</param>
-public sealed record PostSearch(Guid? AuthorId, IncidentCategory? Category, GeoBox? Area, bool IncludeHidden);
+/// <param name="IncludeHidden">Include hidden and held posts (for an author's own list).</param>
+/// <param name="ExcludeSensitive">Leave out sensitive posts (for logged-out viewers).</param>
+/// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
+public sealed record PostSearch(
+    Guid? AuthorId,
+    IncidentCategory? Category,
+    GeoBox? Area,
+    bool IncludeHidden,
+    bool ExcludeSensitive = false,
+    IReadOnlyCollection<Guid>? ExcludeAuthorIds = null);
 
 /// <summary>A latitude/longitude rectangle.</summary>
 public sealed record GeoBox(decimal MinLatitude, decimal MaxLatitude, decimal MinLongitude, decimal MaxLongitude)
@@ -51,6 +59,16 @@ public interface IPostRepository
         int pageSize,
         CancellationToken cancellationToken);
 
+    /// <summary>Posts in a content screening queue, oldest first.</summary>
+    Task<(IReadOnlyList<Post> Items, int TotalCount)> ListForScreeningAsync(
+        ScreeningQueue queue,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>How many posts the author has created since the given time, including ones since deleted or hidden.</summary>
+    Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken);
+
     /// <summary>Reaction and comment counts for each post, and the viewer's own reaction.</summary>
     Task<IReadOnlyDictionary<Guid, PostStats>> GetStatsAsync(
         IReadOnlyCollection<Guid> postIds,
@@ -61,8 +79,9 @@ public interface IPostRepository
     Task SetAuthorDeactivatedAsync(Guid userId, bool deactivated, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Permanently deletes everything of a user's in the Posts module: their posts (with the comments, reactions
-    /// and reports on them), and their own comments, reactions and reports elsewhere.
+    /// Permanently deletes everything of a user's in the Posts module: their posts (with the comments, reactions,
+    /// reports and appeals on them), their own comments, reactions, reports and appeals elsewhere, and reports about
+    /// their profile. The moderation audit log is kept: it holds staff actions, not the user's content.
     /// </summary>
     Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken);
 
@@ -95,6 +114,16 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             query = query.Where(p => p.Status == PostStatus.Published && !p.IsAuthorDeactivated);
         }
 
+        if (search.ExcludeSensitive)
+        {
+            query = query.Where(p => !p.IsSensitive);
+        }
+
+        if (search.ExcludeAuthorIds is { Count: > 0 } excluded)
+        {
+            query = query.Where(p => !excluded.Contains(p.AuthorId));
+        }
+
         if (search.AuthorId is { } authorId)
         {
             query = query.Where(p => p.AuthorId == authorId);
@@ -123,6 +152,30 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 
         return (items, total);
     }
+
+    public async Task<(IReadOnlyList<Post> Items, int TotalCount)> ListForScreeningAsync(
+        ScreeningQueue queue,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = queue == ScreeningQueue.Held
+            ? db.Posts.AsNoTracking().Where(p => p.Status == PostStatus.HeldForReview)
+            : db.Posts.AsNoTracking().Where(p => p.IsFlagged && p.Status == PostStatus.Published);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(p => p.CreatedAt)
+            .ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(p => p.Media)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken) =>
+        db.Posts.CountAsync(p => p.AuthorId == authorId && p.CreatedAt >= since, cancellationToken);
 
     public async Task<IReadOnlyDictionary<Guid, PostStats>> GetStatsAsync(
         IReadOnlyCollection<Guid> postIds,
@@ -183,8 +236,10 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             var commentIds = db.Comments.Where(c => c.AuthorId == userId).Select(c => c.Id);
             await db.Reports
                 .Where(r => r.ReporterId == userId
-                    || (r.TargetType == ReportTargetType.Comment && commentIds.Contains(r.TargetId)))
+                    || (r.TargetType == ReportTargetType.Comment && commentIds.Contains(r.TargetId))
+                    || (r.TargetType == ReportTargetType.Profile && r.TargetId == userId))
                 .ExecuteDeleteAsync(cancellationToken);
+            await db.Appeals.Where(a => a.AppellantId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Reactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Comments.Where(c => c.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
 
