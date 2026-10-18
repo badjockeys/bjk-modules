@@ -56,7 +56,7 @@ app.MapControllers();
 
 | Key | Notes |
 |---|---|
-| `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema. |
+| `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema of the `idsrv` database (the identity server hosts this module). |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 
@@ -95,7 +95,7 @@ Configuration (user secrets locally, Key Vault in Azure):
 
 | Key | Notes |
 |---|---|
-| `ConnectionStrings:<name>` | Name passed to `new MediaModule(...)`. Tables in the `media` schema. |
+| `ConnectionStrings:<name>` | Name passed to `new MediaModule(...)`. Tables in the `media` schema of the main app database, `badjockeys`. |
 | `Media:Storage:ServiceUrl` | `https://<account id>.r2.cloudflarestorage.com` |
 | `Media:Storage:AccessKeyId`, `Media:Storage:SecretAccessKey` | R2 API token. Secret. |
 | `Media:Storage:OriginalsBucket`, `Media:Storage:PublicBucket` | Private and public buckets |
