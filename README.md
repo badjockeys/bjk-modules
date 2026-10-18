@@ -8,6 +8,7 @@ Feature modules for the Bad Jockeys platform. Each module is a self-contained ve
 src/
   BJK.Modules.Shared/            Module registration, MediatR validation pipeline, error handling,
                                  current user, safe startup migrations, RabbitMQ connection and outbox,
+                                 provider retries and MessageDeliveryException (Email, SMS),
                                  user lifecycle events, GET /api/me/data-export
   BJK.Modules.User/              Hosted by bjk-identity-server
     API/Controllers/             UserController
@@ -54,19 +55,24 @@ src/
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
     Domain/                      Post, PostMedia, Reaction, Comment, Report
     PostsModule.cs               Module entry point
-  BJK.Modules.Communications/    Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
-    Contracts/                   IEmailSender, ISmsSender, MessageDeliveryException, PhoneNumbers
-    Email/                       BrandedEmail: black-on-white email layout, text + HTML
-    Templates/                   EmailTemplates, SmsTemplates: the wording of every message we send
-    Infrastructure/Email/        SendGrid sender; Log sender for local development
-    Infrastructure/Sms/          Twilio sender; Log sender for local development
-    CommunicationsModule.cs      Module entry point
+  BJK.Modules.Email/             Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
+    Contracts/                   IEmailSender, EmailMessage
+    Layout/                      BrandedEmail: black-on-white email layout, text + HTML
+    Templates/                   EmailTemplates: the wording of every email we send
+    Infrastructure/              SendGrid sender; Log sender for local development
+    EmailModule.cs               Module entry point
+  BJK.Modules.SMS/               Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
+    Contracts/                   ISMSSender, SMSMessage, PhoneNumbers (E.164 check)
+    Templates/                   SMSTemplates: the wording of every text we send
+    Infrastructure/              Twilio sender; Log sender for local development
+    SMSModule.cs                 Module entry point
 tests/
   BJK.Modules.User.Tests/
   BJK.Modules.Media.Tests/
   BJK.Modules.Profiles.Tests/
   BJK.Modules.Posts.Tests/
-  BJK.Modules.Communications.Tests/
+  BJK.Modules.Email.Tests/
+  BJK.Modules.SMS.Tests/
 ```
 
 ## Hosting a module
@@ -266,26 +272,25 @@ CI fails if the model has changed without a migration, and a unit test fails if 
 - To publish a release, tag a commit on `master`: `git tag v0.2.0 && git push origin v0.2.0`.
 - Every push to a `feature/*` branch publishes a preview package, `<VersionPrefix>-ci.<run number>` (e.g. `0.2.0-ci.7`), so other repos can test a branch before it merges. Bump `VersionPrefix` in `Directory.Build.props` after each release.
 
-## Communications module
+## Email and SMS modules
 
-Email and SMS for the other modules and the hosts. It has no database and no endpoints: inject `IEmailSender` or `ISmsSender`.
+Two modules, `BJK.Modules.Email` (SendGrid) and `BJK.Modules.SMS` (Twilio), for the other modules and the hosts. Neither has a database or endpoints: inject `IEmailSender` or `ISMSSender`. Register only the ones a host needs.
 
 ```csharp
-builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"), new CommunicationsModule());
+builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"), new EmailModule(), new SMSModule());
 
 // Anywhere:
-var message = EmailTemplates.ConfirmEmail(link).To(email, emailOptions.Value.LogoUrl);
-await emailSender.SendAsync(message, cancellationToken);
+var email = EmailTemplates.ConfirmEmail(link).To(address, emailOptions.Value.LogoUrl);
+await emailSender.SendAsync(email, cancellationToken);
 
-await smsSender.SendAsync(SmsTemplates.SignInCode("+447700900123", code), cancellationToken);
+await smsSender.SendAsync(SMSTemplates.SignInCode("+447700900123", code), cancellationToken);
 ```
 
-- **Templates live in code.** The wording of every email and text is in `Templates/` (`EmailTemplates`, `SmsTemplates`), so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
+- **Templates live in code.** The wording of every email is in `BJK.Modules.Email/Templates/EmailTemplates.cs` and of every text in `BJK.Modules.SMS/Templates/SMSTemplates.cs`, so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
 - **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no RabbitMQ queue for email or SMS.
-
-- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `Sms:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
+- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `SMS:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
 - **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
-- **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds). A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException`, whose `IsTransient` says which it was.
+- **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds), using `ProviderRetry` from Shared. A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException` (Shared), whose `IsTransient` says which it was.
 - **No click tracking.** Our emails carry sign-in, confirmation and reset codes in links, so SendGrid click and open tracking are switched off for every email.
 - **Privacy.** Outside Development, logs show masked addresses only (`r***@example.com`, `+44********23`) plus the provider's message id, so a delivery can be traced in SendGrid or Twilio without logging personal data.
 - **Branded emails.** `BrandedEmail` builds matching plain-text and HTML bodies (heading, paragraphs, a button, a large code, small print). All text is HTML-encoded, and buttons only accept http(s) links.
@@ -301,11 +306,11 @@ Both providers are called over their REST APIs with `HttpClient`, so there are n
 | `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. |
 | `Email:SendGrid:BaseUrl` | Default `https://api.sendgrid.com`; `https://api.eu.sendgrid.com` for an EU-pinned subuser |
 | `Email:SendGrid:SandboxMode` | `true` = SendGrid checks each request but delivers nothing |
-| `Sms:Provider` | `Log` (default) or `Twilio` |
-| `Sms:Twilio:AccountSid` | `AC…` |
-| `Sms:Twilio:ApiKeySid`, `Sms:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
-| `Sms:Twilio:AuthToken` | Secret. Used only if no API key is set. |
-| `Sms:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |
-| `Sms:Twilio:FromNumber` | E.164 number or alphanumeric sender ID, used when there's no Messaging Service |
+| `SMS:Provider` | `Log` (default) or `Twilio` |
+| `SMS:Twilio:AccountSid` | `AC…` |
+| `SMS:Twilio:ApiKeySid`, `SMS:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
+| `SMS:Twilio:AuthToken` | Secret. Used only if no API key is set. |
+| `SMS:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |
+| `SMS:Twilio:FromNumber` | E.164 number or alphanumeric sender ID, used when there's no Messaging Service |
 
 Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to check numbers you collect.
