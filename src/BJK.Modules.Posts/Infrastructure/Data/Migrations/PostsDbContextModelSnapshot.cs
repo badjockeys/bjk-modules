@@ -113,6 +113,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<bool>("IsFlagged")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("ParentCommentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("PostId")
                         .HasColumnType("uniqueidentifier");
 
@@ -149,9 +152,34 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
                     b.HasIndex("IsFlagged", "Status", "CreatedAt");
 
+                    b.HasIndex("ParentCommentId", "Status", "CreatedAt");
+
                     b.HasIndex("PostId", "Status", "CreatedAt");
 
                     b.ToTable("Comments", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.CommentReaction", b =>
+                {
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("CommentId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("CommentReactions", "posts");
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.ModerationAuditRecord", b =>
@@ -467,6 +495,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
                         .WithMany()
                         .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.CommentReaction", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Comment", null)
+                        .WithMany()
+                        .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

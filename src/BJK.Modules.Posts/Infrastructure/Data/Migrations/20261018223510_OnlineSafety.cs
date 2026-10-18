@@ -151,6 +151,13 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 nullable: false,
                 defaultValue: false);
 
+            migrationBuilder.AddColumn<Guid>(
+                name: "ParentCommentId",
+                schema: "posts",
+                table: "Comments",
+                type: "uniqueidentifier",
+                nullable: true);
+
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "ReviewedAt",
                 schema: "posts",
@@ -212,6 +219,28 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "CommentReactions",
+                schema: "posts",
+                columns: table => new
+                {
+                    CommentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CommentReactions", x => new { x.CommentId, x.UserId });
+                    table.ForeignKey(
+                        name: "FK_CommentReactions_Comments_CommentId",
+                        column: x => x.CommentId,
+                        principalSchema: "posts",
+                        principalTable: "Comments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ModerationAuditLog",
                 schema: "posts",
                 columns: table => new
@@ -260,6 +289,12 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 columns: new[] { "IsFlagged", "Status", "CreatedAt" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Comments_ParentCommentId_Status_CreatedAt",
+                schema: "posts",
+                table: "Comments",
+                columns: new[] { "ParentCommentId", "Status", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Appeals_AppellantId_TargetType_TargetId",
                 schema: "posts",
                 table: "Appeals",
@@ -277,6 +312,12 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 schema: "posts",
                 table: "Appeals",
                 columns: new[] { "Status", "DueAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CommentReactions_UserId",
+                schema: "posts",
+                table: "CommentReactions",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ModerationAuditLog_Action_OccurredAt",
@@ -330,6 +371,10 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 schema: "posts");
 
             migrationBuilder.DropTable(
+                name: "CommentReactions",
+                schema: "posts");
+
+            migrationBuilder.DropTable(
                 name: "ModerationAuditLog",
                 schema: "posts");
 
@@ -350,6 +395,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
             migrationBuilder.DropIndex(
                 name: "IX_Comments_IsFlagged_Status_CreatedAt",
+                schema: "posts",
+                table: "Comments");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Comments_ParentCommentId_Status_CreatedAt",
                 schema: "posts",
                 table: "Comments");
 
@@ -425,6 +475,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
             migrationBuilder.DropColumn(
                 name: "IsFlagged",
+                schema: "posts",
+                table: "Comments");
+
+            migrationBuilder.DropColumn(
+                name: "ParentCommentId",
                 schema: "posts",
                 table: "Comments");
 
