@@ -37,6 +37,9 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
         builder.Property(m => m.DurationSeconds).HasPrecision(9, 3);
         builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
         builder.Property(m => m.FailureReason).HasMaxLength(MediaItem.FailureReasonMaxLength);
+        builder.Property(m => m.ReviewReason).HasMaxLength(MediaItem.ReviewReasonMaxLength);
+        builder.Property(m => m.ManualRedactionsJson);
+        builder.Ignore(m => m.ManualRedactions);
         builder.Property(m => m.RowVersion).IsRowVersion();
 
         // "My uploads", newest first.

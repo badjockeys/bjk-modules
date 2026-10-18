@@ -27,6 +27,10 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
 
+      # The face and number plate models (pinned, SHA-256 checked) for the real-model redaction tests and timings.
+      - name: Download redaction models
+        run: scripts/download-redaction-models.sh "$RUNNER_TEMP/models" --test-images
+
       - name: Restore
         run: |
           dotnet restore BJK.Modules.slnx
@@ -36,6 +40,9 @@ jobs:
         run: dotnet build BJK.Modules.slnx --configuration Release --no-restore
 
       - name: Test
+        env:
+          BJK_REDACTION_MODELS: ${{ runner.temp }}/models
+          BJK_REDACTION_PERF_SECONDS: "60"
         run: |
           set -o pipefail
           if ! dotnet test --solution BJK.Modules.slnx --configuration Release --no-build 2>&1 | tee test-output.txt; then

@@ -105,6 +105,39 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
         }
     }
 
+    public async Task UploadPrivateAsync(string key, string filePath, string contentType, CancellationToken cancellationToken)
+    {
+        await s3.PutObjectAsync(
+            new PutObjectRequest
+            {
+                BucketName = _options.OriginalsBucket,
+                Key = key,
+                FilePath = filePath,
+                ContentType = contentType,
+            },
+            cancellationToken);
+    }
+
+    public async Task PublishPrivateAsync(string privateKey, string publicKey, string contentType, CancellationToken cancellationToken)
+    {
+        // Download and upload rather than a server-side copy: S3-compatible stores differ in how a copy replaces
+        // headers, and the public file needs its own cache headers.
+        var temporary = Path.Combine(Path.GetTempPath(), "bjk-publish-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using (var file = File.Create(temporary))
+            {
+                await DownloadOriginalAsync(privateKey, file, cancellationToken);
+            }
+
+            await UploadPublicAsync(publicKey, temporary, contentType, cancellationToken);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
+
     public async Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken)
     {
         var prefix = MediaKeys.UserFolder(userId);

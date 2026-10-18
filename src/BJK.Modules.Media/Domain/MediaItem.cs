@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace BJK.Modules.Media.Domain;
 
 /// <summary>
@@ -10,6 +12,9 @@ public sealed class MediaItem
     public const int ContentTypeMaxLength = 100;
     public const int KeyMaxLength = 512;
     public const int FailureReasonMaxLength = 500;
+    public const int ReviewReasonMaxLength = 500;
+
+    private static readonly JsonSerializerOptions RedactionJson = new(JsonSerializerDefaults.Web);
 
     // For EF Core.
     private MediaItem()
@@ -55,6 +60,35 @@ public sealed class MediaItem
     public int ProcessingAttempts { get; private set; }
 
     public string? FailureReason { get; private set; }
+
+    /// <summary>Why the media needs a moderator's review (set while <see cref="MediaStatus.NeedsReview"/>).</summary>
+    public string? ReviewReason { get; private set; }
+
+    /// <summary>Faces found and blurred automatically in the latest processing (in a video, separate faces followed through it).</summary>
+    public int? FacesBlurred { get; private set; }
+
+    /// <summary>Number plates found and blurred automatically in the latest processing.</summary>
+    public int? PlatesBlurred { get; private set; }
+
+    /// <summary>
+    /// How many times a moderator has had the media re-processed. Part of the processed file names, so a new version
+    /// never reuses a cached address.
+    /// </summary>
+    public int Revision { get; private set; }
+
+    /// <summary>The moderator who last approved or rejected it (null for a machine token).</summary>
+    public Guid? ReviewedBy { get; private set; }
+
+    public DateTimeOffset? ReviewedAt { get; private set; }
+
+    /// <summary>Blur regions added by moderators, as JSON. Use <see cref="ManualRedactions"/>.</summary>
+    public string? ManualRedactionsJson { get; private set; }
+
+    /// <summary>Blur regions added by moderators, applied on every processing on top of automatic detection.</summary>
+    public IReadOnlyList<ManualRedaction> ManualRedactions =>
+        string.IsNullOrEmpty(ManualRedactionsJson)
+            ? []
+            : JsonSerializer.Deserialize<List<ManualRedaction>>(ManualRedactionsJson, RedactionJson) ?? [];
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -130,8 +164,110 @@ public sealed class MediaItem
         DateTimeOffset now)
     {
         EnsureStatus(MediaStatus.Processing);
-        PlaybackKey = MediaKeys.Playback(UserId, Id, MediaType);
-        ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType);
+        RecordProcessed(playbackSizeBytes, durationSeconds, width, height, sha256, now);
+        PlaybackKey = MediaKeys.Playback(UserId, Id, MediaType, Revision);
+        ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType, Revision);
+        ReviewReason = null;
+        Status = MediaStatus.Ready;
+    }
+
+    /// <summary>Records how many faces and plates the worker blurred. Called before <see cref="MarkReady"/> or <see cref="MarkNeedsReview"/>.</summary>
+    /// <param name="faces">Faces blurred.</param>
+    /// <param name="plates">Number plates blurred.</param>
+    public void RecordRedaction(int faces, int plates)
+    {
+        FacesBlurred = faces;
+        PlatesBlurred = plates;
+    }
+
+    /// <summary>
+    /// Processed and blurred, but a moderator must check it first. The blurred files are in the private bucket under
+    /// <see cref="MediaKeys.ReviewPlayback"/>; nothing is public, so the public keys stay empty.
+    /// </summary>
+    /// <param name="reason">Why it needs review, for moderators.</param>
+    /// <param name="playbackSizeBytes">Size of the blurred main file.</param>
+    /// <param name="durationSeconds">Video length; null for photos.</param>
+    /// <param name="width">Width as seen.</param>
+    /// <param name="height">Height as seen.</param>
+    /// <param name="sha256">SHA-256 of the original.</param>
+    /// <param name="now">The time.</param>
+    public void MarkNeedsReview(
+        string reason,
+        long playbackSizeBytes,
+        decimal? durationSeconds,
+        int? width,
+        int? height,
+        string? sha256,
+        DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Processing);
+        RecordProcessed(playbackSizeBytes, durationSeconds, width, height, sha256, now);
+        PlaybackKey = null;
+        ThumbnailKey = null;
+        ReviewReason = reason.Length <= ReviewReasonMaxLength ? reason : reason[..ReviewReasonMaxLength];
+        Status = MediaStatus.NeedsReview;
+    }
+
+    /// <summary>A moderator approved the blurred files, which have been copied to the public bucket. It can now be posted.</summary>
+    /// <param name="moderatorId">The moderator, or null for a machine token.</param>
+    /// <param name="now">The time.</param>
+    public void Approve(Guid? moderatorId, DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.NeedsReview);
+        PlaybackKey = MediaKeys.Playback(UserId, Id, MediaType, Revision);
+        ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType, Revision);
+        ReviewReason = null;
+        ReviewedBy = moderatorId;
+        ReviewedAt = now;
+        Status = MediaStatus.Ready;
+        UpdatedAt = now;
+    }
+
+    /// <summary>A moderator rejected it: it becomes <see cref="MediaStatus.Failed"/> with the reason, which the uploader sees.</summary>
+    /// <param name="reason">Shown to the uploader.</param>
+    /// <param name="moderatorId">The moderator, or null for a machine token.</param>
+    /// <param name="now">The time.</param>
+    public void Reject(string reason, Guid? moderatorId, DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.NeedsReview);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        ReviewReason = null;
+        ReviewedBy = moderatorId;
+        ReviewedAt = now;
+        MarkFailed(reason, now);
+    }
+
+    /// <summary>
+    /// A moderator added blur regions: they're stored and the media goes back to <see cref="MediaStatus.Processing"/>
+    /// under a new <see cref="Revision"/>. The caller removes the previous files and queues a processing job. Allowed
+    /// while waiting for review or once Ready (for example after a report).
+    /// </summary>
+    /// <param name="regions">Regions to add to any already there.</param>
+    /// <param name="now">The time.</param>
+    public void AddManualRedactions(IReadOnlyCollection<ManualRedaction> regions, DateTimeOffset now)
+    {
+        if (Status is not (MediaStatus.NeedsReview or MediaStatus.Ready))
+        {
+            throw new InvalidOperationException($"Media is {Status}; blur regions can only be added once it has been processed.");
+        }
+
+        var all = ManualRedactions.Concat(regions).ToList();
+        if (all.Count > ManualRedaction.MaxPerMedia)
+        {
+            throw new InvalidOperationException($"Media can have at most {ManualRedaction.MaxPerMedia} blur regions.");
+        }
+
+        ManualRedactionsJson = JsonSerializer.Serialize(all, RedactionJson);
+        Revision++;
+        PlaybackKey = null;
+        ThumbnailKey = null;
+        ReviewReason = null;
+        Status = MediaStatus.Processing;
+        UpdatedAt = now;
+    }
+
+    private void RecordProcessed(long playbackSizeBytes, decimal? durationSeconds, int? width, int? height, string? sha256, DateTimeOffset now)
+    {
         PlaybackSizeBytes = playbackSizeBytes;
         DurationSeconds = durationSeconds;
         Width = width;
@@ -139,7 +275,6 @@ public sealed class MediaItem
         Sha256 = sha256;
         FailureReason = null;
         ProcessedAt = now;
-        Status = MediaStatus.Ready;
         UpdatedAt = now;
     }
 

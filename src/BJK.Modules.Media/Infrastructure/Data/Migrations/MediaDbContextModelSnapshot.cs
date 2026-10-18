@@ -42,8 +42,14 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("FacesBlurred")
+                        .HasColumnType("int");
+
                     b.Property<int?>("Height")
                         .HasColumnType("int");
+
+                    b.Property<string>("ManualRedactionsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
@@ -78,10 +84,26 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<long?>("PlaybackSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("PlatesBlurred")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("ProcessingAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Revision")
                         .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")

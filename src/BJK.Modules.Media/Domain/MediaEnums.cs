@@ -18,6 +18,13 @@ public enum MediaStatus
     /// <summary>Processed files are published and can be shown.</summary>
     Ready,
 
+    /// <summary>
+    /// Processed and blurred, but automatic detection failed or wasn't sure, or a moderator added blur regions. The
+    /// blurred files are kept privately until a moderator approves them (then <see cref="Ready"/>) or rejects them
+    /// (then <see cref="Failed"/>). It can't be posted meanwhile.
+    /// </summary>
+    NeedsReview,
+
     /// <summary>The file was rejected or processing gave up after its retries.</summary>
     Failed,
 

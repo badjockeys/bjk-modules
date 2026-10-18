@@ -164,13 +164,13 @@ Photos and videos follow the same flow; only the worker's processing differs.
 1. `POST /api/media/uploads` with `{ fileName, contentType, sizeBytes }` creates a `media.Media` row (`Uploading`) and returns a signed link, valid for 15 minutes, to PUT the file straight into the private **originals** bucket. The API never handles the file.
 2. The app PUTs the file to that link, sending the `Content-Type` header it was given.
 3. `POST /api/media/{id}/complete` checks the file is in storage and within the size limit, sets `Processing`, and puts a job on the RabbitMQ queue.
-4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, converts the file and publishes it to the **public** bucket, then sets `Ready`. Only `Ready` media is visible to other users.
+4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, blurs faces and number plates, converts the file and publishes it to the **public** bucket, then sets `Ready`. If automatic blurring failed or wasn't sure, it keeps the blurred files private and sets `NeedsReview` instead; a moderator approves (then `Ready`) or rejects (then `Failed`). Only `Ready` media is visible to other users or can be posted.
 
 ### Processing
 
 | | Video | Photo |
 |---|---|---|
-| Output | `720p.mp4`: H.264 + AAC, at most 720 pixels high and 30 fps, fast start for streaming | `image.webp`: at most 2048 pixels on its longest side |
+| Output | `720p.mp4`: H.264, no sound (see `Media:Redaction:RemoveAudio`), at most 720 pixels high and 30 fps, fast start for streaming | `image.webp`: at most 2048 pixels on its longest side |
 | Thumbnail | `thumbnail.jpg`, from one second in | `thumbnail.webp`, at most 640 pixels |
 | Checks | Must contain a picture; no longer than `Media:MaxVideoDurationSeconds` (5 minutes) | Must contain a picture |
 
@@ -183,7 +183,7 @@ Photos and videos follow the same flow; only the worker's processing differs.
 
 | Setting (`Media:Processing:*`, worker only) | Default |
 |---|---|
-| `FfmpegPath`, `FfprobePath` | `ffmpeg`, `ffprobe` on the PATH |
+| `FfmpegPath`, `FfprobePath` | `ffmpeg`, `ffprobe` on the PATH (ffmpeg 5.1 or later) |
 | `MaxConcurrentJobs` | 1 (encoding already uses every core) |
 | `VideoHeight`, `VideoCrf` | 720, 23 |
 | `ImageMaxSize`, `ThumbnailMaxSize` | 2048, 640 |
@@ -214,6 +214,78 @@ Configuration (user secrets locally, Key Vault in Azure):
 | `Media:Storage:PublicBaseUrl` | Where the public bucket is served through Cloudflare |
 | `Media:Queue:QueueName` | Default `media.process`; failed jobs go to `media.process.failed` |
 | `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime`, `Media:OriginalRetention` | Defaults: 500 MB, 25 MB, 300 s, 15 min, 90 days |
+
+### Automatic blurring (faces and number plates)
+
+Every photo and video is blurred by the worker before anything is published (Online Safety Act design, 18 Oct 2026).
+
+**How it works**
+
+1. ffmpeg decodes the picture (photos: upright, at most 2048 px; videos: at most 720p and 30 fps) into memory over a pipe. Nothing unblurred is written out.
+2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus overlapping zoomed tiles for small, distant plates).
+3. Each box is grown by 25% on every side (`BoxPadding`) and blurred irreversibly: reduced to a few large blocks of average colour (at most about 8 across and 3 down a plate) and then smoothed. A light Gaussian blur, which can be partly undone, isn't used.
+4. **Videos:** detection runs on every 5th frame (`DetectEveryNthFrame`). A tracker links boxes from one pass to the next (by overlap, or by distance for fast movers) and interpolates a box for every frame in between. A face or plate missed by up to 3 passes in a row (`MaxMissedDetections`) stays blurred across the gap, and each track starts one interval before its first detection and ends one after its last, following its motion, so blurs don't flicker, drop out or appear late. The video is read once; frames wait in memory only until detection has run far enough ahead (about 20 frames, ~55 MB at 720p).
+5. The blurred frames are encoded to H.264 as before. **The soundtrack is removed** (`-an`) unless `RemoveAudio` is false. Metadata (GPS, device) is stripped. Thumbnails are made from the blurred output only.
+6. Photos: the blurred picture is converted to WebP and its thumbnail as before.
+
+**Fail safe.** The media goes to `NeedsReview` instead of `Ready` when:
+
+- either model isn't configured, its file is missing, or it won't load;
+- a detector throws on any frame (it's then not used again for that job);
+- any detection is uncertain: a photo detection, or a video track whose best score never reaches `FaceConfidentAt` / `PlateConfidentAt` (0.8), while scoring at least `FaceMinConfidence` / `PlateMinConfidence` (0.5), the blur threshold;
+- a moderator added blur regions (the result is always checked again);
+- `ReviewEverything` is on.
+
+The blurred files are still produced, but kept in the **private** bucket under `{userId}/{mediaId}/review/` (originals bucket, so the 90-day lifecycle rule removes them too) until a moderator approves them. They're never public before that, and the media can't be posted (Posts only accepts `Ready` media). The reason is in `ReviewReason`.
+
+**Limits to know.** Detection can miss things without being "uncertain" (nothing is found at all), so a miss doesn't always reach review; moderators add missed blurs by hand. The plate model was trained on Chinese plates: in our test a synthetic UK plate scored 0.75 (uncertain, so reviewed), and real UK plates may score lower or be missed. Consider `ReviewEverything=true` at launch until real-world accuracy has been checked, and replace the plate model if a permissively licensed UK/EU-trained one becomes available (the `IRedactionDetector` interface makes that a new class).
+
+**Models and licences**
+
+| | Model | Licence | Source (pinned) |
+|---|---|---|---|
+| Faces | YuNet, `face_detection_yunet_2026may.onnx` (230 KB, any input size) | MIT (Shiqi Yu) | OpenCV Zoo `models/face_detection_yunet`, commit `47534e2`, SHA-256 `ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0` |
+| Number plates | LPD-YuNet, `license_plate_detection_lpd_yunet_2023mar.onnx` (4.1 MB, 320x240 input) | Apache 2.0 (Dong Xu, watrix.ai) | OpenCV Zoo `models/license_plate_detection_yunet`, same commit, SHA-256 `6d4978a7b6d25514d5e24811b82bfb511d166bdd8ca3b03aa63c1623d4d039c7` |
+| Runtime | ONNX Runtime (`Microsoft.ML.OnnxRuntime` 1.29.1) | MIT | NuGet |
+
+No Ultralytics/YOLO code or models (AGPL) are used. The models are **not in git**. The worker image downloads them at build time with `scripts/download-redaction-models.sh`, which pins the URLs to one OpenCV Zoo commit and fails unless every SHA-256 matches. In bjk-core's worker Dockerfile:
+
+```dockerfile
+COPY --from=modules scripts/download-redaction-models.sh /tmp/
+RUN /tmp/download-redaction-models.sh /opt/bjk/models
+ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may.onnx \
+    Media__Redaction__PlateModelPath=/opt/bjk/models/license_plate_detection_lpd_yunet_2023mar.onnx
+```
+
+(or copy the script into bjk-core; it only needs `curl` and `sha256sum`). Locally, run the script into a folder and set the two paths in user secrets. Without them, every upload goes to `NeedsReview`, which is safe but means approving each one.
+
+| Setting (`Media:Redaction:*`, worker only) | Default |
+|---|---|
+| `FaceModelPath`, `PlateModelPath` | Not set: the detector is unavailable and media goes to review |
+| `FaceMinConfidence`, `PlateMinConfidence` | 0.5: boxes scoring at least this are blurred |
+| `FaceConfidentAt`, `PlateConfidentAt` | 0.8: anything blurred that never scores this sends the media to review |
+| `BoxPadding` | 0.25 of the box's width/height added on each side |
+| `DetectEveryNthFrame` | 5 (6 detection passes a second at 30 fps) |
+| `MaxMissedDetections` | 3 |
+| `PlateTiles` | true (also search zoomed tiles for small plates; about 6x the plate detection cost) |
+| `RemoveAudio` | true |
+| `ReviewEverything` | false |
+| `InferenceThreads` | 0 (ONNX Runtime decides: all cores) |
+
+**Timing.** CI runs a 60-second 1080p30 clip through the real models on a GitHub-hosted runner and writes the timing to the job summary; see the PR for figures. Detection dominates; raise `DetectEveryNthFrame` or turn off `PlateTiles` to trade safety for speed.
+
+### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/admin/media/review?page=&pageSize=` | The review queue (`NeedsReview`), oldest first, with reasons, blur counts and signed preview links (15 minutes) |
+| `GET /api/admin/media/{id}/review` | One item with signed links to its blurred preview and thumbnail (public links once Ready) |
+| `GET /api/admin/media/{id}/original` | **Admins only.** A signed link (15 minutes) to the unblurred original. Each use is logged as `AUDIT media.original.viewed` with the admin's and media's ids (no shared audit log exists in this module yet) |
+| `POST /api/admin/media/{id}/approve` | Copies the blurred files to the public bucket and sets `Ready` |
+| `POST /api/admin/media/{id}/reject` `{ "reason": "..." }` | Sets `Failed` with the reason (shown to the uploader) and removes the review copies |
+| `POST /api/admin/media/{id}/redactions` `{ "regions": [{ "x":0.1, "y":0.4, "width":0.2, "height":0.1, "startSeconds":3, "endSeconds":8 }] }` | Adds blur regions (fractions of the picture from the top left; optional time range for videos) and processes the media again from the original: automatic detection plus every manual region. Works on `NeedsReview` or `Ready` media (e.g. after a report); a Ready item's public files are deleted at once (purge Cloudflare's cache too). The result comes back to the queue. Each re-processing gets new file names (`720p-r1.mp4`), because published files are cached as immutable |
+
+Approvals, rejections and added regions are also logged with an `AUDIT` prefix. The original must still exist (90 days) to re-process.
 
 ## Profiles module
 
