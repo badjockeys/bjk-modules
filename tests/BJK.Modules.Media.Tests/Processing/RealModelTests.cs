@@ -41,7 +41,7 @@ public sealed class RealModelTests : IDisposable
     });
 
     [Fact]
-    public async Task YuNet_finds_the_faces_in_a_group_photo()
+    public async Task YuNet_finds_the_faces_in_a_crowd_photo()
     {
         var models = Models();
         using var detector = new YuNetFaceDetector(Options(models), NullLogger<YuNetFaceDetector>.Instance);
@@ -50,8 +50,9 @@ public sealed class RealModelTests : IDisposable
         Assert.True(detector.IsAvailable, detector.UnavailableReason);
         var faces = detector.Detect(frame, 0.5f);
 
-        Assert.True(faces.Count(f => f.Confidence >= 0.8f) >= 3, $"Found {faces.Count} faces.");
-        Assert.All(faces, f => Assert.InRange(f.Width, 10, 600));
+        // OpenCV Zoo's "largest selfie": a crowd with a couple of hundred faces, many under 10 pixels wide.
+        Assert.True(faces.Count(f => f.Confidence >= 0.8f) >= 50, $"Found {faces.Count} faces.");
+        Assert.All(faces, f => Assert.InRange(f.Width, 3, 600));
     }
 
     [Fact]
@@ -104,10 +105,12 @@ public sealed class RealModelTests : IDisposable
             $"{Environment.ProcessorCount} CPUs, {result.FacesBlurred} faces, {result.PlatesBlurred} plates tracked.");
         TestContext.Current.SendDiagnosticMessage(report);
         Console.WriteLine(report);
-        var summary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
-        if (!string.IsNullOrEmpty(summary))
+        foreach (var file in new[] { "GITHUB_STEP_SUMMARY", "BJK_REDACTION_TIMING_FILE" }.Select(Environment.GetEnvironmentVariable))
         {
-            await File.AppendAllTextAsync(summary, report + Environment.NewLine, Ct);
+            if (!string.IsNullOrEmpty(file))
+            {
+                await File.AppendAllTextAsync(file, report + Environment.NewLine, Ct);
+            }
         }
     }
 }
