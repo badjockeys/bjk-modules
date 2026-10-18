@@ -1,0 +1,250 @@
+using BJK.Modules.Posts.Domain;
+using BJK.Modules.Posts.UseCases;
+using BJK.Modules.Posts.UseCases.Comments;
+using BJK.Modules.Posts.UseCases.Create;
+using BJK.Modules.Posts.UseCases.Delete;
+using BJK.Modules.Posts.UseCases.Get;
+using BJK.Modules.Posts.UseCases.Reactions;
+using BJK.Modules.Posts.UseCases.Reports;
+using BJK.Modules.Posts.UseCases.Update;
+using BJK.Modules.Shared;
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace BJK.Modules.Posts.API.Controllers;
+
+[ApiController]
+[Route("api/posts")]
+public sealed class PostsController(ISender sender) : ControllerBase
+{
+    /// <summary>The public feed, newest first. Anyone can call this.</summary>
+    /// <param name="category">Only this kind of incident.</param>
+    /// <param name="author">Only posts by this @handle.</param>
+    /// <param name="lat">Centre of an area to search (with lng and radiusKm).</param>
+    /// <param name="lng">Centre of an area to search (with lat and radiusKm).</param>
+    /// <param name="radiusKm">Radius of the area, 1 to 200 km.</param>
+    /// <param name="page">Page number, from 1.</param>
+    /// <param name="pageSize">Posts per page, up to 50.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    [HttpGet]
+    [Authorize(Policy = PostsModule.ReadPolicy)]
+    [ProducesResponseType<PagedResult<PostDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<PagedResult<PostDto>> List(
+        [FromQuery] IncidentCategory? category,
+        [FromQuery] string? author,
+        [FromQuery] decimal? lat,
+        [FromQuery] decimal? lng,
+        [FromQuery] int? radiusKm,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListPostsQuery(category, author, lat, lng, radiusKm, page, pageSize), cancellationToken);
+
+    /// <summary>The signed-in user's posts, including hidden ones.</summary>
+    [HttpGet("mine")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PagedResult<PostDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<PostDto>> ListMine(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListMyPostsQuery(page, pageSize), cancellationToken);
+
+    /// <summary>One post. Anyone can call this.</summary>
+    [HttpGet("{id:guid}")]
+    [Authorize(Policy = PostsModule.ReadPolicy)]
+    [ProducesResponseType<PostDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PostDto> Get(Guid id, CancellationToken cancellationToken) =>
+        await sender.Send(new GetPostQuery(id), cancellationToken);
+
+    /// <summary>Publish a post. Its photos and videos must be your own uploads and already Ready.</summary>
+    [HttpPost]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PostDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Create(CreatePostCommand command, CancellationToken cancellationToken)
+    {
+        var post = await sender.Send(command, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { id = post.Id }, post);
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PostDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PostDto> Update(Guid id, UpdatePostRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(
+            new UpdatePostCommand(
+                id,
+                request.Title,
+                request.Description,
+                request.Category,
+                request.IncidentAt,
+                request.Latitude,
+                request.Longitude,
+                request.PlaceName),
+            cancellationToken);
+
+    /// <summary>Delete a post and its photos and videos. Author or admin.</summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        await sender.Send(new DeletePostCommand(id), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Set your reaction to a post (replaces any earlier one).</summary>
+    [HttpPut("{id:guid}/reaction")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> React(Guid id, ReactRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new ReactToPostCommand(id, request.Type), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}/reaction")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RemoveReaction(Guid id, CancellationToken cancellationToken)
+    {
+        await sender.Send(new RemoveReactionCommand(id), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>A post's comments, oldest first. Anyone can call this.</summary>
+    [HttpGet("{id:guid}/comments")]
+    [Authorize(Policy = PostsModule.ReadPolicy)]
+    [ProducesResponseType<PagedResult<CommentDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PagedResult<CommentDto>> ListComments(
+        Guid id,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListCommentsQuery(id, page, pageSize), cancellationToken);
+
+    [HttpPost("{id:guid}/comments")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<CommentDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddComment(Guid id, CommentRequest request, CancellationToken cancellationToken)
+    {
+        var comment = await sender.Send(new AddCommentCommand(id, request.Body), cancellationToken);
+        return CreatedAtAction(nameof(ListComments), new { id }, comment);
+    }
+
+    [HttpPut("{id:guid}/comments/{commentId:guid}")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<CommentDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<CommentDto> EditComment(
+        Guid id,
+        Guid commentId,
+        CommentRequest request,
+        CancellationToken cancellationToken) =>
+        await sender.Send(new EditCommentCommand(id, commentId, request.Body), cancellationToken);
+
+    [HttpDelete("{id:guid}/comments/{commentId:guid}")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteComment(Guid id, Guid commentId, CancellationToken cancellationToken)
+    {
+        await sender.Send(new DeleteCommentCommand(id, commentId), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/reports")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReportPost(Guid id, ReportRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new ReportPostCommand(id, request.Reason, request.Details), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/comments/{commentId:guid}/reports")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReportComment(
+        Guid id,
+        Guid commentId,
+        ReportRequest request,
+        CancellationToken cancellationToken)
+    {
+        await sender.Send(new ReportCommentCommand(id, commentId, request.Reason, request.Details), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Make a hidden post visible again. Admin only.</summary>
+    [HttpPost("{id:guid}/unhide")]
+    [Authorize(Policy = PostsModule.ManagePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Unhide(Guid id, CancellationToken cancellationToken)
+    {
+        await sender.Send(new UnhidePostCommand(id), cancellationToken);
+        return NoContent();
+    }
+}
+
+/// <summary>Admin review of reported posts and comments.</summary>
+[ApiController]
+[Route("api/posts/reports")]
+[Authorize(Policy = PostsModule.ManagePolicy)]
+public sealed class PostReportsController(ISender sender) : ControllerBase
+{
+    [HttpGet]
+    [ProducesResponseType<PagedResult<ReportDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<ReportDto>> List(
+        [FromQuery] ReportStatus status = ReportStatus.Open,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListReportsQuery(status, page, pageSize), cancellationToken);
+
+    /// <summary>Dismiss the report, or hide the content (which closes every open report about it).</summary>
+    [HttpPost("{id:guid}/resolve")]
+    [ProducesResponseType<ReportDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ReportDto> Resolve(Guid id, ResolveReportRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new ResolveReportCommand(id, request.Action, request.Note), cancellationToken);
+}
+
+public sealed record UpdatePostRequest(
+    string Title,
+    string? Description,
+    IncidentCategory Category,
+    DateTimeOffset IncidentAt,
+    decimal Latitude,
+    decimal Longitude,
+    string? PlaceName);
+
+public sealed record ReactRequest(ReactionType Type);
+
+public sealed record CommentRequest(string Body);
+
+public sealed record ReportRequest(ReportReason Reason, string? Details);
+
+public sealed record ResolveReportRequest(ReportAction Action, string? Note);
