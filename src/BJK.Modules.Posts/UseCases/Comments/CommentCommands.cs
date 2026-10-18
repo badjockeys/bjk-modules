@@ -13,11 +13,13 @@ using MediatR;
 namespace BJK.Modules.Posts.UseCases.Comments;
 
 /// <summary>
-/// Adds a comment to a published post. The commenter needs a profile and a passed age check, and can't comment on the
-/// posts of someone who has blocked them. The comment is screened: high scores are held for review (only the
-/// commenter sees it), medium scores are published but flagged.
+/// Adds a comment to a published post, or (with <c>ParentCommentId</c>) a reply to one of its top-level comments.
+/// Replies go one level deep: replying to a reply is refused with a 400. The commenter needs a profile and a passed
+/// age check, and can't comment on the posts of someone who has blocked them, or reply to someone who has. The text is
+/// screened: high scores are held for review (only the commenter sees it), medium scores are published but flagged.
 /// </summary>
-public sealed record AddCommentCommand(Guid PostId, string Body) : IRequest<CommentDto>, IRequiresAgeVerification;
+public sealed record AddCommentCommand(Guid PostId, string Body, Guid? ParentCommentId = null)
+    : IRequest<CommentDto>, IRequiresAgeVerification;
 
 public sealed class AddCommentCommandValidator : AbstractValidator<AddCommentCommand>
 {
@@ -51,9 +53,34 @@ public sealed class AddCommentCommandHandler(
             throw PostAccess.Invalid("Profile", "Create your profile before commenting.");
         }
 
+        Comment? parent = null;
+        if (request.ParentCommentId is { } parentId)
+        {
+            parent = await comments.GetAsync(post.Id, parentId, cancellationToken);
+            if (parent is not { Status: CommentStatus.Visible, IsAuthorDeactivated: false })
+            {
+                throw new NotFoundException("Comment", parentId);
+            }
+
+            if (parent.IsReply)
+            {
+                throw PostAccess.Invalid(
+                    nameof(request.ParentCommentId),
+                    "You can't reply to a reply. Reply to the comment at the top of the thread instead.");
+            }
+
+            if (parent.AuthorId != userId && await blocks.IsBlockedAsync(parent.AuthorId, userId, cancellationToken))
+            {
+                throw new ForbiddenException("You can't reply to this comment.");
+            }
+        }
+
         await limits.EnsureCanCommentAsync(userId, author.GetValueOrDefault(userId), cancellationToken);
 
-        var comment = Comment.Create(post.Id, userId, request.Body, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var comment = parent is null
+            ? Comment.Create(post.Id, userId, request.Body, now)
+            : Comment.CreateReply(parent, userId, request.Body, now);
         comment.ApplyScreening(await screener.ScreenAsync(comment.Body, cancellationToken));
         comments.Add(comment);
         await comments.SaveChangesAsync(cancellationToken);
@@ -163,8 +190,9 @@ public sealed class DeleteCommentCommandHandler(
 }
 
 /// <summary>
-/// A post's comments, oldest first. Signed-in users only: logged-out viewers don't see comments. Comments by people
-/// the viewer has blocked are left out.
+/// A post's top-level comments, oldest first, each with its reply count and first few replies. Signed-in users only:
+/// logged-out viewers don't see comments or replies. Comments by people the viewer has blocked are left out (a
+/// blocked user's top-level comment with other people's replies shows as "comment removed").
 /// </summary>
 public sealed record ListCommentsQuery(Guid PostId, int Page = 1, int PageSize = 50) : IRequest<PagedResult<CommentDto>>;
 
@@ -180,7 +208,7 @@ public sealed class ListCommentsQueryValidator : AbstractValidator<ListCommentsQ
 public sealed class ListCommentsQueryHandler(
     IPostRepository posts,
     ICommentRepository comments,
-    IProfileDirectory profiles,
+    CommentThreads threads,
     IBlockDirectory blocks,
     ICurrentUser caller)
     : IRequestHandler<ListCommentsQuery, PagedResult<CommentDto>>
@@ -192,27 +220,151 @@ public sealed class ListCommentsQueryHandler(
         await PostAccess.EnsureAuthorNotBlockedByViewerAsync(blocks, post, caller, cancellationToken);
 
         var blocked = await blocks.GetBlockedIdsAsync(userId, cancellationToken);
-        var (items, total) = await comments.ListVisibleAsync(request.PostId, blocked, request.Page, request.PageSize, cancellationToken);
-        var authors = await profiles.GetSummariesAsync(items.Select(c => c.AuthorId).Distinct().ToList(), cancellationToken);
+        var (items, total) = await comments.ListTopLevelAsync(request.PostId, blocked, request.Page, request.PageSize, cancellationToken);
 
         return new PagedResult<CommentDto>(
-            items.Select(c => CommentViews.From(c, authors)).ToList(),
+            await threads.BuildTopLevelAsync(items, userId, blocked, cancellationToken),
             request.Page,
             request.PageSize,
             total);
     }
 }
 
+/// <summary>One page of a top-level comment's replies, oldest first. Signed-in users only.</summary>
+public sealed record ListRepliesQuery(Guid PostId, Guid CommentId, int Page = 1, int PageSize = 50) : IRequest<PagedResult<CommentDto>>;
+
+public sealed class ListRepliesQueryValidator : AbstractValidator<ListRepliesQuery>
+{
+    public ListRepliesQueryValidator()
+    {
+        RuleFor(q => q.Page).GreaterThanOrEqualTo(1);
+        RuleFor(q => q.PageSize).InclusiveBetween(1, 100);
+    }
+}
+
+public sealed class ListRepliesQueryHandler(
+    IPostRepository posts,
+    ICommentRepository comments,
+    CommentThreads threads,
+    IBlockDirectory blocks,
+    ICurrentUser caller)
+    : IRequestHandler<ListRepliesQuery, PagedResult<CommentDto>>
+{
+    public async Task<PagedResult<CommentDto>> Handle(ListRepliesQuery request, CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken);
+        await PostAccess.EnsureAuthorNotBlockedByViewerAsync(blocks, post, caller, cancellationToken);
+
+        // The parent may be hidden or deleted (its replies still show); it just has to be a top-level comment here.
+        var parent = await comments.FindAsync(request.CommentId, cancellationToken);
+        if (parent is null || parent.PostId != post.Id || parent.IsReply)
+        {
+            throw new NotFoundException("Comment", request.CommentId);
+        }
+
+        var blocked = await blocks.GetBlockedIdsAsync(userId, cancellationToken);
+        var (items, total) = await comments.ListRepliesPageAsync(parent.Id, blocked, request.Page, request.PageSize, cancellationToken);
+
+        return new PagedResult<CommentDto>(
+            await threads.BuildRepliesAsync(items, userId, cancellationToken),
+            request.Page,
+            request.PageSize,
+            total);
+    }
+}
+
+/// <summary>
+/// Turns comments into <see cref="CommentDto"/>s with their authors, reaction counts, the viewer's reaction, reply
+/// counts and the first <see cref="ReplyPreviewCount"/> replies, in a few batched queries.
+/// </summary>
+public sealed class CommentThreads(ICommentRepository comments, ICommentReactionRepository reactions, IProfileDirectory profiles)
+{
+    /// <summary>Replies included with each top-level comment in a list; the rest come from the replies endpoint.</summary>
+    public const int ReplyPreviewCount = 3;
+
+    // Caps the replies fetched for one page of comments.
+    private const int MaxPreviewRows = 500;
+
+    public async Task<IReadOnlyList<CommentDto>> BuildTopLevelAsync(
+        IReadOnlyList<Comment> topLevel,
+        Guid viewerId,
+        IReadOnlyCollection<Guid> blocked,
+        CancellationToken cancellationToken)
+    {
+        if (topLevel.Count == 0)
+        {
+            return [];
+        }
+
+        var parentIds = topLevel.Select(c => c.Id).ToList();
+        var replyCounts = await comments.CountRepliesAsync(parentIds, blocked, cancellationToken);
+        var replies = (await comments.ListRepliesAsync(parentIds, blocked, MaxPreviewRows, cancellationToken))
+            .GroupBy(r => r.ParentCommentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Take(ReplyPreviewCount).ToList());
+
+        var all = topLevel.Concat(replies.Values.SelectMany(r => r)).ToList();
+        var authors = await profiles.GetSummariesAsync(all.Select(c => c.AuthorId).Distinct().ToList(), cancellationToken);
+        var stats = await reactions.GetStatsAsync(all.Select(c => c.Id).ToList(), viewerId, cancellationToken);
+
+        return topLevel.Select(c =>
+        {
+            var removed = c.Status != CommentStatus.Visible || c.IsAuthorDeactivated || blocked.Contains(c.AuthorId);
+            var shownReplies = replies.TryGetValue(c.Id, out var found)
+                ? found.Select(r => CommentViews.From(r, authors, stats.GetValueOrDefault(r.Id))).ToList()
+                : new List<CommentDto>();
+            return CommentViews.From(
+                c,
+                authors,
+                stats.GetValueOrDefault(c.Id),
+                replyCounts.GetValueOrDefault(c.Id),
+                shownReplies,
+                removed);
+        }).ToList();
+    }
+
+    public async Task<IReadOnlyList<CommentDto>> BuildRepliesAsync(
+        IReadOnlyList<Comment> items,
+        Guid viewerId,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return [];
+        }
+
+        var authors = await profiles.GetSummariesAsync(items.Select(c => c.AuthorId).Distinct().ToList(), cancellationToken);
+        var stats = await reactions.GetStatsAsync(items.Select(c => c.Id).ToList(), viewerId, cancellationToken);
+        return items.Select(c => CommentViews.From(c, authors, stats.GetValueOrDefault(c.Id))).ToList();
+    }
+}
+
 internal static class CommentViews
 {
-    public static CommentDto From(Comment comment, IReadOnlyDictionary<Guid, ProfileSummary> authors) => new(
-        comment.Id,
-        comment.PostId,
-        AuthorDto.From(comment.AuthorId, authors),
-        comment.Body,
-        comment.CreatedAt,
-        comment.UpdatedAt,
-        comment.Status);
+    public static CommentDto From(
+        Comment comment,
+        IReadOnlyDictionary<Guid, ProfileSummary> authors,
+        CommentReactionStats? stats = null,
+        int replyCount = 0,
+        IReadOnlyList<CommentDto>? replies = null,
+        bool removed = false)
+    {
+        var s = stats ?? CommentReactionStats.Empty;
+        return new CommentDto(
+            comment.Id,
+            comment.PostId,
+            removed ? null : AuthorDto.From(comment.AuthorId, authors),
+            removed ? string.Empty : comment.Body,
+            comment.CreatedAt,
+            removed ? null : comment.UpdatedAt,
+            removed ? CommentStatus.Visible : comment.Status,
+            comment.ParentCommentId,
+            removed,
+            removed ? new Dictionary<ReactionType, int>() : s.Reactions,
+            removed ? null : s.MyReaction,
+            replyCount,
+            replies);
+    }
 
     public static IRuleBuilderOptions<T, string> CommentBody<T>(this IRuleBuilder<T, string> rule) =>
         rule

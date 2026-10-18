@@ -80,7 +80,8 @@ public interface IPostRepository
 
     /// <summary>
     /// Permanently deletes everything of a user's in the Posts module: their posts (with the comments, reactions,
-    /// reports and appeals on them), their own comments, reactions, reports and appeals elsewhere, and reports about
+    /// reports and appeals on them), their own comments, reactions (on posts and comments), reports and appeals
+    /// elsewhere, and reports about
     /// their profile. The moderation audit log is kept: it holds staff actions, not the user's content.
     /// </summary>
     Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken);
@@ -241,9 +242,12 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
                 .ExecuteDeleteAsync(cancellationToken);
             await db.Appeals.Where(a => a.AppellantId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Reactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.CommentReactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Comments.Where(c => c.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
 
-            // The database cascades this to the posts' media links, comments, reactions and reports.
+            // The database cascades the comment deletes to their reactions, and this to the posts' media links,
+            // comments (and their reactions), reactions, reports and appeals. Other people's replies to the user's
+            // comments stay, under a "comment removed" placeholder.
             await db.Posts.Where(p => p.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);

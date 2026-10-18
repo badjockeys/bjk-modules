@@ -33,7 +33,44 @@ public sealed class Reaction
     }
 }
 
-/// <summary>A comment on a post. Comments are flat (no replies), editable and deletable by their author.</summary>
+/// <summary>
+/// One user's reaction to a comment or reply, in <c>posts.CommentReactions</c>. At most one per user per comment;
+/// reacting again changes it. Deleted with the comment.
+/// </summary>
+public sealed class CommentReaction
+{
+    // For EF Core.
+    private CommentReaction()
+    {
+    }
+
+    public Guid CommentId { get; private set; }
+
+    public Guid UserId { get; private set; }
+
+    public ReactionType Type { get; private set; }
+
+    public DateTimeOffset CreatedAt { get; private set; }
+
+    public static CommentReaction Create(Guid commentId, Guid userId, ReactionType type, DateTimeOffset now) => new()
+    {
+        CommentId = commentId,
+        UserId = userId,
+        Type = type,
+        CreatedAt = now,
+    };
+
+    public void Change(ReactionType type, DateTimeOffset now)
+    {
+        Type = type;
+        CreatedAt = now;
+    }
+}
+
+/// <summary>
+/// A comment on a post, or a reply to one. Replies go one level deep only: a reply's <see cref="ParentCommentId"/>
+/// is a top-level comment on the same post, and replies can't be replied to. Editable and deletable by the author.
+/// </summary>
 public sealed class Comment
 {
     public const int BodyMaxLength = 2000;
@@ -49,6 +86,9 @@ public sealed class Comment
     public Guid PostId { get; private set; }
 
     public Guid AuthorId { get; private set; }
+
+    /// <summary>The top-level comment this replies to; null for a top-level comment.</summary>
+    public Guid? ParentCommentId { get; private set; }
 
     public string Body { get; private set; } = string.Empty;
 
@@ -89,6 +129,22 @@ public sealed class Comment
         Status = CommentStatus.Visible,
         CreatedAt = now,
     };
+
+    /// <summary>A reply to a top-level comment. Replies to replies aren't allowed.</summary>
+    public static Comment CreateReply(Comment parent, Guid authorId, string body, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        if (parent.IsReply)
+        {
+            throw new InvalidOperationException("Replies can't be replied to: reply to the top-level comment instead.");
+        }
+
+        var reply = Create(parent.PostId, authorId, body, now);
+        reply.ParentCommentId = parent.Id;
+        return reply;
+    }
+
+    public bool IsReply => ParentCommentId is not null;
 
     public bool IsOwnedBy(Guid userId) => AuthorId == userId;
 

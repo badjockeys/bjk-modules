@@ -22,12 +22,40 @@ public interface ICommentRepository
     /// <summary>Any comment by id, unless deleted. Tracked. For moderators.</summary>
     Task<Comment?> FindAsync(Guid commentId, CancellationToken cancellationToken);
 
-    /// <summary>A post's visible comments, oldest first, leaving out the given authors (people the viewer blocked).</summary>
-    Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListVisibleAsync(
+    /// <summary>
+    /// A post's top-level comments, oldest first, leaving out the given authors (people the viewer blocked).
+    /// Top-level comments that are hidden, deleted, by a deactivated or excluded author are included only if they
+    /// still have visible replies, so the replies can be shown under a "comment removed" placeholder.
+    /// </summary>
+    Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListTopLevelAsync(
         Guid postId,
         IReadOnlyCollection<Guid> excludeAuthorIds,
         int page,
         int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Visible replies to the given comments, oldest first, leaving out the given authors, at most
+    /// <paramref name="maxRows"/> in all.
+    /// </summary>
+    Task<IReadOnlyList<Comment>> ListRepliesAsync(
+        IReadOnlyCollection<Guid> parentIds,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
+        int maxRows,
+        CancellationToken cancellationToken);
+
+    /// <summary>One page of a comment's visible replies, oldest first.</summary>
+    Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListRepliesPageAsync(
+        Guid parentId,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>How many visible replies each comment has, leaving out the given authors.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountRepliesAsync(
+        IReadOnlyCollection<Guid> parentIds,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
         CancellationToken cancellationToken);
 
     /// <summary>Comments in a content screening queue, oldest first.</summary>
@@ -116,20 +144,19 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
     public Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken) =>
         db.Comments.CountAsync(c => c.AuthorId == authorId && c.CreatedAt >= since, cancellationToken);
 
-    public async Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListVisibleAsync(
+    public async Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListTopLevelAsync(
         Guid postId,
         IReadOnlyCollection<Guid> excludeAuthorIds,
         int page,
         int pageSize,
         CancellationToken cancellationToken)
     {
+        var replies = VisibleReplies(excludeAuthorIds);
         var query = db.Comments.AsNoTracking()
-            .Where(c => c.PostId == postId && c.Status == CommentStatus.Visible && !c.IsAuthorDeactivated);
-        if (excludeAuthorIds.Count > 0)
-        {
-            query = query.Where(c => !excludeAuthorIds.Contains(c.AuthorId));
-        }
-
+            .Where(c => c.PostId == postId && c.ParentCommentId == null && c.Status != CommentStatus.HeldForReview)
+            .Where(c =>
+                (c.Status == CommentStatus.Visible && !c.IsAuthorDeactivated && !excludeAuthorIds.Contains(c.AuthorId))
+                || replies.Any(r => r.ParentCommentId == c.Id));
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(c => c.CreatedAt)
@@ -140,6 +167,69 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
 
         return (items, total);
     }
+
+    public async Task<IReadOnlyList<Comment>> ListRepliesAsync(
+        IReadOnlyCollection<Guid> parentIds,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
+        int maxRows,
+        CancellationToken cancellationToken)
+    {
+        if (parentIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await VisibleReplies(excludeAuthorIds)
+            .Where(r => parentIds.Contains(r.ParentCommentId!.Value))
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Take(maxRows)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListRepliesPageAsync(
+        Guid parentId,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = VisibleReplies(excludeAuthorIds).Where(r => r.ParentCommentId == parentId);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountRepliesAsync(
+        IReadOnlyCollection<Guid> parentIds,
+        IReadOnlyCollection<Guid> excludeAuthorIds,
+        CancellationToken cancellationToken)
+    {
+        if (parentIds.Count == 0)
+        {
+            return new Dictionary<Guid, int>();
+        }
+
+        var counts = await VisibleReplies(excludeAuthorIds)
+            .Where(r => parentIds.Contains(r.ParentCommentId!.Value))
+            .GroupBy(r => r.ParentCommentId!.Value)
+            .Select(g => new { ParentId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        return counts.ToDictionary(c => c.ParentId, c => c.Count);
+    }
+
+    private IQueryable<Comment> VisibleReplies(IReadOnlyCollection<Guid> excludeAuthorIds) =>
+        db.Comments.AsNoTracking().Where(r =>
+            r.ParentCommentId != null
+            && r.Status == CommentStatus.Visible
+            && !r.IsAuthorDeactivated
+            && !excludeAuthorIds.Contains(r.AuthorId));
 
     public void Add(Comment comment) => db.Comments.Add(comment);
 
@@ -335,6 +425,77 @@ internal sealed class ModerationAuditRepository(PostsDbContext db) : IModeration
 
         return (items, total);
     }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+}
+
+/// <summary>Reaction counts on a comment, and the viewer's own reaction.</summary>
+public sealed record CommentReactionStats(IReadOnlyDictionary<ReactionType, int> Reactions, ReactionType? MyReaction)
+{
+    public static readonly CommentReactionStats Empty = new(new Dictionary<ReactionType, int>(), null);
+}
+
+public interface ICommentReactionRepository
+{
+    Task<CommentReaction?> GetAsync(Guid commentId, Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Counts per reaction type for each comment, and the viewer's own reaction.</summary>
+    Task<IReadOnlyDictionary<Guid, CommentReactionStats>> GetStatsAsync(
+        IReadOnlyCollection<Guid> commentIds,
+        Guid? viewerId,
+        CancellationToken cancellationToken);
+
+    void Add(CommentReaction reaction);
+
+    void Remove(CommentReaction reaction);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class CommentReactionRepository(PostsDbContext db) : ICommentReactionRepository
+{
+    public Task<CommentReaction?> GetAsync(Guid commentId, Guid userId, CancellationToken cancellationToken) =>
+        db.CommentReactions.FirstOrDefaultAsync(r => r.CommentId == commentId && r.UserId == userId, cancellationToken);
+
+    public async Task<IReadOnlyDictionary<Guid, CommentReactionStats>> GetStatsAsync(
+        IReadOnlyCollection<Guid> commentIds,
+        Guid? viewerId,
+        CancellationToken cancellationToken)
+    {
+        if (commentIds.Count == 0)
+        {
+            return new Dictionary<Guid, CommentReactionStats>();
+        }
+
+        var counts = await db.CommentReactions
+            .Where(r => commentIds.Contains(r.CommentId))
+            .GroupBy(r => new { r.CommentId, r.Type })
+            .Select(g => new { g.Key.CommentId, g.Key.Type, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        var mine = new Dictionary<Guid, ReactionType>();
+        if (viewerId is { } userId)
+        {
+            var rows = await db.CommentReactions
+                .Where(r => r.UserId == userId && commentIds.Contains(r.CommentId))
+                .Select(r => new { r.CommentId, r.Type })
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+            {
+                mine[row.CommentId] = row.Type;
+            }
+        }
+
+        return commentIds.Distinct().ToDictionary(
+            id => id,
+            id => new CommentReactionStats(
+                counts.Where(c => c.CommentId == id).ToDictionary(c => c.Type, c => c.Count),
+                mine.TryGetValue(id, out var type) ? type : null));
+    }
+
+    public void Add(CommentReaction reaction) => db.CommentReactions.Add(reaction);
+
+    public void Remove(CommentReaction reaction) => db.CommentReactions.Remove(reaction);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

@@ -1,6 +1,7 @@
 using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
+using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Shared;
@@ -64,6 +65,8 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<IPostRepository, PostRepository>();
         services.AddScoped<IReactionRepository, ReactionRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
+        services.AddScoped<ICommentReactionRepository, CommentReactionRepository>();
+        services.AddScoped<CommentThreads>();
         services.AddScoped<IReportRepository, ReportRepository>();
         services.AddScoped<IAppealRepository, AppealRepository>();
         services.AddScoped<IModerationAuditRepository, ModerationAuditRepository>();

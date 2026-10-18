@@ -33,6 +33,7 @@ public sealed class OnlineSafetyTests
     private readonly IPostRepository _posts = Substitute.For<IPostRepository>();
     private readonly IReactionRepository _reactions = Substitute.For<IReactionRepository>();
     private readonly ICommentRepository _comments = Substitute.For<ICommentRepository>();
+    private readonly ICommentReactionRepository _commentReactions = Substitute.For<ICommentReactionRepository>();
     private readonly IReportRepository _reports = Substitute.For<IReportRepository>();
     private readonly IAppealRepository _appeals = Substitute.For<IAppealRepository>();
     private readonly IProfileDirectory _profiles = Substitute.For<IProfileDirectory>();
@@ -61,8 +62,14 @@ public sealed class OnlineSafetyTests
             .Returns(new Dictionary<Guid, PostStats>());
         _posts.SearchAsync(Arg.Any<PostSearch>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns((new List<Post>(), 0));
-        _comments.ListVisibleAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _comments.ListTopLevelAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns((new List<Comment>(), 0));
+        _comments.ListRepliesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Comment>());
+        _comments.CountRepliesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<Guid, int>());
+        _commentReactions.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<Guid, CommentReactionStats>());
         _screener.ScreenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ScreeningResult.Clean);
         _blocks.GetBlockedIdsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(new List<Guid>());
         _captcha.VerifyAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(CaptchaResult.Passed);
@@ -164,7 +171,7 @@ public sealed class OnlineSafetyTests
 
         await CommentsHandler().Handle(new ListCommentsQuery(post.Id), Ct);
 
-        await _comments.Received(1).ListVisibleAsync(
+        await _comments.Received(1).ListTopLevelAsync(
             post.Id,
             Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(blocked)),
             1,
@@ -184,6 +191,140 @@ public sealed class OnlineSafetyTests
             () => AddCommentHandler().Handle(new AddCommentCommand(post.Id, "Nice driving"), Ct));
         _reactions.DidNotReceive().Add(Arg.Any<Reaction>());
         _comments.DidNotReceive().Add(Arg.Any<Comment>());
+    }
+
+    // Replies and comment reactions
+
+    [Fact]
+    public async Task Replies_attach_to_a_top_level_comment()
+    {
+        var post = Existing(OtherUserId);
+        var parent = ExistingComment(post, OtherUserId);
+
+        var reply = await AddCommentHandler().Handle(new AddCommentCommand(post.Id, "Agreed, shocking", parent.Id), Ct);
+
+        Assert.Equal(parent.Id, reply.ParentCommentId);
+        _comments.Received(1).Add(Arg.Is<Comment>(c => c.ParentCommentId == parent.Id && c.PostId == post.Id));
+    }
+
+    [Fact]
+    public async Task Replying_to_a_reply_is_refused()
+    {
+        var post = Existing(OtherUserId);
+        var parent = ExistingComment(post, OtherUserId);
+        var reply = Comment.CreateReply(parent, OtherUserId, "First reply", Now);
+        _comments.GetAsync(post.Id, reply.Id, Arg.Any<CancellationToken>()).Returns(reply);
+
+        var ex = await Assert.ThrowsAsync<ValidationException>(
+            () => AddCommentHandler().Handle(new AddCommentCommand(post.Id, "Reply to a reply", reply.Id), Ct));
+
+        Assert.Contains(ex.Errors, e => e.PropertyName == nameof(AddCommentCommand.ParentCommentId));
+        Assert.Throws<InvalidOperationException>(() => Comment.CreateReply(reply, UserId, "Nope", Now));
+    }
+
+    [Fact]
+    public async Task Replies_are_screened_and_checked_like_comments()
+    {
+        var post = Existing(OtherUserId);
+        var parent = ExistingComment(post, OtherUserId);
+        Screening(0.95, ScreeningVerdict.Hold, "threat");
+
+        var reply = await AddCommentHandler().Handle(new AddCommentCommand(post.Id, "I know where you live", parent.Id), Ct);
+
+        Assert.Equal(CommentStatus.HeldForReview, reply.Status);
+        Assert.False(new AddCommentCommandValidator().Validate(new AddCommentCommand(post.Id, "@roadhog on insta", parent.Id)).IsValid);
+    }
+
+    [Fact]
+    public async Task A_removed_comment_keeps_its_replies_under_a_placeholder()
+    {
+        var post = Existing(OtherUserId);
+        var parent = Comment.Create(post.Id, OtherUserId, "Something nasty", Now);
+        var reply = Comment.CreateReply(parent, UserId, "That's out of order", Now.AddMinutes(1));
+        parent.Hide("Abusive", Now);
+        _comments.ListTopLevelAsync(post.Id, Arg.Any<IReadOnlyCollection<Guid>>(), 1, 50, Arg.Any<CancellationToken>())
+            .Returns((new List<Comment> { parent }, 1));
+        _comments.ListRepliesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Comment> { reply });
+        _comments.CountRepliesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<Guid, int> { [parent.Id] = 1 });
+
+        var page = await CommentsHandler().Handle(new ListCommentsQuery(post.Id), Ct);
+
+        var shown = Assert.Single(page.Items);
+        Assert.True(shown.IsRemoved);
+        Assert.Null(shown.Author);
+        Assert.Equal(string.Empty, shown.Body);
+        Assert.Equal(1, shown.ReplyCount);
+        Assert.Equal("That's out of order", Assert.Single(shown.Replies!).Body);
+    }
+
+    [Fact]
+    public async Task Comment_lists_show_reaction_counts_and_my_reaction()
+    {
+        var post = Existing(OtherUserId);
+        var comment = Comment.Create(post.Id, OtherUserId, "Great clip", Now);
+        _comments.ListTopLevelAsync(post.Id, Arg.Any<IReadOnlyCollection<Guid>>(), 1, 50, Arg.Any<CancellationToken>())
+            .Returns((new List<Comment> { comment }, 1));
+        _commentReactions.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), UserId, Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<Guid, CommentReactionStats>
+            {
+                [comment.Id] = new(new Dictionary<ReactionType, int> { [ReactionType.Like] = 4, [ReactionType.Laugh] = 1 }, ReactionType.Like),
+            });
+
+        var shown = Assert.Single((await CommentsHandler().Handle(new ListCommentsQuery(post.Id), Ct)).Items);
+
+        Assert.Equal(4, shown.Reactions![ReactionType.Like]);
+        Assert.Equal(ReactionType.Like, shown.MyReaction);
+        Assert.False(shown.IsRemoved);
+    }
+
+    [Fact]
+    public async Task Logged_out_viewers_cant_list_replies()
+    {
+        var post = Existing(OtherUserId);
+        SignedOut();
+        var handler = new ListRepliesQueryHandler(_posts, _comments, Threads(), _blocks, _caller);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new ListRepliesQuery(post.Id, Guid.NewGuid()), Ct));
+    }
+
+    [Fact]
+    public async Task Reacting_to_a_comment_again_changes_the_reaction()
+    {
+        var post = Existing(OtherUserId);
+        var comment = ExistingComment(post, OtherUserId);
+        var existing = CommentReaction.Create(comment.Id, UserId, ReactionType.Like, Now);
+        _commentReactions.GetAsync(comment.Id, UserId, Arg.Any<CancellationToken>()).Returns(existing);
+
+        await CommentReactHandler().Handle(new ReactToCommentCommand(post.Id, comment.Id, ReactionType.Shocked), Ct);
+
+        Assert.Equal(ReactionType.Shocked, existing.Type);
+        _commentReactions.DidNotReceive().Add(Arg.Any<CommentReaction>());
+        await _commentReactions.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_blocked_user_cant_react_to_the_blockers_comment()
+    {
+        var post = Existing(Guid.NewGuid());
+        var comment = ExistingComment(post, OtherUserId);
+        _blocks.IsBlockedAsync(OtherUserId, UserId, Arg.Any<CancellationToken>()).Returns(true);
+
+        await Assert.ThrowsAsync<ForbiddenException>(
+            () => CommentReactHandler().Handle(new ReactToCommentCommand(post.Id, comment.Id, ReactionType.Like), Ct));
+        _commentReactions.DidNotReceive().Add(Arg.Any<CommentReaction>());
+    }
+
+    [Fact]
+    public async Task Removing_a_comment_reaction()
+    {
+        var existing = CommentReaction.Create(Guid.NewGuid(), UserId, ReactionType.Angry, Now);
+        _commentReactions.GetAsync(existing.CommentId, UserId, Arg.Any<CancellationToken>()).Returns(existing);
+
+        await new RemoveCommentReactionCommandHandler(_commentReactions, _caller).Handle(new RemoveCommentReactionCommand(Guid.NewGuid(), existing.CommentId), Ct);
+
+        _commentReactions.Received(1).Remove(existing);
     }
 
     // Content screening
@@ -603,6 +744,16 @@ public sealed class OnlineSafetyTests
         return id;
     }
 
+    private Comment ExistingComment(Post post, Guid authorId)
+    {
+        var comment = Comment.Create(post.Id, authorId, "Shocking driving", Now);
+        _comments.GetAsync(post.Id, comment.Id, Arg.Any<CancellationToken>()).Returns(comment);
+        return comment;
+    }
+
+    private ReactToCommentCommandHandler CommentReactHandler() =>
+        new(_posts, _comments, _commentReactions, _blocks, _caller, _clock);
+
     private Post Existing(Guid authorId, bool sensitive = false)
     {
         var post = Post.Create(authorId, Details(), [Guid.NewGuid()], Now, sensitive);
@@ -623,7 +774,9 @@ public sealed class OnlineSafetyTests
 
     private ListPostsQueryHandler FeedHandler() => new(_posts, _profiles, _blocks, _views, _caller);
 
-    private ListCommentsQueryHandler CommentsHandler() => new(_posts, _comments, _profiles, _blocks, _caller);
+    private ListCommentsQueryHandler CommentsHandler() => new(_posts, _comments, Threads(), _blocks, _caller);
+
+    private CommentThreads Threads() => new(_comments, _commentReactions, _profiles);
 
     private CreatePostCommandHandler CreateHandler() => new(_posts, _profiles, _media, _screener, Limits(), _views, _caller, _clock);
 

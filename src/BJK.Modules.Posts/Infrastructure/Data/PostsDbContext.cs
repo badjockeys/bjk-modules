@@ -14,6 +14,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<Comment> Comments => Set<Comment>();
 
+    public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
+
     public DbSet<Report> Reports => Set<Report>();
 
     public DbSet<Appeal> Appeals => Set<Appeal>();
@@ -113,6 +115,25 @@ internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
 
         // The content screening queues (held, flagged).
         builder.HasIndex(c => new { c.IsFlagged, c.Status, c.CreatedAt });
+
+        // A comment's replies, oldest first. No foreign key: a reply stays (under a "comment removed" placeholder)
+        // when its top-level comment is deleted, including when that comment's author deletes their account.
+        builder.HasIndex(c => new { c.ParentCommentId, c.Status, c.CreatedAt });
+    }
+}
+
+internal sealed class CommentReactionConfiguration : IEntityTypeConfiguration<CommentReaction>
+{
+    public void Configure(EntityTypeBuilder<CommentReaction> builder)
+    {
+        builder.ToTable("CommentReactions");
+        builder.HasKey(r => new { r.CommentId, r.UserId });
+        builder.Property(r => r.Type).HasConversion<string>().HasMaxLength(20);
+
+        builder.HasOne<Comment>().WithMany().HasForeignKey(r => r.CommentId).OnDelete(DeleteBehavior.Cascade);
+
+        // For deleting a user's reactions with their account.
+        builder.HasIndex(r => r.UserId);
     }
 }
 

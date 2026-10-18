@@ -36,4 +36,42 @@ public sealed class EmailTemplateTests
         Assert.Contains("Sign-in code: 123456\n", message.TextBody);
         Assert.Contains("https://badjockeys.com/logo.png", message.HtmlBody);
     }
+
+    [Fact]
+    public void Report_acknowledgements_give_the_reference_and_target_time()
+    {
+        var urgent = EmailTemplates.ReportReceived("R-1A2B3C4D", "a post", urgent: true, TimeSpan.FromHours(4)).To("sam@example.com");
+        var normal = EmailTemplates.ReportReceived("R-1A2B3C4D", "a comment", urgent: false, TimeSpan.FromHours(48)).To("sam@example.com");
+
+        Assert.Equal("We've received your report (R-1A2B3C4D)", urgent.Subject);
+        Assert.Contains("Your reference: R-1A2B3C4D\n", urgent.TextBody);
+        Assert.Contains("within 4 hours", urgent.TextBody);
+        Assert.Contains("999", urgent.TextBody);
+        Assert.Contains("within 48 hours", normal.TextBody);
+        Assert.Contains("a comment", normal.TextBody);
+        Assert.Contains("because you reported content", normal.HtmlBody);
+    }
+
+    [Fact]
+    public void Report_outcomes_say_what_happened_and_how_to_disagree()
+    {
+        var removed = EmailTemplates.ReportResolved("R-1", contentRemoved: true).To("sam@example.com");
+        var kept = EmailTemplates.ReportResolved("R-1", contentRemoved: false).To("sam@example.com");
+
+        Assert.Contains("has removed it", removed.TextBody);
+        Assert.Contains("left up", kept.TextBody);
+        Assert.Contains("reply to this email", kept.TextBody);
+    }
+
+    [Fact]
+    public void Appeal_emails_confirm_and_decide()
+    {
+        var received = EmailTemplates.AppealReceived("A-9", TimeSpan.FromHours(48)).To("owner@example.com");
+        var overturned = EmailTemplates.AppealDecided("A-9", overturned: true).To("owner@example.com");
+        var upheld = EmailTemplates.AppealDecided("A-9", overturned: false).To("owner@example.com");
+
+        Assert.Contains("within 48 hours", received.TextBody);
+        Assert.Contains("visible again", overturned.TextBody);
+        Assert.Contains("stands", upheld.TextBody);
+    }
 }

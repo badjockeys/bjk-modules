@@ -52,15 +52,26 @@ public sealed record PostDto(
     bool IsSensitive = false,
     bool CommentsRequireSignIn = false);
 
-/// <summary>A comment. <c>Status</c> is HeldForReview only for its author, while a moderator reviews it.</summary>
+/// <summary>
+/// A comment or reply. <c>Status</c> is HeldForReview only for its author, while a moderator reviews it.
+/// <c>IsRemoved</c> marks a top-level comment that was hidden or deleted but still has visible replies: it's shown as
+/// a "comment removed" placeholder, with no author and an empty body. Top-level comments in a list carry their
+/// <c>ReplyCount</c> and the first few <c>Replies</c>; the rest come from the replies endpoint.
+/// </summary>
 public sealed record CommentDto(
     Guid Id,
     Guid PostId,
-    AuthorDto Author,
+    AuthorDto? Author,
     string Body,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
-    CommentStatus Status = CommentStatus.Visible);
+    CommentStatus Status = CommentStatus.Visible,
+    Guid? ParentCommentId = null,
+    bool IsRemoved = false,
+    IReadOnlyDictionary<ReactionType, int>? Reactions = null,
+    ReactionType? MyReaction = null,
+    int ReplyCount = 0,
+    IReadOnlyList<CommentDto>? Replies = null);
 
 /// <summary>A report, as moderators see it, including the public reporter's contact details.</summary>
 public sealed record ReportDto(

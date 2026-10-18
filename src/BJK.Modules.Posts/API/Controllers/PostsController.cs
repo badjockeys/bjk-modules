@@ -152,6 +152,55 @@ public sealed class PostsController(ISender sender) : ControllerBase
         return CreatedAtAction(nameof(ListComments), new { id }, comment);
     }
 
+    /// <summary>
+    /// One page of a comment's replies, oldest first (comment lists already include the first few). Signed-in users only.
+    /// </summary>
+    [HttpGet("{id:guid}/comments/{commentId:guid}/replies")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PagedResult<CommentDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PagedResult<CommentDto>> ListReplies(
+        Guid id,
+        Guid commentId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListRepliesQuery(id, commentId, page, pageSize), cancellationToken);
+
+    /// <summary>Reply to a top-level comment. Replies go one level deep: replying to a reply is a 400.</summary>
+    [HttpPost("{id:guid}/comments/{commentId:guid}/replies")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<CommentDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Reply(Guid id, Guid commentId, CommentRequest request, CancellationToken cancellationToken)
+    {
+        var reply = await sender.Send(new AddCommentCommand(id, request.Body, commentId), cancellationToken);
+        return CreatedAtAction(nameof(ListReplies), new { id, commentId }, reply);
+    }
+
+    /// <summary>Set your reaction to a comment or reply (replaces any earlier one).</summary>
+    [HttpPut("{id:guid}/comments/{commentId:guid}/reaction")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReactToComment(Guid id, Guid commentId, ReactRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new ReactToCommentCommand(id, commentId, request.Type), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}/comments/{commentId:guid}/reaction")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RemoveCommentReaction(Guid id, Guid commentId, CancellationToken cancellationToken)
+    {
+        await sender.Send(new RemoveCommentReactionCommand(id, commentId), cancellationToken);
+        return NoContent();
+    }
+
     [HttpPut("{id:guid}/comments/{commentId:guid}")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType<CommentDto>(StatusCodes.Status200OK)]
