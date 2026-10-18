@@ -25,13 +25,14 @@ public sealed class AdminMediaController(ISender sender) : ControllerBase
     public async Task<MediaDto> Get(Guid id, CancellationToken cancellationToken) =>
         await sender.Send(new GetMediaQuery(id, AsModerator: true), cancellationToken);
 
-    /// <summary>Delete anyone's media: the files and the record.</summary>
+    /// <summary>Delete anyone's media: the files and the record. A reason is required (<c>?reason=</c>) and audited.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Delete(Guid id, [FromQuery] string? reason, CancellationToken cancellationToken)
     {
-        await sender.Send(new DeleteMediaCommand(id, AsModerator: true), cancellationToken);
+        await sender.Send(new DeleteMediaCommand(id, AsModerator: true, reason), cancellationToken);
         return NoContent();
     }
 }
