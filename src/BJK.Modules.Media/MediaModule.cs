@@ -6,6 +6,9 @@ using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -28,8 +31,14 @@ public sealed class MediaModule(string connectionStringName) : IModule
     /// <summary>Scope the apps need to upload and view media.</summary>
     public const string ApiScope = "bjk.media";
 
-    /// <summary>Admin scope: see and delete anyone's media.</summary>
+    /// <summary>
+    /// Moderation scope, for the back-office: see and delete anyone's media. A user token also needs the Moderator or
+    /// Admin role and two-factor sign-in.
+    /// </summary>
     public const string ManageScope = "bjk.media.manage";
+
+    /// <summary>Policy for the moderation endpoints under <c>/api/admin/media</c>.</summary>
+    public const string ManagePolicy = "bjk.media.manage";
 
     /// <summary>Authorization policy requiring <see cref="ApiScope"/>.</summary>
     public const string UsePolicy = "bjk.media";
@@ -63,17 +72,25 @@ public sealed class MediaModule(string connectionStringName) : IModule
             .Bind(configuration.GetSection(MediaQueueOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddBjkMessaging(configuration);
 
         services.AddSingleton<IAmazonS3>(sp =>
             S3MediaStorage.CreateClient(sp.GetRequiredService<IOptions<MediaStorageOptions>>().Value));
         services.AddSingleton<IMediaStorage, S3MediaStorage>();
         services.AddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
 
+        services.AddScoped<IPersonalDataExporter, MediaPersonalDataExporter>();
+        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration);
+
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasScope(ApiScope)));
+                .RequireAssertion(context => context.User.HasScope(ApiScope)))
+            .AddPolicy(ManagePolicy, policy => policy
+                .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)));
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>

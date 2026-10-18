@@ -55,14 +55,10 @@ public sealed class MediaStorageOptions
     public Uri? PublicBaseUrl { get; set; }
 }
 
-/// <summary>RabbitMQ. Section <c>Media:Queue</c>.</summary>
+/// <summary>The processing queue. Section <c>Media:Queue</c>. The RabbitMQ connection itself is <c>Messaging:ConnectionUri</c>.</summary>
 public sealed class MediaQueueOptions
 {
     public const string SectionName = "Media:Queue";
-
-    /// <summary>e.g. amqp://user:password@host:5672/vhost. Secret.</summary>
-    [Required]
-    public Uri? ConnectionUri { get; set; }
 
     [Required]
     public string QueueName { get; set; } = "media.process";

@@ -51,6 +51,7 @@ public sealed class CreatePostCommandHandler(
     public async Task<PostDto> Handle(CreatePostCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
+        PostAccess.RequireVerifiedEmail(caller, "posting");
 
         if (!await profiles.ExistsAsync(userId, cancellationToken))
         {

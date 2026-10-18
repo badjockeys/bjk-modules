@@ -80,7 +80,8 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
         int pageSize,
         CancellationToken cancellationToken)
     {
-        var query = db.Comments.AsNoTracking().Where(c => c.PostId == postId && c.Status == CommentStatus.Visible);
+        var query = db.Comments.AsNoTracking()
+            .Where(c => c.PostId == postId && c.Status == CommentStatus.Visible && !c.IsAuthorDeactivated);
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(c => c.CreatedAt)

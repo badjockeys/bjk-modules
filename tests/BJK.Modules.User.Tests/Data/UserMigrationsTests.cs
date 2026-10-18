@@ -31,9 +31,10 @@ public sealed class UserMigrationsTests
     {
         using var db = new UserDbContextDesignTimeFactory().CreateDbContext([]);
 
-        var entity = db.Model.FindEntityType(typeof(BJK.Modules.User.Domain.UserProfile))!;
+        var entity = db.Model.FindEntityType(typeof(BJK.Modules.User.Domain.UserAccount))!;
 
         Assert.Equal(UserModule.Schema, entity.GetSchema());
-        Assert.Equal("Users", entity.GetTableName());
+        Assert.Equal("Accounts", entity.GetTableName());
+        Assert.Equal(UserModule.Schema, db.Model.FindEntityType(typeof(BJK.Modules.Shared.Messaging.OutboxMessage))!.GetSchema());
     }
 }

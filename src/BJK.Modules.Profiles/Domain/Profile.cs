@@ -35,6 +35,14 @@ public sealed class Profile
 
     public DateTimeOffset? UpdatedAt { get; private set; }
 
+    /// <summary>
+    /// Set while the user's account is deactivated. The profile is hidden from everyone but kept (handle included)
+    /// in case they come back; it's deleted for good when the account is.
+    /// </summary>
+    public DateTimeOffset? DeactivatedAt { get; private set; }
+
+    public bool IsActive => DeactivatedAt is null;
+
     public byte[] RowVersion { get; private set; } = [];
 
     public static Profile Create(
@@ -72,6 +80,16 @@ public sealed class Profile
     {
         Handle = CheckedHandle(handle);
         UpdatedAt = now;
+    }
+
+    public void Deactivate(DateTimeOffset now)
+    {
+        DeactivatedAt ??= now;
+    }
+
+    public void Reactivate()
+    {
+        DeactivatedAt = null;
     }
 
     /// <summary>Sets or (with null) removes the avatar. Returns the previous avatar's media id, if it changed.</summary>

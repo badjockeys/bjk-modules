@@ -1,13 +1,16 @@
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Security;
 using BJK.Modules.User.API.Contracts;
+using BJK.Modules.User.Domain;
 using BJK.Modules.User.UseCases;
 using BJK.Modules.User.UseCases.Add;
+using BJK.Modules.User.UseCases.Confirm;
+using BJK.Modules.User.UseCases.Deactivate;
 using BJK.Modules.User.UseCases.Delete;
 using BJK.Modules.User.UseCases.Get;
 using BJK.Modules.User.UseCases.List;
+using BJK.Modules.User.UseCases.Reactivate;
 using BJK.Modules.User.UseCases.Reset;
-using BJK.Modules.User.UseCases.Update;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -20,63 +23,65 @@ namespace BJK.Modules.User.API.Controllers;
 [Authorize(AuthenticationSchemes = ModuleAuthentication.Scheme)]
 public sealed class UserController(ISender sender) : ControllerBase
 {
-    /// <summary>Registers a new user (sign-in account + profile).</summary>
+    /// <summary>Registers a new user (sign-in account). The app then creates their profile in bjk-core.</summary>
     [HttpPost]
     [AllowAnonymous]
     [ProducesResponseType<CreatedUserResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Add(AddUserRequest request, CancellationToken cancellationToken)
     {
-        var id = await sender.Send(
-            new AddUserCommand(request.Email, request.Password, request.DisplayName),
-            cancellationToken);
-
-        return CreatedAtAction(nameof(Get), new { id }, new CreatedUserResponse(id));
+        var id = await sender.Send(new AddUserCommand(request.Email, request.Password), cancellationToken);
+        return Created((string?)null, new CreatedUserResponse(id));
     }
 
-    /// <summary>Lists active users. Needs the bjk.users.manage scope.</summary>
-    [HttpGet]
-    [Authorize(Policy = UserModule.ManagePolicy)]
-    [ProducesResponseType<PagedResult<UserDto>>(StatusCodes.Status200OK)]
-    public async Task<PagedResult<UserDto>> List(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
-        CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListUsersQuery(page, pageSize), cancellationToken);
-
-    /// <summary>The signed-in user's own profile.</summary>
+    /// <summary>The signed-in user's own account.</summary>
     [HttpGet("me")]
     [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<UserDto> GetCurrent(CancellationToken cancellationToken) =>
         await sender.Send(new GetCurrentUserQuery(), cancellationToken);
 
-    [HttpGet("{id:guid}")]
-    [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<UserDto> Get(Guid id, CancellationToken cancellationToken) =>
-        await sender.Send(new GetUserQuery(id), cancellationToken);
-
-    [HttpPut("{id:guid}")]
+    /// <summary>
+    /// Deactivate my account (confirm with my password). I'm signed out, my content is hidden, and everything is
+    /// deleted after 90 days unless I reactivate.
+    /// </summary>
+    [HttpPost("me/deactivate")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update(Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> DeactivateMine(DeactivateAccountRequest request, CancellationToken cancellationToken)
     {
-        await sender.Send(new UpdateUserCommand(id, request.DisplayName), cancellationToken);
+        await sender.Send(new DeactivateMyAccountCommand(request.Password), cancellationToken);
         return NoContent();
     }
 
-    /// <summary>Soft-deletes the user and disables their sign-in.</summary>
-    [HttpDelete("{id:guid}")]
+    /// <summary>Reactivate a deactivated account within its grace period. Anonymous: the account can't sign in yet.</summary>
+    [HttpPost("reactivate")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Reactivate(ReactivateAccountRequest request, CancellationToken cancellationToken)
     {
-        await sender.Send(new DeleteUserCommand(id), cancellationToken);
+        await sender.Send(new ReactivateAccountCommand(request.Email, request.Password), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Email me another link to confirm my email address.</summary>
+    [HttpPost("me/confirmation-email")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> SendConfirmationEmail(CancellationToken cancellationToken)
+    {
+        await sender.Send(new SendEmailConfirmationCommand(), cancellationToken);
+        return Accepted();
+    }
+
+    /// <summary>Confirm an email address with the token from the confirmation email. Anonymous.</summary>
+    [HttpPost("confirm-email")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ConfirmEmail(ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new ConfirmEmailCommand(request.UserId, request.Token), cancellationToken);
         return NoContent();
     }
 

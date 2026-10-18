@@ -24,4 +24,36 @@ public static class ClaimsPrincipalExtensions
         && principal.FindAll("scope")
             .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             .Contains(scope, StringComparer.Ordinal);
+
+    /// <summary>True if the token carries the role (as "role" or the .NET role claim type).</summary>
+    public static bool HasRole(this ClaimsPrincipal principal, string role) =>
+        principal.Identity?.IsAuthenticated == true
+        && (principal.HasClaim("role", role) || principal.HasClaim(ClaimTypes.Role, role));
+
+    /// <summary>True if the user signed in with a second factor (the token's "amr" includes "mfa").</summary>
+    public static bool UsedMfa(this ClaimsPrincipal principal) =>
+        principal.Identity?.IsAuthenticated == true
+        && (principal.HasClaim("amr", "mfa") || principal.HasClaim(AuthenticationMethodsClaimType, "mfa"));
+
+    /// <summary>True if the user has confirmed their email address (the token's "email_verified").</summary>
+    public static bool IsEmailVerified(this ClaimsPrincipal principal) =>
+        principal.Identity?.IsAuthenticated == true
+        && string.Equals(principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Moderator rights for a module: the token has the module's manage scope, and either it's a signed-in
+    /// Moderator or Admin who used two-factor sign-in, or it's a machine token (no user) issued to a trusted client.
+    /// </summary>
+    public static bool HasModeratorRights(this ClaimsPrincipal principal, string manageScope) =>
+        principal.HasScope(manageScope)
+        && (principal.GetIdentityId() is null
+            || ((principal.HasRole(StaffRoles.Moderator) || principal.HasRole(StaffRoles.Admin)) && principal.UsedMfa()));
+
+    /// <summary>Admin rights: like <see cref="HasModeratorRights"/>, but only the Admin role.</summary>
+    public static bool HasAdminRights(this ClaimsPrincipal principal, string manageScope) =>
+        principal.HasScope(manageScope)
+        && (principal.GetIdentityId() is null || (principal.HasRole(StaffRoles.Admin) && principal.UsedMfa()));
+
+    // How Microsoft's JWT handler renames "amr" when it maps inbound claims.
+    private const string AuthenticationMethodsClaimType = "http://schemas.microsoft.com/claims/authnmethodsreferences";
 }

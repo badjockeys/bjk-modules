@@ -20,6 +20,15 @@ public interface IMediaStorage
 
     Task DeletePublicAsync(IEnumerable<string> keys, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Deletes every file under the user's folder (<c>{userId}/</c>) in both buckets, including any left behind
+    /// by failed uploads. Used when an account is permanently deleted.
+    /// </summary>
+    Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>A short-lived link to download an original, for data exports.</summary>
+    Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken);
+
     /// <summary>The address a processed file is served from through Cloudflare.</summary>
     Uri PublicUrl(string key);
 }

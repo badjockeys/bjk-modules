@@ -1,8 +1,13 @@
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.User.Infrastructure;
 using BJK.Modules.User.Infrastructure.Data;
 using BJK.Modules.User.Infrastructure.Services;
+using BJK.Modules.User.UseCases;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,10 +29,13 @@ public sealed class UserModule(string connectionStringName) : IModule
     /// <summary>Scope every caller of the users API needs in its access token.</summary>
     public const string ApiScope = "bjk.users";
 
-    /// <summary>Scope for administrative access: list users and manage anyone's profile.</summary>
+    /// <summary>
+    /// Moderation scope, for the back-office: list accounts, deactivate and reactivate them (moderators and admins),
+    /// delete them and set roles (admins). A user token also needs the role and two-factor sign-in.
+    /// </summary>
     public const string ManageScope = "bjk.users.manage";
 
-    /// <summary>Authorization policy requiring <see cref="ManageScope"/>.</summary>
+    /// <summary>Policy for the endpoints under <c>/api/admin/users</c>: moderator rights.</summary>
     public const string ManagePolicy = "bjk.users.manage";
 
     public string Name => "User";
@@ -47,12 +55,19 @@ public sealed class UserModule(string connectionStringName) : IModule
             }));
 
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<AccountLifecycle>();
+        services.AddScoped<IPersonalDataExporter, AccountPersonalDataExporter>();
+        services.AddOptions<UserOptions>().Bind(configuration.GetSection(UserOptions.SectionName));
+
+        // Account changes go out to bjk-core through the outbox (see AccountLifecycle).
+        services.AddOutboxPublisher<UserDbContext>(configuration, UserLifecycleEvents.Exchange);
+        services.AddHostedService<AccountRetentionService>();
 
         services.AddAuthorizationBuilder()
             .AddPolicy(ManagePolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
-                .RequireAssertion(context => context.User.HasScope(ManageScope)));
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)));
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>

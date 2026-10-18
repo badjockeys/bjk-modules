@@ -1,0 +1,63 @@
+using BJK.Modules.Shared.Security;
+using BJK.Modules.User.Infrastructure.Services;
+using FluentValidation;
+using FluentValidation.Results;
+using MediatR;
+
+namespace BJK.Modules.User.UseCases.Deactivate;
+
+/// <summary>
+/// The signed-in user deactivates their own account, confirming with their password. They're signed out
+/// everywhere, their content is hidden, and everything is deleted after the grace period (90 days by default)
+/// unless they reactivate first.
+/// </summary>
+public sealed record DeactivateMyAccountCommand(string Password) : IRequest;
+
+public sealed class DeactivateMyAccountCommandValidator : AbstractValidator<DeactivateMyAccountCommand>
+{
+    public DeactivateMyAccountCommandValidator()
+    {
+        RuleFor(c => c.Password).NotEmpty();
+    }
+}
+
+public sealed class DeactivateMyAccountCommandHandler(
+    IUserRepository users,
+    IIdentityService identity,
+    AccountLifecycle lifecycle,
+    ICurrentUser caller)
+    : IRequestHandler<DeactivateMyAccountCommand>
+{
+    public async Task Handle(DeactivateMyAccountCommand request, CancellationToken cancellationToken)
+    {
+        var account = await UserAccess.GetMineAsync(users, caller, cancellationToken);
+
+        if (!await identity.CheckPasswordAsync(account.Id.ToString("D"), request.Password, cancellationToken))
+        {
+            throw new ValidationException(new[] { new ValidationFailure(nameof(request.Password), "That password isn't right.") });
+        }
+
+        await lifecycle.DeactivateAsync(account, cancellationToken);
+    }
+}
+
+/// <summary>
+/// A moderator or admin deactivates someone's account. Same effect as the user doing it. Only admins can deactivate
+/// staff (moderators and admins).
+/// </summary>
+public sealed record DeactivateUserCommand(Guid UserId) : IRequest;
+
+public sealed class DeactivateUserCommandHandler(
+    IUserRepository users,
+    IIdentityService identity,
+    AccountLifecycle lifecycle,
+    ICurrentUser caller)
+    : IRequestHandler<DeactivateUserCommand>
+{
+    public async Task Handle(DeactivateUserCommand request, CancellationToken cancellationToken)
+    {
+        var account = await UserAccess.GetForModeratorAsync(users, caller, request.UserId, cancellationToken);
+        await UserAccess.EnsureCanActOnAsync(identity, caller, account, cancellationToken);
+        await lifecycle.DeactivateAsync(account, cancellationToken);
+    }
+}

@@ -7,25 +7,42 @@ namespace BJK.Modules.User.UseCases;
 
 internal static class UserAccess
 {
-    /// <summary>
-    /// Loads a user the caller is allowed to see or change: their own profile,
-    /// or anyone's if the token has the manage scope.
-    /// </summary>
-    public static async Task<UserProfile> GetAccessibleAsync(
+    public static async Task<UserAccount> GetMineAsync(
+        IUserRepository users,
+        ICurrentUser caller,
+        CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        return await users.GetByIdAsync(userId, cancellationToken)
+            ?? throw new NotFoundException("User", userId);
+    }
+
+    /// <summary>Any account, for a moderator or admin.</summary>
+    public static async Task<UserAccount> GetForModeratorAsync(
         IUserRepository users,
         ICurrentUser caller,
         Guid userId,
         CancellationToken cancellationToken)
     {
-        var user = await users.GetByIdAsync(userId, cancellationToken)
+        caller.RequireModerator(UserModule.ManageScope);
+        return await users.GetByIdAsync(userId, cancellationToken)
             ?? throw new NotFoundException("User", userId);
+    }
 
-        var isOwner = caller.IdentityId is not null && user.IsOwnedBy(caller.IdentityId);
-        if (!isOwner && !caller.HasScope(UserModule.ManageScope))
+    /// <summary>
+    /// Moderators can act on ordinary users. Accounts with a staff role (moderators and admins) can only be
+    /// changed by an admin, so a moderator can't remove another moderator.
+    /// </summary>
+    public static async Task EnsureCanActOnAsync(
+        IIdentityService identity,
+        ICurrentUser caller,
+        UserAccount target,
+        CancellationToken cancellationToken)
+    {
+        var signIn = await identity.GetAccountAsync(target.Id.ToString("D"), cancellationToken);
+        if (signIn is { IsStaff: true })
         {
-            throw new ForbiddenException("You can only access your own account.");
+            caller.RequireAdmin(UserModule.ManageScope);
         }
-
-        return user;
     }
 }

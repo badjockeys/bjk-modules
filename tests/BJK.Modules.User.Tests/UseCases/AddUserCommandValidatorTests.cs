@@ -1,50 +1,25 @@
-using BJK.Modules.User.Infrastructure.Services;
 using BJK.Modules.User.UseCases.Add;
-using NSubstitute;
 using Xunit;
 
 namespace BJK.Modules.User.Tests.UseCases;
 
 public sealed class AddUserCommandValidatorTests
 {
-    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+    private readonly AddUserCommandValidator _validator = new();
 
     [Fact]
-    public async Task Valid_command_passes()
+    public void Valid_command_passes()
     {
-        var validator = new AddUserCommandValidator(_users);
-
-        var result = await validator.ValidateAsync(
-            new AddUserCommand("rider@example.com", "Passw0rd!", "Road Hog"),
-            TestContext.Current.CancellationToken);
-
-        Assert.True(result.IsValid);
-    }
-
-    [Fact]
-    public async Task Duplicate_email_fails()
-    {
-        _users.EmailExistsAsync("rider@example.com", Arg.Any<CancellationToken>()).Returns(true);
-        var validator = new AddUserCommandValidator(_users);
-
-        var result = await validator.ValidateAsync(
-            new AddUserCommand(" rider@example.com ", "Passw0rd!", "Road Hog"),
-            TestContext.Current.CancellationToken);
-
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(AddUserCommand.Email));
+        Assert.True(_validator.Validate(new AddUserCommand("rider@example.com", "Passw0rd!")).IsValid);
     }
 
     [Theory]
-    [InlineData("not-an-email", "Passw0rd!", "Road Hog", nameof(AddUserCommand.Email))]
-    [InlineData("rider@example.com", "", "Road Hog", nameof(AddUserCommand.Password))]
-    [InlineData("rider@example.com", "Passw0rd!", "", nameof(AddUserCommand.DisplayName))]
-    public async Task Invalid_fields_fail(string email, string password, string displayName, string expectedProperty)
+    [InlineData("not-an-email", "Passw0rd!", nameof(AddUserCommand.Email))]
+    [InlineData("", "Passw0rd!", nameof(AddUserCommand.Email))]
+    [InlineData("rider@example.com", "", nameof(AddUserCommand.Password))]
+    public void Invalid_fields_fail(string email, string password, string expectedProperty)
     {
-        var validator = new AddUserCommandValidator(_users);
-
-        var result = await validator.ValidateAsync(
-            new AddUserCommand(email, password, displayName),
-            TestContext.Current.CancellationToken);
+        var result = _validator.Validate(new AddUserCommand(email, password));
 
         Assert.Contains(result.Errors, e => e.PropertyName == expectedProperty);
     }

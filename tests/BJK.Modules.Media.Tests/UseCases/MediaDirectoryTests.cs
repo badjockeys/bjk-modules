@@ -54,3 +54,35 @@ public sealed class MediaDirectoryTests
         await _media.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 }
+
+public sealed class MediaLifecycleTests
+{
+    [Fact]
+    public async Task Deleting_the_account_removes_all_files_then_all_rows()
+    {
+        var media = Substitute.For<IMediaRepository>();
+        var storage = Substitute.For<IMediaStorage>();
+        var handler = new MediaUserLifecycleHandler(media, storage);
+        var ct = TestContext.Current.CancellationToken;
+
+        await handler.HandleAsync(new BJK.Modules.Shared.Users.UserLifecycleEvent(Guid.NewGuid(), UserId, BJK.Modules.Shared.Users.UserLifecycleEventType.Deleted, Now), ct);
+
+        Received.InOrder(() =>
+        {
+            storage.DeleteAllForUserAsync(UserId, Arg.Any<CancellationToken>());
+            media.DeleteAllForUserAsync(UserId, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task Deactivation_leaves_media_alone()
+    {
+        var media = Substitute.For<IMediaRepository>();
+        var storage = Substitute.For<IMediaStorage>();
+        var handler = new MediaUserLifecycleHandler(media, storage);
+
+        await handler.HandleAsync(new BJK.Modules.Shared.Users.UserLifecycleEvent(Guid.NewGuid(), UserId, BJK.Modules.Shared.Users.UserLifecycleEventType.Deactivated, Now), TestContext.Current.CancellationToken);
+
+        await storage.DidNotReceive().DeleteAllForUserAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+}

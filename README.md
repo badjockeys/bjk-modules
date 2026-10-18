@@ -7,18 +7,23 @@ Feature modules for the Bad Jockeys platform. Each module is a self-contained ve
 ```
 src/
   BJK.Modules.Shared/            Module registration, MediatR validation pipeline, error handling,
-                                 current user, safe startup migrations
+                                 current user, safe startup migrations, RabbitMQ connection and outbox,
+                                 provider retries and MessageDeliveryException (Email, SMS),
+                                 user lifecycle events, GET /api/me/data-export
   BJK.Modules.User/              Hosted by bjk-identity-server
     API/Controllers/             UserController
     API/Contracts/               Request/response records
     UseCases/
-      Add/                       Register: sign-in account + profile
-      Update/  Delete/           Change or soft-delete a profile (owner or admin)
+      Add/                       Register: sign-in account + account record
+      Deactivate/  Reactivate/   Deactivate (self with password, or admin); reactivate within the grace period
+      Delete/                    Admin "delete now"; the retention job that deletes expired accounts
       Reset/                     Forgot password: request token, confirm with new password
       Get/  List/                Read side (CQRS queries)
+      AccountLifecycle.cs        Deactivate / reactivate / delete, each with an outbox event
     Infrastructure/Services/     IUserRepository, IIdentityService (implemented by the host)
-    Infrastructure/Data/         UserDbContext (schema: users) and Migrations/
-    Domain/                      UserProfile
+    Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
+    Infrastructure/              AccountRetentionService (hourly), account data export
+    Domain/                      UserAccount
     UserModule.cs                Module entry point
   BJK.Modules.Media/             Hosted by bjk-core
     API/Controllers/             MediaController (/api/media)
@@ -50,11 +55,24 @@ src/
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
     Domain/                      Post, PostMedia, Reaction, Comment, Report
     PostsModule.cs               Module entry point
+  BJK.Modules.Email/             Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
+    Contracts/                   IEmailSender, EmailMessage
+    Layout/                      BrandedEmail: black-on-white email layout, text + HTML
+    Templates/                   EmailTemplates: the wording of every email we send
+    Infrastructure/              SendGrid sender; Log sender for local development
+    EmailModule.cs               Module entry point
+  BJK.Modules.SMS/               Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
+    Contracts/                   ISMSSender, SMSMessage, PhoneNumbers (E.164 check)
+    Templates/                   SMSTemplates: the wording of every text we send
+    Infrastructure/              Twilio sender; Log sender for local development
+    SMSModule.cs                 Module entry point
 tests/
   BJK.Modules.User.Tests/
   BJK.Modules.Media.Tests/
   BJK.Modules.Profiles.Tests/
   BJK.Modules.Posts.Tests/
+  BJK.Modules.Email.Tests/
+  BJK.Modules.SMS.Tests/
 ```
 
 ## Hosting a module
@@ -78,19 +96,66 @@ app.MapControllers();
 | Key | Notes |
 |---|---|
 | `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema of the `idsrv` database (the identity server hosts this module). |
+| `Messaging:ConnectionUri` | RabbitMQ, e.g. `amqp://user:password@host:5672/vhost`. Secret. The identity server publishes user lifecycle events; bjk-core consumes them and Media queues processing jobs. |
+| `Messaging:UserEventsQueue` | bjk-core only. Default `bjk-core.user-events`. |
+| `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
+| `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 
-### One id per person
+### One id per person, one copy of each fact
 
-A user's profile id is the same GUID as their sign-in account id, which is the `sub` claim in every token. Every module (users, media, profiles, posts) identifies a person by that one id, so no module ever needs to look up another id.
+A user's id is the same GUID everywhere: the sign-in account (`auth.AspNetUsers`), the account record (`users.Accounts`), the core profile and every post, comment and media item. It's the `sub` claim in every token, so no module ever needs to look up another id.
+
+Nothing is stored twice. The **email and password** are in the sign-in account only. The **account status** (active, deactivated, deletion date) is in `users.Accounts` only. The **handle, display name, bio and avatar** are in the core profile only.
 
 ### Access
 
 | Scope | Gives |
 |---|---|
-| `bjk.users` | Required on every authenticated call. Users can read, update and delete their own profile. |
-| `bjk.users.manage` | Admin: list users and manage anyone's profile. |
+| `bjk.users` | Required on every authenticated call to the identity server's API. Users can read and deactivate their own account. |
+| `bjk.users.manage` | Admin: list accounts; deactivate, reactivate or delete any of them. |
+
+| Endpoint (identity server) | Access |
+|---|---|
+| `POST /api/users` | Anonymous + CAPTCHA: register (email, password) |
+| `GET /api/users/me` | Signed-in user: email, status, dates |
+| `POST /api/users/me/deactivate` | Signed-in user, confirming with their password |
+| `POST /api/users/reactivate` | Anonymous + CAPTCHA: email and password of a deactivated account |
+| `POST /api/users/password-reset`, `.../confirm` | Anonymous (+ CAPTCHA for the request) |
+| `GET /api/users?status=`, `GET /api/users/{id}` | Admin (or yourself for `{id}`) |
+| `POST /api/users/{id}/deactivate`, `POST /api/users/{id}/reactivate`, `DELETE /api/users/{id}` | Admin. `DELETE` deletes permanently now. |
+
+## Deactivation, retention and deletion
+
+1. **Deactivate.** The user confirms with their password, or an admin does it. The sign-in account is locked and its sessions and refresh tokens are revoked. `users.Accounts` becomes `Deactivated` with `DeletionDueAt` 90 days later.
+2. **Hidden, not deleted.** bjk-core hides the user's profile (it looks like it doesn't exist), posts and comments. The handle stays reserved for them.
+3. **Reactivate.** Within the 90 days, the user sends their email and password to `POST /api/users/reactivate`. Sign-in works again and everything reappears.
+4. **Delete.** Once `DeletionDueAt` passes, the identity server's hourly retention job deletes the sign-in account and the account record. bjk-core then permanently deletes:
+   - the profile;
+   - posts, together with the comments, reactions and reports on them;
+   - the user's own comments, reactions and reports elsewhere;
+   - every file under `{userId}/` in both R2 buckets, and every media row.
+
+   An admin can skip the wait with `DELETE /api/users/{id}`.
+
+The identity server and bjk-core have separate databases, so the identity server tells core through **user lifecycle events** (`Deactivated`, `Reactivated`, `Deleted`):
+
+- **Outbox.** Each event is saved in `users.Outbox` in the same transaction as the account change. A background publisher then sends it to the RabbitMQ fanout exchange `bjk.users` and waits for the broker to confirm. An event is never lost, and never sent for a change that was rolled back.
+- **Core's queue.** bjk-core reads its own queue, `bjk-core.user-events`, and passes each event to every module's `IUserLifecycleHandler` (Profiles, Posts, Media).
+- **Failures.** A failing event is retried. After 5 attempts it moves to `bjk-core.user-events.failed` for someone to look at.
+- **Idempotent.** Handlers are safe to run twice.
+
+## Download my data
+
+`GET /api/me/data-export` is served by **both** the identity server and bjk-core. Each returns a JSON file of everything that host holds about the signed-in user, gathered from every module's `IPersonalDataExporter`:
+
+| Host | Sections |
+|---|---|
+| Identity server | `account`: id, email, status, dates |
+| bjk-core | `profile`; `posts` (posts, comments, reactions, reports made); `media` (every upload, with a 24-hour download link for each original still kept, and the processed files) |
+
+The apps call both endpoints and offer the two files (or one zip) as "Download my data". A deactivated user can't sign in, so they reactivate, download, then deactivate again if they want.
 
 ## Media module
 
@@ -121,7 +186,6 @@ Configuration (user secrets locally, Key Vault in Azure):
 | `Media:Storage:AccessKeyId`, `Media:Storage:SecretAccessKey` | R2 API token. Secret. |
 | `Media:Storage:OriginalsBucket`, `Media:Storage:PublicBucket` | Private and public buckets |
 | `Media:Storage:PublicBaseUrl` | Where the public bucket is served through Cloudflare |
-| `Media:Queue:ConnectionUri` | `amqp://user:password@host:5672/vhost`. Secret. |
 | `Media:Queue:QueueName` | Default `media.process`; failed jobs go to `media.process.failed` |
 | `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime`, `Media:OriginalRetention` | Defaults: 500 MB, 25 MB, 300 s, 15 min, 90 days |
 
@@ -147,6 +211,7 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new ProfilesModul
 
 Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `Reports`.
 
+- **Deactivated authors**: while an author's account is deactivated, their posts and comments are hidden from everyone (feed, post pages, comment lists and counts). Their reactions still count.
 - **A post** has a title (up to 120 characters), an optional description (5,000), a category, when the incident happened (not in the future), a map pin (latitude/longitude, optional place name), and 1 to 10 photos or videos.
 - **Categories**: RoadRage, DangerousOvertaking, Tailgating, MobilePhoneUse, Speeding, RedLightRunning, CuttingUp, Undertaking, LaneHogging, ClosePass, BadParking, Other.
 - **Publishing**: the photos and videos must be the author's own uploads and already Ready. The app uploads them, waits for processing, then creates the post, which everyone can see straight away. Each photo or video can be in only one post. The author needs a profile.
@@ -206,3 +271,46 @@ CI fails if the model has changed without a migration, and a unit test fails if 
 - CI builds and tests every pull request.
 - To publish a release, tag a commit on `master`: `git tag v0.2.0 && git push origin v0.2.0`.
 - Every push to a `feature/*` branch publishes a preview package, `<VersionPrefix>-ci.<run number>` (e.g. `0.2.0-ci.7`), so other repos can test a branch before it merges. Bump `VersionPrefix` in `Directory.Build.props` after each release.
+
+## Email and SMS modules
+
+Two modules, `BJK.Modules.Email` (SendGrid) and `BJK.Modules.SMS` (Twilio), for the other modules and the hosts. Neither has a database or endpoints: inject `IEmailSender` or `ISMSSender`. Register only the ones a host needs.
+
+```csharp
+builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"), new EmailModule(), new SMSModule());
+
+// Anywhere:
+var email = EmailTemplates.ConfirmEmail(link).To(address, emailOptions.Value.LogoUrl);
+await emailSender.SendAsync(email, cancellationToken);
+
+await smsSender.SendAsync(SMSTemplates.SignInCode("+447700900123", code), cancellationToken);
+```
+
+- **Templates live in code.** The wording of every email is in `BJK.Modules.Email/Templates/EmailTemplates.cs` and of every text in `BJK.Modules.SMS/Templates/SMSTemplates.cs`, so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
+- **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no RabbitMQ queue for email or SMS.
+- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `SMS:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
+- **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
+- **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds), using `ProviderRetry` from Shared. A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException` (Shared), whose `IsTransient` says which it was.
+- **No click tracking.** Our emails carry sign-in, confirmation and reset codes in links, so SendGrid click and open tracking are switched off for every email.
+- **Privacy.** Outside Development, logs show masked addresses only (`r***@example.com`, `+44********23`) plus the provider's message id, so a delivery can be traced in SendGrid or Twilio without logging personal data.
+- **Branded emails.** `BrandedEmail` builds matching plain-text and HTML bodies (heading, paragraphs, a button, a large code, small print). All text is HTML-encoded, and buttons only accept http(s) links.
+
+Both providers are called over their REST APIs with `HttpClient`, so there are no vendor SDKs to keep up to date.
+
+| Key | Notes |
+|---|---|
+| `Email:Provider` | `Log` (default) or `SendGrid` |
+| `Email:FromAddress`, `Email:FromName` | Sender. The address (or its domain) must be verified in SendGrid. Name defaults to `Bad Jockeys`. |
+| `Email:ReplyToAddress` | Optional, e.g. `support@badjockeys.com` |
+| `Email:LogoUrl` | Optional absolute URL of a PNG logo for the top of branded emails (Gmail and Outlook don't show SVG) |
+| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. |
+| `Email:SendGrid:BaseUrl` | Default `https://api.sendgrid.com`; `https://api.eu.sendgrid.com` for an EU-pinned subuser |
+| `Email:SendGrid:SandboxMode` | `true` = SendGrid checks each request but delivers nothing |
+| `SMS:Provider` | `Log` (default) or `Twilio` |
+| `SMS:Twilio:AccountSid` | `AC…` |
+| `SMS:Twilio:ApiKeySid`, `SMS:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
+| `SMS:Twilio:AuthToken` | Secret. Used only if no API key is set. |
+| `SMS:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |
+| `SMS:Twilio:FromNumber` | E.164 number or alphanumeric sender ID, used when there's no Messaging Service |
+
+Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to check numbers you collect.

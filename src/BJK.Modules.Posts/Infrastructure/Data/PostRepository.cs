@@ -57,6 +57,15 @@ public interface IPostRepository
         Guid? viewerId,
         CancellationToken cancellationToken);
 
+    /// <summary>Hides (or shows again) all of a user's posts and comments while their account is deactivated.</summary>
+    Task SetAuthorDeactivatedAsync(Guid userId, bool deactivated, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Permanently deletes everything of a user's in the Posts module: their posts (with the comments, reactions
+    /// and reports on them), and their own comments, reactions and reports elsewhere.
+    /// </summary>
+    Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken);
+
     void Add(Post post);
 
     /// <summary>Saves all pending changes in the Posts module (posts, reactions, comments, reports).</summary>
@@ -83,7 +92,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 
         if (!search.IncludeHidden)
         {
-            query = query.Where(p => p.Status == PostStatus.Published);
+            query = query.Where(p => p.Status == PostStatus.Published && !p.IsAuthorDeactivated);
         }
 
         if (search.AuthorId is { } authorId)
@@ -132,7 +141,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             .ToListAsync(cancellationToken);
 
         var comments = await db.Comments
-            .Where(c => postIds.Contains(c.PostId) && c.Status == CommentStatus.Visible)
+            .Where(c => postIds.Contains(c.PostId) && c.Status == CommentStatus.Visible && !c.IsAuthorDeactivated)
             .GroupBy(c => c.PostId)
             .Select(g => new { PostId = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
@@ -157,6 +166,33 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
                 comments.FirstOrDefault(c => c.PostId == id)?.Count ?? 0,
                 mine.TryGetValue(id, out var type) ? type : null));
     }
+
+    public async Task SetAuthorDeactivatedAsync(Guid userId, bool deactivated, CancellationToken cancellationToken)
+    {
+        await db.Posts.Where(p => p.AuthorId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.IsAuthorDeactivated, deactivated), cancellationToken);
+        await db.Comments.Where(c => c.AuthorId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsAuthorDeactivated, deactivated), cancellationToken);
+    }
+
+    public Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+            var commentIds = db.Comments.Where(c => c.AuthorId == userId).Select(c => c.Id);
+            await db.Reports
+                .Where(r => r.ReporterId == userId
+                    || (r.TargetType == ReportTargetType.Comment && commentIds.Contains(r.TargetId)))
+                .ExecuteDeleteAsync(cancellationToken);
+            await db.Reactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.Comments.Where(c => c.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
+
+            // The database cascades this to the posts' media links, comments, reactions and reports.
+            await db.Posts.Where(p => p.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+        });
 
     public void Add(Post post) => db.Posts.Add(post);
 
