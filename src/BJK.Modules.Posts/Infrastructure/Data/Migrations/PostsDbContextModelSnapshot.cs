@@ -46,6 +46,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<bool>("IsAuthorDeactivated")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("PostId")
                         .HasColumnType("uniqueidentifier");
 
@@ -104,6 +107,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
                     b.Property<DateTimeOffset>("IncidentAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsAuthorDeactivated")
+                        .HasColumnType("bit");
 
                     b.Property<decimal>("Latitude")
                         .HasPrecision(9, 6)
