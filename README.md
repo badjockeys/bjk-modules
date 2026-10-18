@@ -57,6 +57,7 @@ src/
   BJK.Modules.Communications/    Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
     Contracts/                   IEmailSender, ISmsSender, MessageDeliveryException, PhoneNumbers
     Email/                       BrandedEmail: black-on-white email layout, text + HTML
+    Templates/                   EmailTemplates, SmsTemplates: the wording of every message we send
     Infrastructure/Email/        SendGrid sender; Log sender for local development
     Infrastructure/Sms/          Twilio sender; Log sender for local development
     CommunicationsModule.cs      Module entry point
@@ -273,15 +274,14 @@ Email and SMS for the other modules and the hosts. It has no database and no end
 builder.Services.AddBjkModules(builder.Configuration, new UserModule("IdentityDatabase"), new CommunicationsModule());
 
 // Anywhere:
-var message = BrandedEmail.Create("Confirm your email address")
-    .Paragraph("Welcome to Bad Jockeys!")
-    .Button("Confirm email address", link)
-    .Note("If you didn't create an account, you can ignore this email.")
-    .ToMessage(email, "Confirm your Bad Jockeys email address", emailOptions.Value.LogoUrl);
+var message = EmailTemplates.ConfirmEmail(link).To(email, emailOptions.Value.LogoUrl);
 await emailSender.SendAsync(message, cancellationToken);
 
-await smsSender.SendAsync(new SmsMessage("+447700900123", "Your Bad Jockeys code is 123456"), cancellationToken);
+await smsSender.SendAsync(SmsTemplates.SignInCode("+447700900123", code), cancellationToken);
 ```
+
+- **Templates live in code.** The wording of every email and text is in `Templates/` (`EmailTemplates`, `SmsTemplates`), so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
+- **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no RabbitMQ queue for email or SMS.
 
 - **Providers.** `Email:Provider` is `SendGrid` or `Log`; `Sms:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
 - **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
