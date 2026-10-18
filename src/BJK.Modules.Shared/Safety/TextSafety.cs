@@ -274,10 +274,12 @@ public static partial class TextSafety
         return false;
     }
 
+    // A street type can't be part of the name ("a 2 lane road"), except "St" for Saint ("14 St Mary's Road").
     private static bool IsStreetNameWord(string word) =>
         word.Length >= 2
         && word.All(c => char.IsLetter(c) || c is '\'' or '’' or '-')
-        && !NotStreetNames.Contains(word);
+        && !NotStreetNames.Contains(word)
+        && (word == "st" || !StreetTypes.Contains(word));
 
     private static bool PlateLetters(string letters) =>
         !letters.Any(c => NotInPlates.Contains(c)) && !CommonWords.Contains(letters);

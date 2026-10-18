@@ -532,7 +532,7 @@ public sealed class OnlineSafetyTests
     [Fact]
     public async Task Signed_in_users_can_report_profiles_and_get_an_acknowledgement()
     {
-        _profiles.FindByHandleAsync("speedy", Arg.Any<CancellationToken>()).Returns(new ProfileSummary(OtherUserId, "speedy", "Speedy", null));
+        _profiles.FindByHandleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProfileSummary(OtherUserId, "speedy", "Speedy", null));
         _caller.Email.Returns("rider@example.com");
         var handler = new ReportProfileCommandHandler(_profiles, _reports, Notifications(), _caller, _clock);
 
