@@ -13,6 +13,10 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
 {
     private readonly MediaStorageOptions _options = options.Value;
 
+    // Signed links use the store's own scheme: HTTPS for R2, plain HTTP for a local stand-in on http://localhost.
+    private readonly Protocol _protocol =
+        options.Value.ServiceUrl?.Scheme == Uri.UriSchemeHttp ? Protocol.HTTP : Protocol.HTTPS;
+
     public static IAmazonS3 CreateClient(MediaStorageOptions options)
     {
         var config = new AmazonS3Config
@@ -43,7 +47,7 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
             Verb = HttpVerb.PUT,
             ContentType = contentType,
             Expires = expiresAt.UtcDateTime,
-            Protocol = Protocol.HTTPS,
+            Protocol = _protocol,
         });
 
         return new SignedUpload(
@@ -71,6 +75,27 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
 
     public Task DeleteOriginalAsync(string key, CancellationToken cancellationToken) =>
         s3.DeleteObjectAsync(_options.OriginalsBucket, key, cancellationToken);
+
+    public async Task DownloadOriginalAsync(string key, Stream destination, CancellationToken cancellationToken)
+    {
+        using var response = await s3.GetObjectAsync(_options.OriginalsBucket, key, cancellationToken);
+        await response.ResponseStream.CopyToAsync(destination, cancellationToken);
+    }
+
+    public async Task UploadPublicAsync(string key, string filePath, string contentType, CancellationToken cancellationToken)
+    {
+        await s3.PutObjectAsync(
+            new PutObjectRequest
+            {
+                BucketName = _options.PublicBucket,
+                Key = key,
+                FilePath = filePath,
+                ContentType = contentType,
+                // Keys never change once written (a new upload gets a new media id), so caching for a year is safe.
+                Headers = { CacheControl = "public, max-age=31536000, immutable" },
+            },
+            cancellationToken);
+    }
 
     public async Task DeletePublicAsync(IEnumerable<string> keys, CancellationToken cancellationToken)
     {
@@ -112,7 +137,7 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
             Key = key,
             Verb = HttpVerb.GET,
             Expires = (clock.GetUtcNow() + lifetime).UtcDateTime,
-            Protocol = Protocol.HTTPS,
+            Protocol = _protocol,
         });
 
         return new Uri(url);

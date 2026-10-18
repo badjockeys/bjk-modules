@@ -63,3 +63,43 @@ public sealed class MediaQueueOptions
     [Required]
     public string QueueName { get; set; } = "media.process";
 }
+
+/// <summary>The processing worker. Section <c>Media:Processing</c>; only the worker host reads it.</summary>
+public sealed class MediaProcessingOptions
+{
+    public const string SectionName = "Media:Processing";
+
+    /// <summary>ffmpeg executable: a name on the PATH or a full path.</summary>
+    [Required]
+    public string FfmpegPath { get; set; } = "ffmpeg";
+
+    /// <summary>ffprobe executable: a name on the PATH or a full path.</summary>
+    [Required]
+    public string FfprobePath { get; set; } = "ffprobe";
+
+    /// <summary>Where each job's temporary files go; each job gets its own folder, removed when it finishes.</summary>
+    public string? WorkingDirectory { get; set; }
+
+    /// <summary>Jobs one worker runs at once. Video encoding uses every core, so 1 is usually right.</summary>
+    [Range(1, 16)]
+    public int MaxConcurrentJobs { get; set; } = 1;
+
+    /// <summary>Height of the playback video. Smaller videos keep their size.</summary>
+    [Range(240, 2160)]
+    public int VideoHeight { get; set; } = 720;
+
+    /// <summary>x264 quality (lower is better and bigger). 23 is a good balance for dashcam footage.</summary>
+    [Range(15, 35)]
+    public int VideoCrf { get; set; } = 23;
+
+    /// <summary>Longest side of processed photos, in pixels.</summary>
+    [Range(320, 8192)]
+    public int ImageMaxSize { get; set; } = 2048;
+
+    /// <summary>Longest side of thumbnails, in pixels.</summary>
+    [Range(64, 1920)]
+    public int ThumbnailMaxSize { get; set; } = 640;
+
+    /// <summary>Gives up on one ffmpeg run after this long.</summary>
+    public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromMinutes(15);
+}
