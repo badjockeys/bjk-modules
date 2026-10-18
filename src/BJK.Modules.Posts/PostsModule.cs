@@ -1,8 +1,12 @@
 using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
+using BJK.Modules.Posts.UseCases.Moderation;
+using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Moderation;
+using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
@@ -13,8 +17,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace BJK.Modules.Posts;
 
 /// <summary>
-/// Registers the Posts module: incident posts, reactions, comments and reports. Hosted by the bjk-core API,
-/// which must also register the Media and Profiles modules (posts use their media and authors' profiles)
+/// Registers the Posts module: incident posts, reactions, comments, reports, appeals, content screening and the
+/// moderation audit log (for every module in the host). Hosted by the bjk-core API, which must also register the
+/// Media, Profiles and Email modules (posts use their media and authors' profiles; report emails go through Email)
 /// and a JWT bearer handler under <see cref="ModuleAuthentication.Scheme"/>.
 /// </summary>
 /// <param name="connectionStringName">Connection string for the app database holding the <see cref="Schema"/> tables.</param>
@@ -60,6 +65,15 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<IReactionRepository, ReactionRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
+        services.AddScoped<IAppealRepository, AppealRepository>();
+        services.AddScoped<IModerationAuditRepository, ModerationAuditRepository>();
+
+        // Replaces Shared's fallback: the audit log for Posts, Profiles and Media is stored here.
+        services.AddScoped<IModerationAuditLog, PostsModerationAuditLog>();
+        services.AddScoped<NewAccountLimits>();
+        services.AddScoped<ModerationNotifications>();
+        services.AddContentScreening(configuration);
+        services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
         services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
         services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration);
