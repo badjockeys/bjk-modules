@@ -41,6 +41,20 @@ public static class ClaimsPrincipalExtensions
         && string.Equals(principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// True if the user has passed the age check: the token's "age_verified" claim is "true". The identity server
+    /// issues it once the account passes; modules require it for posting, commenting, reacting and reporting.
+    /// </summary>
+    public static bool IsAgeVerified(this ClaimsPrincipal principal) =>
+        principal.Identity?.IsAuthenticated == true
+        && string.Equals(principal.FindFirstValue(AgeVerifiedClaimType), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The token's "email" claim, if it has one.</summary>
+    public static string? GetEmail(this ClaimsPrincipal principal) =>
+        principal.Identity?.IsAuthenticated == true
+            ? principal.FindFirstValue("email") ?? principal.FindFirstValue(ClaimTypes.Email)
+            : null;
+
+    /// <summary>
     /// Moderator rights for a module: the token has the module's manage scope, and either it's a signed-in
     /// Moderator or Admin who used two-factor sign-in, or it's a machine token (no user) issued to a trusted client.
     /// </summary>
@@ -53,6 +67,9 @@ public static class ClaimsPrincipalExtensions
     public static bool HasAdminRights(this ClaimsPrincipal principal, string manageScope) =>
         principal.HasScope(manageScope)
         && (principal.GetIdentityId() is null || (principal.HasRole(StaffRoles.Admin) && principal.UsedMfa()));
+
+    /// <summary>The access-token claim for a passed age check.</summary>
+    public const string AgeVerifiedClaimType = "age_verified";
 
     // How Microsoft's JWT handler renames "amr" when it maps inbound claims.
     private const string AuthenticationMethodsClaimType = "http://schemas.microsoft.com/claims/authnmethodsreferences";

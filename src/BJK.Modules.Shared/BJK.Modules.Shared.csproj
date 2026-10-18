@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Shared</PackageId>
-    <Description>Shared building blocks for Bad Jockeys modules: module registration, MediatR pipeline, validation, error handling, messaging (RabbitMQ and outbox), user lifecycle events and personal data export.</Description>
+    <Description>Shared building blocks for Bad Jockeys modules: module registration, MediatR pipeline, validation, error handling, messaging (RabbitMQ and outbox), user lifecycle events, personal data export, and online safety (text checks, content screening, CAPTCHA, age verification, moderation audit contract).</Description>
   </PropertyGroup>
 
   <ItemGroup>
