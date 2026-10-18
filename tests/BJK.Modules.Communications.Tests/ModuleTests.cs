@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
+using Xunit;
+
 namespace BJK.Modules.Communications.Tests;
 
 public sealed class ModuleTests

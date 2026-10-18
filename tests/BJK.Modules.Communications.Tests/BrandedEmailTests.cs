@@ -1,5 +1,7 @@
 using BJK.Modules.Communications.Email;
 
+using Xunit;
+
 namespace BJK.Modules.Communications.Tests;
 
 public sealed class BrandedEmailTests

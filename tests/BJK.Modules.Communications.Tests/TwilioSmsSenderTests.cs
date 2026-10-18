@@ -5,6 +5,8 @@ using BJK.Modules.Communications.Infrastructure.Sms;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using Xunit;
+
 namespace BJK.Modules.Communications.Tests;
 
 public sealed class TwilioSmsSenderTests
