@@ -198,7 +198,7 @@ public sealed class MediaProcessorTests
 
         var outcome = await Processor().ProcessAsync(Job(item), isLastAttempt: true, Ct);
 
-        Assert.Equal(ProcessingOutcome.Failed, outcome);
+        Assert.Equal(ProcessingOutcome.GaveUp, outcome);
         Assert.Equal(MediaStatus.Failed, item.Status);
     }
 

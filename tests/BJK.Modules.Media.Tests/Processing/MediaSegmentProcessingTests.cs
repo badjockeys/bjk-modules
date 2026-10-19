@@ -178,7 +178,7 @@ public sealed class MediaSegmentProcessingTests
         await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
         var segments = Take(MediaJobStep.Segment);
 
-        // Segment 0, then segment 1 twice (RabbitMQ redelivered it after a worker restart).
+        // Segment 0, then segment 1 twice (redelivered after a worker restart).
         await Processor().ProcessAsync(segments[0], isLastAttempt: false, Ct);
         await Processor().ProcessAsync(segments[1], isLastAttempt: false, Ct);
         await Processor().ProcessAsync(segments[1], isLastAttempt: false, Ct, isRedelivery: true);
@@ -284,7 +284,7 @@ public sealed class MediaSegmentProcessingTests
         Assert.Equal(ProcessingOutcome.Retry, await Processor().ProcessAsync(segment, isLastAttempt: false, Ct));
         Assert.Equal(MediaStatus.Processing, item.Status);
 
-        Assert.Equal(ProcessingOutcome.Failed, await Processor().ProcessAsync(segment, isLastAttempt: true, Ct, isRedelivery: true));
+        Assert.Equal(ProcessingOutcome.GaveUp, await Processor().ProcessAsync(segment, isLastAttempt: true, Ct, isRedelivery: true));
         Assert.Equal(MediaStatus.Failed, item.Status);
         Assert.Equal(2, _jobs.Job(item.Id)!.Segments[1].Attempts);
         Assert.Single(item.TakeStatusChanges(), c => c.Status == MediaStatus.Failed);

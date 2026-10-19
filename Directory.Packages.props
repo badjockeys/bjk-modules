@@ -13,7 +13,9 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
     <PackageVersion Include="AWSSDK.S3" Version="4.0.104.4" />
-    <PackageVersion Include="RabbitMQ.Client" Version="7.2.2" />
+    <!-- Durable queues and events in SQL Server (MIT): Rebus with its SQL Server transport and subscription storage. -->
+    <PackageVersion Include="Rebus" Version="8.9.5" />
+    <PackageVersion Include="Rebus.SqlServer" Version="8.4.2" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
 
     <!-- Security pins for packages we only get indirectly. Remove once dependencies ship the fix themselves. -->

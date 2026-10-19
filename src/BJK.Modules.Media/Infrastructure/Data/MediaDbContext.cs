@@ -11,7 +11,7 @@ namespace BJK.Modules.Media.Infrastructure.Data;
 /// The Media module's tables, in the <see cref="MediaModule.Schema"/> schema of the app database. When it saves, every
 /// media status change other modules should hear about (<see cref="MediaItem.TakeStatusChanges"/>) becomes a
 /// <c>media.ready</c> or <c>media.failed</c> message in <c>media.Outbox</c>, in the same transaction, which the API host
-/// then publishes to the <see cref="MediaEvents.Exchange"/> exchange.
+/// then publishes to the <see cref="MediaEvents.Topic"/> topic.
 /// </summary>
 public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : DbContext(options)
 {

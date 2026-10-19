@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Media</PackageId>
-    <Description>Media module for Bad Jockeys: photo and video uploads to Cloudflare R2, processing jobs, and media records. Hosted by the bjk-core API.</Description>
+    <Description>Media module for Bad Jockeys: photo and video uploads to Cloudflare R2, processing jobs (SQL Server queue), and media records. Hosted by the bjk-core API.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,7 +13,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="AWSSDK.S3" />
-    <PackageReference Include="RabbitMQ.Client" />
     <!-- Face and number plate detection on the CPU (MIT licence). Only the media worker uses it. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <!-- Only for `dotnet ef migrations add`; not passed on to hosts that use the package. -->

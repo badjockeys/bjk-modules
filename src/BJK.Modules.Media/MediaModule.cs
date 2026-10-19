@@ -46,13 +46,13 @@ public sealed class MediaModule(string connectionStringName) : IModule
     {
         MediaServices.AddStorageAndData(services, configuration, connectionStringName);
         services.AddScoped<IMediaDirectory, MediaDirectory>();
-        services.TryAddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+        services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
 
         // media.ready / media.failed: written to media.Outbox by the API and the workers, published from here.
-        services.AddOutboxPublisher<MediaDbContext>(configuration, MediaEvents.Exchange);
+        services.AddOutboxPublisher<MediaDbContext>(configuration, MediaEvents.Topic, connectionStringName);
 
         services.AddScoped<IPersonalDataExporter, MediaPersonalDataExporter>();
-        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration);
+        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy
