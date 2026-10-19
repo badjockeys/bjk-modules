@@ -52,6 +52,9 @@ internal sealed class BlockDirectory(IProfileRepository profiles) : IBlockDirect
     public async Task<IReadOnlyCollection<Guid>> GetBlockedIdsAsync(Guid blockerId, CancellationToken cancellationToken) =>
         await profiles.GetBlockedIdsAsync(blockerId, cancellationToken);
 
+    public async Task<IReadOnlyCollection<Guid>> GetBlockedEitherWayAsync(Guid userId, CancellationToken cancellationToken) =>
+        await profiles.GetBlockedEitherWayAsync(userId, cancellationToken);
+
     public Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken) =>
         profiles.IsBlockedAsync(blockerId, blockedId, cancellationToken);
 }

@@ -42,6 +42,18 @@ public sealed class ModuleExceptionHandler(IProblemDetailsService problemDetails
                 Detail = ageCheck.Message,
                 Extensions = { ["code"] = AgeVerificationRequiredException.Code },
             },
+            DailyLimitReachedException daily => new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Daily limit reached.",
+                Detail = daily.Message,
+                Extensions =
+                {
+                    ["code"] = DailyLimitReachedException.Code,
+                    ["resetsAt"] = daily.ResetsAt,
+                    ["limit"] = daily.Limit,
+                },
+            },
             TooManyRequestsException limited => new ProblemDetails
             {
                 Status = StatusCodes.Status429TooManyRequests,

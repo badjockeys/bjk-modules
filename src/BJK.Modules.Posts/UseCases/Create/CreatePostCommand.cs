@@ -124,7 +124,8 @@ public sealed class CreatePostCommandHandler(
             clock.GetUtcNow(),
             request.IsSensitive,
             mediaPending: pending,
-            notifyEmail: pending ? caller.Email : null);
+            notifyEmail: pending ? caller.Email : null,
+            hasVideo: request.MediaIds.Any(id => found[id].MediaType == MediaType.Video));
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         var autoTagged = publisher.TagIfDetected(post, request.MediaIds.Select(id => found[id]));
 

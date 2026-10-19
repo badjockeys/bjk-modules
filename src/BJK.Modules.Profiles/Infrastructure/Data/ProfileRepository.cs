@@ -25,6 +25,9 @@ public interface IProfileRepository
     /// <summary>The ids of everyone the user has blocked.</summary>
     Task<IReadOnlyList<Guid>> GetBlockedIdsAsync(Guid blockerId, CancellationToken cancellationToken);
 
+    /// <summary>The ids of everyone the user has blocked or been blocked by.</summary>
+    Task<IReadOnlyList<Guid>> GetBlockedEitherWayAsync(Guid userId, CancellationToken cancellationToken);
+
     Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken);
 
     Task<int> CountBlocksAsync(Guid blockerId, CancellationToken cancellationToken);
@@ -69,6 +72,13 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
         await db.Blocks.AsNoTracking()
             .Where(b => b.BlockerId == blockerId)
             .Select(b => b.BlockedId)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Guid>> GetBlockedEitherWayAsync(Guid userId, CancellationToken cancellationToken) =>
+        await db.Blocks.AsNoTracking()
+            .Where(b => b.BlockerId == userId)
+            .Select(b => b.BlockedId)
+            .Union(db.Blocks.AsNoTracking().Where(b => b.BlockedId == userId).Select(b => b.BlockerId))
             .ToListAsync(cancellationToken);
 
     public Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken) =>
