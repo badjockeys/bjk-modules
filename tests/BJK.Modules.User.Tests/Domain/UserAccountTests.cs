@@ -69,7 +69,7 @@ public sealed class UserAccountTests
 
         Assert.Equal(TestDates.Fifteen, account.DateOfBirth);
         Assert.True(account.IsMinorOn(DateOnly.FromDateTime(Now.UtcDateTime)));
-        Assert.False(account.IsSignUpComplete);
+        Assert.True(account.IsSignUpComplete);
     }
 
     [Theory]
@@ -96,38 +96,6 @@ public sealed class UserAccountTests
 
         Assert.True(account.IsMinorOn(new DateOnly(2026, 10, 18)));
         Assert.False(account.IsMinorOn(new DateOnly(2026, 10, 19)));
-    }
-
-    [Fact]
-    public void Liveness_pass_completes_sign_up()
-    {
-        var account = UserAccount.Create(Guid.NewGuid().ToString(), TestDates.Adult, Now);
-
-        Assert.True(account.TryStartLivenessAttempt(Now, 3));
-        account.RecordLiveness(passed: true, Now);
-
-        Assert.True(account.IsSignUpComplete);
-        Assert.Equal(LivenessStatus.Passed, account.LivenessStatus);
-        Assert.Equal(Now, account.LivenessCheckedAt);
-        Assert.False(account.TryStartLivenessAttempt(Now, 3));
-        Assert.Throws<InvalidOperationException>(() => account.RecordLiveness(passed: false, Now));
-    }
-
-    [Fact]
-    public void Liveness_allows_three_tries_a_day()
-    {
-        var account = UserAccount.Create(Guid.NewGuid().ToString(), TestDates.Adult, Now);
-        for (var i = 0; i < 3; i++)
-        {
-            Assert.True(account.TryStartLivenessAttempt(Now.AddMinutes(i), 3));
-            account.RecordLiveness(passed: false, Now.AddMinutes(i));
-        }
-
-        Assert.False(account.TryStartLivenessAttempt(Now.AddHours(1), 3));
-        Assert.Equal(0, account.LivenessAttemptsLeft(Now.AddHours(1), 3));
-        Assert.Equal(3, account.LivenessAttemptsLeft(Now.AddDays(1), 3));
-        Assert.True(account.TryStartLivenessAttempt(Now.AddDays(1), 3));
-        Assert.False(account.IsSignUpComplete);
     }
 
     [Fact]

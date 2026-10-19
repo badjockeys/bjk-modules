@@ -49,7 +49,7 @@ public sealed class UserCommandHandlerTests
         var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!", TestDates.Fifteen), Ct);
 
         Assert.Equal(Guid.Parse(User1), id);
-        _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive && u.DateOfBirth == TestDates.Fifteen && !u.IsSignUpComplete));
+        _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive && u.DateOfBirth == TestDates.Fifteen && u.IsSignUpComplete));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
         await _identity.Received(1).SendEmailConfirmationAsync(User1, Arg.Any<CancellationToken>());
     }

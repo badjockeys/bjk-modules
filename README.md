@@ -19,7 +19,7 @@ src/
     API/Contracts/               Request/response records
     UseCases/
       Add/                       Register (13+, date of birth): sign-in account + account record
-      SignUp/                    Finish sign-up: liveness check (no age estimate), date of birth for older accounts
+      SignUp/                    Date of birth rules; asking older accounts for theirs
       Deactivate/  Reactivate/   Deactivate (self with password, or admin); reactivate within the grace period
       Delete/                    Admin "delete now"; the retention job that deletes expired accounts
       Reset/                     Forgot password: request token, confirm with new password
@@ -32,7 +32,7 @@ src/
     Contracts/                   IAccountAgeLookup and the age_verified and minor claims, for the identity server's tokens
     Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
     Infrastructure/              AccountRetentionService (hourly), account data export
-    Domain/                      UserAccount, AgeRules (13+, under-18s), LivenessStatus, AgeCheckRules
+    Domain/                      UserAccount, AgeRules (13+, under-18s), AgeCheckRules
     UserModule.cs                Module entry point
   BJK.Modules.Media/             Hosted by bjk-core
     API/Controllers/             MediaController (/api/media)
@@ -122,7 +122,7 @@ app.MapControllers();
 | `Messaging:UserEventsQueue` | bjk-core only. Default `bjk-core.user-events`. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
-| `AgeAssurance:*` | Identity server only. The sign-up liveness check and the age check: see [Age policy](#age-policy-13-sign-up-liveness-check-and-the-age-check-for-sensitive-posts). |
+| `AgeAssurance:*` | Identity server only. The age check for sensitive posts: see [Age policy](#age-policy-13-and-the-age-check-for-sensitive-posts). |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 | `Safety:RequireAgeVerification` | Default **`false`** (since 19 Oct 2026): posting, commenting and reacting no longer need the age check. `true` makes posting, editing posts, commenting, reacting and reporting need the `age_verified` claim again; kept for future use. |
@@ -149,8 +149,8 @@ Nothing is stored twice. The **email and password** are in the sign-in account o
 
 | Endpoint (identity server) | Access |
 |---|---|
-| `POST /api/users` | Anonymous + CAPTCHA: register (`email`, `password`, `dateOfBirth` e.g. `"2010-05-31"`). Under 13: 400 with error code `too_young`, nothing created or kept. The new account gets no tokens until it passes the liveness check on the identity server's pages. |
-| `GET /api/users/me` | Signed-in user: email, status, dates, date of birth, liveness result, age check |
+| `POST /api/users` | Anonymous + CAPTCHA: register (`email`, `password`, `dateOfBirth` e.g. `"2010-05-31"`). Under 13: 400 with error code `too_young`, nothing created or kept. |
+| `GET /api/users/me` | Signed-in user: email, status, dates, date of birth, age check |
 | `POST /api/users/me/deactivate` | Signed-in user, confirming with their password |
 | `POST /api/users/reactivate` | Anonymous + CAPTCHA: email and password of a deactivated account |
 | `POST /api/users/password-reset`, `.../confirm` | Anonymous (+ CAPTCHA for the request) |
@@ -161,7 +161,7 @@ Nothing is stored twice. The **email and password** are in the sign-in account o
 | `GET /api/users?status=`, `GET /api/users/{id}` | Admin (or yourself for `{id}`) |
 | `POST /api/users/{id}/deactivate`, `POST /api/users/{id}/reactivate`, `DELETE /api/users/{id}` | Admin. `DELETE` deletes permanently now. |
 
-## Age policy: 13+, sign-up liveness check, and the age check for sensitive posts
+## Age policy: 13+, and the age check for sensitive posts
 
 Decided 19 Oct 2026 (replaces "18+ with an age check at sign-up").
 
@@ -169,11 +169,11 @@ Decided 19 Oct 2026 (replaces "18+ with an age check at sign-up").
 
 **Under-18s.** Tokens carry **`minor` = `"true"`** while the declared date of birth says the user is under 18. The identity server works it out each time it issues a token (`IAccountAgeLookup`), so it disappears on the 18th birthday. Modules read it with `ClaimsPrincipal.IsMinor()` (Shared) to apply the high-privacy defaults of the ICO Children's Code.
 
-**Liveness at sign-up (no age estimate).** To stop bots and fake accounts, a new account must pass a head-turn liveness check before it gets any token (`SubmitSignUpLivenessCommand`, from the identity server's "One quick check" page, signed in with its cookie). The same `ILivenessChecker` as below (YuNet on our servers) checks the video shows one live person turning their head; there's no age estimate. A failed try says why ("We didn't see you turn your head...") and how many tries are left: 3 per 24 hours (`AgeAssurance:MaxAttemptsPerDay`, counted separately from the age check). Only `LivenessStatus` (NotChecked, Passed, Failed), `LivenessCheckedAt` and the tries counter are kept; the video is wiped when the request ends. The identity server refuses tokens (`IsActive` = false) until the account has a date of birth and has passed (`IAccountAgeLookup` / `AccountAgeFacts.IsSignUpComplete`).
+**Sign-up is the date of birth, Cloudflare Turnstile and email confirmation.** There's no selfie or liveness check at sign-up (decided 19 Oct 2026). The identity server refuses tokens (`IsActive` = false) only to an older account with no date of birth on record, until it gives one (`IAccountAgeLookup` / `AccountAgeFacts.IsSignUpComplete`).
 
 ## Age check (18+, on demand, for sensitive posts)
 
-The "highly effective" age check is no longer part of sign-up. A signed-in user takes it when they first want to view a sensitive post ("Verify your age to view sensitive posts", `/Account/CheckAge` on the identity server). Their tokens carry **`age_verified` = `"true"`** once they've passed. If the declared date of birth says they're under 18, the check isn't offered at all (`underAgeByDateOfBirth`; the commands refuse with a kind message explaining sensitive posts are for adults). Posting, commenting and reacting don't need it (`Safety:RequireAgeVerification` is off by default).
+The "highly effective" age check is no longer part of sign-up. A signed-in user takes it when they first want to view a sensitive post ("Verify your age to view sensitive posts", `/Account/CheckAge` on the identity server). This is the only place the liveness check is used: against spoofing, before the face age estimate. Their tokens carry **`age_verified` = `"true"`** once they've passed. If the declared date of birth says they're under 18, the check isn't offered at all (`underAgeByDateOfBirth`; the commands refuse with a kind message explaining sensitive posts are for adults). Posting, commenting and reacting don't need it (`Safety:RequireAgeVerification` is off by default).
 
 1. **Head-turn selfie.** The browser records a 3–5 second video while the user turns their head left, then right.
    - `ILivenessChecker` (open source, on our servers) checks it shows one live person turning their head. The identity server registers `YuNet` (OpenCV Zoo YuNet face detection through ONNX Runtime).
@@ -191,15 +191,15 @@ The "highly effective" age check is no longer part of sign-up. A signed-in user 
 **Where it shows up.**
 - Admins and moderators see the status (never the video) as `ageCheck` on `GET /api/admin/users/{id}`.
 - Admins can reset it.
-- "Download my data" includes it, with the date of birth and the liveness result.
+- "Download my data" includes it, with the date of birth.
 - Deleting the account deletes it, because it lives on the account row.
 
 | Setting | Default | Notes |
 |---|---|---|
 | `AgeAssurance:ChallengeAge` | 25 | At least 18 |
-| `AgeAssurance:MaxAttemptsPerDay` | 3 | Per 24 hours, separately for the sign-up liveness check and the age check |
+| `AgeAssurance:MaxAttemptsPerDay` | 3 | |
 | `AgeAssurance:MaxVideoBytes`, `MaxImageBytes` | 15 MB, 10 MB | |
-| `AgeAssurance:Liveness:Provider` | `Development` | `YuNet` (identity server) for real checks. Used at sign-up and in the age check. |
+| `AgeAssurance:Liveness:Provider` | `Development` | `YuNet` (identity server) for real checks |
 | `AgeAssurance:Estimator:Provider` | `Development` | `Http` for a real provider |
 | `AgeAssurance:Estimator:Http:Name`, `Endpoint`, `ApiKey` (secret), `ApiKeyHeader`, `ApiKeyPrefix`, `VideoField`, `AgePath`, `UncertaintyPath`, `Timeout` | | Generic adapter. It POSTs the video as multipart/form-data and reads the age (and an optional margin of error) from the JSON response by dot path, e.g. `result.age.estimate`. A vendor with a different API gets its own `IAgeEstimator`. |
 | `AgeAssurance:Document:Provider` | `Development` | No real photo-ID provider is built yet. Plug one in by registering an `IDocumentAgeCheck`. |
@@ -233,7 +233,7 @@ The identity server and bjk-core have separate databases, so the identity server
 
 | Host | Sections |
 |---|---|
-| Identity server | `account`: id, email, status, dates, date of birth, sign-up liveness result and date, age check outcome |
+| Identity server | `account`: id, email, status, dates, date of birth, age check outcome |
 | bjk-core | `profile`; `posts` (posts, comments, reactions, reports made); `media` (every upload, with a 24-hour download link for each original still kept, and the processed files) |
 
 The apps call both endpoints and offer the two files (or one zip) as "Download my data". A deactivated user can't sign in, so they reactivate, download, then deactivate again if they want.

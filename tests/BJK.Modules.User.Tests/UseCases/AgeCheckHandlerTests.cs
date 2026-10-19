@@ -261,7 +261,6 @@ public sealed class AgeCheckHandlerTests
 
         Assert.Contains("\"AgeCheck\":{\"Status\":\"Passed\",\"Method\":\"FaceEstimate\"", json);
         Assert.Contains("\"DateOfBirth\":\"1990-06-15\"", json);
-        Assert.Contains("\"Liveness\":{\"Status\":\"NotChecked\"", json);
     }
 
     [Fact]

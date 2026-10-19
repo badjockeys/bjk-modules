@@ -21,9 +21,8 @@ internal sealed class UserAccountConfiguration : IEntityTypeConfiguration<UserAc
         builder.Property(u => u.AgeCheckResult).HasConversion<string>().HasMaxLength(30);
         builder.Property(u => u.AgeCheckProvider).HasMaxLength(UserAccount.ProviderMaxLength);
 
-        // Sign-up: the declared date of birth (a date, no time) and the liveness result. Never the video.
+        // The declared date of birth (a date, no time).
         builder.Property(u => u.DateOfBirth).HasColumnType("date");
-        builder.Property(u => u.LivenessStatus).HasConversion<string>().HasMaxLength(20);
 
         // Admin lists, newest first; and the retention job's query.
         builder.HasIndex(u => new { u.Status, u.CreatedAt });

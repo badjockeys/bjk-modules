@@ -77,7 +77,7 @@ public sealed class UserModule(string connectionStringName) : IModule
     }
 
     /// <summary>
-    /// The sign-up liveness check and the on-demand age check (for sensitive posts): settings (checked at startup),
+    /// The on-demand age check (for sensitive posts): settings (checked at startup),
     /// the development stand-ins and the generic HTTP estimator.
     /// The host adds its own providers (the identity server registers the YuNet liveness checker) as further
     /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons;

@@ -9,8 +9,7 @@ namespace BJK.Modules.User.UseCases.Add;
 /// <summary>
 /// Registers a new user: creates their sign-in account and their account record (with their date of birth), and
 /// emails a link to confirm their email address (needed before posting or commenting). Returns the new user's id.
-/// Under 13 is refused before anything is created, and that date of birth isn't kept anywhere. The new account
-/// can't get tokens until it passes the liveness check on the identity server's sign-up pages. Their public profile
+/// Under 13 is refused before anything is created, and that date of birth isn't kept anywhere. Their public profile
 /// (handle, display name) is created afterwards in bjk-core.
 /// </summary>
 /// <param name="Email">The email address to sign in with.</param>

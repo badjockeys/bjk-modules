@@ -40,16 +40,15 @@ public sealed class AgeRulesTests
     }
 
     [Fact]
-    public void Account_age_facts_say_when_sign_up_is_complete_and_who_is_a_minor()
+    public void Account_age_facts_say_who_has_a_date_of_birth_and_who_is_a_minor()
     {
         var today = new DateOnly(2026, 10, 19);
 
-        Assert.False(new AccountAgeFacts(TestDates.Fifteen, LivenessPassed: false, AgeVerified: false).IsSignUpComplete);
-        Assert.False(new AccountAgeFacts(null, LivenessPassed: true, AgeVerified: false).IsSignUpComplete);
-        Assert.True(new AccountAgeFacts(TestDates.Fifteen, LivenessPassed: true, AgeVerified: false).IsSignUpComplete);
-        Assert.True(new AccountAgeFacts(TestDates.Fifteen, true, false).IsMinorOn(today));
-        Assert.False(new AccountAgeFacts(TestDates.Adult, true, false).IsMinorOn(today));
-        Assert.False(new AccountAgeFacts(null, true, false).IsMinorOn(today));
-        Assert.DoesNotContain("2011", new AccountAgeFacts(TestDates.Fifteen, true, false).ToString(), StringComparison.Ordinal);
+        Assert.False(new AccountAgeFacts(null, AgeVerified: false).IsSignUpComplete);
+        Assert.True(new AccountAgeFacts(TestDates.Fifteen, AgeVerified: false).IsSignUpComplete);
+        Assert.True(new AccountAgeFacts(TestDates.Fifteen, false).IsMinorOn(today));
+        Assert.False(new AccountAgeFacts(TestDates.Adult, false).IsMinorOn(today));
+        Assert.False(new AccountAgeFacts(null, false).IsMinorOn(today));
+        Assert.DoesNotContain("2011", new AccountAgeFacts(TestDates.Fifteen, false).ToString(), StringComparison.Ordinal);
     }
 }

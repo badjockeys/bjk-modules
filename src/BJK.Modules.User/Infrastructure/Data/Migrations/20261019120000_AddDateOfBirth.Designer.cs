@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BJK.Modules.User.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(UserDbContext))]
-    [Migration("20261019120000_AddDateOfBirthAndLiveness")]
-    partial class AddDateOfBirthAndLiveness
+    [Migration("20261019120000_AddDateOfBirth")]
+    partial class AddDateOfBirth
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -102,20 +102,6 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
 
                     b.Property<DateTimeOffset?>("DeletionDueAt")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("LivenessAttempts")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("LivenessAttemptsSince")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset?>("LivenessCheckedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("LivenessStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

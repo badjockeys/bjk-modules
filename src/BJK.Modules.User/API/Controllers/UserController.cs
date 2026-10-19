@@ -25,8 +25,8 @@ namespace BJK.Modules.User.API.Controllers;
 public sealed class UserController(ISender sender) : ControllerBase
 {
     /// <summary>
-    /// Registers a new user (sign-in account) aged 13 or over. Before the account can get tokens, the user signs in
-    /// on the identity server's pages and passes the liveness check. The app then creates their profile in bjk-core.
+    /// Registers a new user (sign-in account) aged 13 or over, by declared date of birth. The app then creates their
+    /// profile in bjk-core.
     /// </summary>
     [HttpPost]
     [AllowAnonymous]
