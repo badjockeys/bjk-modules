@@ -370,17 +370,17 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 
 **GPU-ready.** `Media:Redaction:ExecutionProvider=Cuda` makes the detectors ask ONNX Runtime for its CUDA provider. A future GPU worker only needs the `Microsoft.ML.OnnxRuntime.Gpu` package in place of `Microsoft.ML.OnnxRuntime` (same API, no code changes) and a CUDA base image; ffmpeg stays on the CPU. With today's CPU package, `Cuda` makes both detectors unavailable (logged as an error), so every upload goes to review rather than being published unchecked.
 
-**Timing** (measured in CI, run 49 on 19 Oct 2026, on a 2-vCPU GitHub runner with the Media tests running alone; 30-second 1080p30 clips; decode, detect, track, blur, encode and thumbnail, not counting storage downloads and uploads):
+**Timing** (measured in CI, three runs on 19 Oct 2026 which varied by up to 60% between runners, on a 2-vCPU GitHub runner with the Media tests running alone; 30-second 1080p30 clips; decode, detect, track, blur, encode and thumbnail, not counting storage downloads and uploads):
 
 | 30-second 1080p30 clip | Time | Of which detection |
 |---|---|---|
-| Crowd photo panning (~200 faces a frame, worst case for blurring), **one job** | 49.6 s | 29.7 s |
-| The same, **6 segments** of 5 s, each as its own job | 9.1–11.2 s each (63 s in total, the overlap and per-job start-up cost about a quarter more) | |
+| Crowd photo panning (~200 faces a frame, worst case for blurring), **one job** | 31–50 s | 16–30 s |
+| The same, **6 segments** of 5 s, each as its own job | 5.4–11.2 s each (39–63 s in total: the overlap and per-job start-up cost about a quarter more) | |
 | Joining the segments + thumbnail | 0.3 s | |
-| **Estimated with 6 worker replicas in parallel** (probe + slowest segment + join) | **11.6 s, about 4x faster** | |
-| Moving test pattern (no faces, detailed picture), one job | 61.6 s | 29.8 s |
+| **Estimated with 6 worker replicas in parallel** (probe + slowest segment + join) | **7.5–11.6 s, about 4x faster** | |
+| Moving test pattern (no faces, detailed picture), one job | 41–62 s | 16–30 s |
 
-Per frame analysed: faces 59 ms at full 720p, about 4 times less on the 640 px copy now used; plates 138 ms with the zoomed tiles (26 ms whole frame only), which is now most of the detection time. For comparison, before this change the same clips took 106–172 s per minute of video. Add a second or two per segment for downloading the original from R2, plus the queue wait if fewer than 6 replicas are free; with one replica the segments run one after another (about 25% slower than one job), so give the worker a KEDA maximum of at least 6. Speed scales roughly with cores. To go faster at some cost in safety: `PlateTiles=false` (detection would drop to roughly a quarter) or `DetectEveryNthFrame=10`. `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
+Per frame analysed: faces 24–59 ms at full 720p, about 4 times less on the 640 px copy now used; plates 65–138 ms with the zoomed tiles (12–26 ms whole frame only), which is now most of the detection time. For comparison, before this change the same clips took 106–172 s per minute of video. Add a second or two per segment for downloading the original from R2, plus the queue wait if fewer than 6 replicas are free; with one replica the segments run one after another (about 25% slower than one job), so give the worker a KEDA maximum of at least 6. Speed scales roughly with cores. To go faster at some cost in safety: `PlateTiles=false` (detection would drop to roughly a quarter) or `DetectEveryNthFrame=10`. `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
