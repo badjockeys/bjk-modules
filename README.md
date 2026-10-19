@@ -273,14 +273,14 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | `InferenceThreads` | 0 (ONNX Runtime decides: all cores) |
 | `VideoTimeout` | 25 minutes per video |
 
-**Timing** (measured in CI on a 2-vCPU GitHub runner, 60-second 1080p30 clips, the Media tests running alone):
+**Timing** (measured in CI on 2-vCPU GitHub runners, 60-second 1080p30 clips, the Media tests running alone; two runs, which varied by about 25%):
 
 | | Per minute of video | 5-minute clip | Of which detection |
 |---|---|---|---|
-| Moving test pattern, no faces (baseline) | 141 s | ~12 min | 67 s/min |
-| Crowd photo panning, ~200 faces a frame (worst case for blurring) | 106 s | ~9 min | 67 s/min |
+| Moving test pattern, no faces (baseline) | 141–172 s | 12–14 min | 67–84 s/min |
+| Crowd photo panning, ~200 faces a frame (worst case for blurring) | 106–131 s | 9–11 min | 67–85 s/min |
 
-Per 720p frame analysed: faces 43 ms, plates 129 ms with tiles (25 ms whole frame only). The rest is ffmpeg decoding and encoding. Speed scales roughly with cores, so a 4-vCPU worker should take about half as long. To go faster at some cost in safety: `PlateTiles=false` (saves about 3.5 minutes per 5-minute clip on 2 vCPUs) or `DetectEveryNthFrame=10` (about 3 minutes). `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
+Per 720p frame analysed: faces 43–55 ms, plates 129–159 ms with tiles (25–31 ms whole frame only). The rest is ffmpeg decoding and encoding. Speed scales roughly with cores, so a 4-vCPU worker should take about half as long. To go faster at some cost in safety: `PlateTiles=false` (saves about 3.5 minutes per 5-minute clip on 2 vCPUs) or `DetectEveryNthFrame=10` (about 3 minutes). `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
