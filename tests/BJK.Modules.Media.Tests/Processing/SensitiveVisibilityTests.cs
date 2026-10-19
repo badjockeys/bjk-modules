@@ -369,6 +369,30 @@ public sealed class SensitiveVisibilityTests
     }
 
     [Fact]
+    public async Task A_photos_feed_copy_moves_with_its_other_files()
+    {
+        var item = MediaItem.Create(UserId, "parking.jpg", "image/jpeg", Now);
+        item.MarkUploaded(10, Now, TimeSpan.FromDays(1));
+        item.MarkReady(99, null, 2048, 1536, null, Now);
+        _media.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
+        foreach (var key in new[] { item.PlaybackKey!, item.ThumbnailKey!, item.FeedKey! })
+        {
+            _storage.Put(MediaBucket.Public, key);
+        }
+
+        _sensitive = true;
+        await Processor().ProcessAsync(MediaProcessingJob.ForVisibility(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(new[] { $"{Folder(item)}/preview.webp" }, _storage.Keys(MediaBucket.Public));
+        Assert.Contains($"{Folder(item)}/sensitive/feed.webp", _storage.Keys(MediaBucket.Sensitive));
+
+        _sensitive = false;
+        await Processor().ProcessAsync(MediaProcessingJob.ForVisibility(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(new[] { $"{Folder(item)}/feed.webp", $"{Folder(item)}/image.webp", $"{Folder(item)}/thumbnail.webp" }, _storage.Keys(MediaBucket.Public));
+    }
+
+    [Fact]
     public void Visibility_jobs_have_their_own_message_ids()
     {
         var item = PublicReady();

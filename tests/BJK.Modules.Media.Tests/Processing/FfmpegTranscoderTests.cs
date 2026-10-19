@@ -101,6 +101,40 @@ public sealed class FfmpegTranscoderTests : IDisposable
     }
 
     [Fact]
+    public async Task Photos_get_a_1080_pixel_feed_copy_never_enlarged()
+    {
+        RequireFfmpeg();
+        var large = Make("large.png", "-f", "lavfi", "-i", "testsrc=size=3000x4000:duration=1", "-frames:v", "1");
+        var small = Make("small.png", "-f", "lavfi", "-i", "testsrc=size=800x600:duration=1", "-frames:v", "1");
+
+        await _transcoder.CreateFeedImageAsync(large, Path.Combine(_folder, "feed-large.webp"), Ct);
+        await _transcoder.CreateFeedImageAsync(small, Path.Combine(_folder, "feed-small.webp"), Ct);
+
+        var feedLarge = await _transcoder.ProbeAsync(Path.Combine(_folder, "feed-large.webp"), Ct);
+        var feedSmall = await _transcoder.ProbeAsync(Path.Combine(_folder, "feed-small.webp"), Ct);
+        Assert.Equal((810, 1080), (feedLarge.Width, feedLarge.Height));
+        Assert.Equal((800, 600), (feedSmall.Width, feedSmall.Height));
+        Assert.Contains("codec_name=webp", await FfmpegTestSupport.Ffprobe(Path.Combine(_folder, "feed-large.webp")));
+    }
+
+    [Fact]
+    public async Task The_sensitive_preview_is_a_small_heavily_blurred_webp()
+    {
+        RequireFfmpeg();
+        // A 16-pixel checkerboard: full of detail, which the preview must destroy.
+        var thumbnail = Make("thumb.jpg", "-f", "lavfi", "-i", $"color=c=gray:s=640x360,format=yuv420p,{FfmpegTestSupport.Checkerboard}", "-frames:v", "1");
+        var preview = Path.Combine(_folder, "preview.webp");
+
+        await _transcoder.CreateSensitivePreviewAsync(thumbnail, preview, Ct);
+
+        var probe = await _transcoder.ProbeAsync(preview, Ct);
+        Assert.Equal((480, 270), (probe.Width, probe.Height));
+        Assert.True(new FileInfo(preview).Length < 10_000, "A heavily blurred picture compresses to almost nothing.");
+        var frame = Assert.Single(await FfmpegTestSupport.Frames(preview));
+        Assert.InRange(FfmpegTestSupport.Detail(frame, 0, 0, 480, 270), 0, 8);
+    }
+
+    [Fact]
     public async Task A_file_that_is_not_media_is_unreadable()
     {
         RequireFfmpeg();

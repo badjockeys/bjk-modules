@@ -29,6 +29,15 @@ public interface IMediaTranscoder
     Task ConvertImageAsync(string inputPath, string imagePath, string thumbnailPath, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Writes a photo's feed-size WebP copy (longest side <c>Media:Processing:FeedImageMaxSize</c>, 1080 px, never
+    /// enlarged), without metadata, from the blurred picture.
+    /// </summary>
+    /// <param name="inputPath">The blurred picture.</param>
+    /// <param name="feedPath">Where to write the feed copy.</param>
+    /// <param name="cancellationToken">Stops the job.</param>
+    Task CreateFeedImageAsync(string inputPath, string feedPath, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Writes the heavily blurred, low-resolution WebP preview shown in place of sensitive media: the picture is shrunk
     /// to a few dozen pixels (destroying detail), blurred, enlarged and blurred again, without metadata. The input is an
     /// already blurred thumbnail (JPEG or WebP).

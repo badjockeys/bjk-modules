@@ -65,6 +65,12 @@ public sealed class MediaItem
 
     public string? ThumbnailKey { get; private set; }
 
+    /// <summary>
+    /// Photos only: the feed-size copy (<see cref="MediaKeys.Feed"/>), set once Ready. Null for videos and for photos
+    /// processed before feed copies existed (the apps then use the full image).
+    /// </summary>
+    public string? FeedKey { get; private set; }
+
     public long? PlaybackSizeBytes { get; private set; }
 
     public decimal? DurationSeconds { get; private set; }
@@ -205,6 +211,7 @@ public sealed class MediaItem
         RecordProcessed(playbackSizeBytes, durationSeconds, width, height, sha256, now);
         PlaybackKey = MediaKeys.Playback(UserId, Id, MediaType, Revision);
         ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType, Revision);
+        FeedKey = MediaType == MediaType.Image ? MediaKeys.Feed(UserId, Id, Revision) : null;
         ReviewReason = null;
         Status = MediaStatus.Ready;
         _statusChanges.Add(new MediaStatusChange(MediaStatus.Ready, null, now));
@@ -248,6 +255,7 @@ public sealed class MediaItem
         RecordProcessed(playbackSizeBytes, durationSeconds, width, height, sha256, now);
         PlaybackKey = null;
         ThumbnailKey = null;
+        FeedKey = null;
         ReviewReason = reason.Length <= ReviewReasonMaxLength ? reason : reason[..ReviewReasonMaxLength];
         Status = MediaStatus.NeedsReview;
     }
@@ -255,11 +263,13 @@ public sealed class MediaItem
     /// <summary>A moderator approved the blurred files, which have been copied to the public bucket. It can now be posted.</summary>
     /// <param name="moderatorId">The moderator, or null for a machine token.</param>
     /// <param name="now">The time.</param>
-    public void Approve(Guid? moderatorId, DateTimeOffset now)
+    /// <param name="withFeed">Photos: a feed-size copy was published too (false for photos processed before they existed).</param>
+    public void Approve(Guid? moderatorId, DateTimeOffset now, bool withFeed = true)
     {
         EnsureStatus(MediaStatus.NeedsReview);
         PlaybackKey = MediaKeys.Playback(UserId, Id, MediaType, Revision);
         ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType, Revision);
+        FeedKey = MediaType == MediaType.Image && withFeed ? MediaKeys.Feed(UserId, Id, Revision) : null;
         ReviewReason = null;
         ReviewedBy = moderatorId;
         ReviewedAt = now;
@@ -343,6 +353,7 @@ public sealed class MediaItem
         SourceKey = sourceKey ?? SourceKey;
         PlaybackKey = null;
         ThumbnailKey = null;
+        FeedKey = null;
         IsRestricted = false;
         PreviewKey = null;
         ReviewReason = null;

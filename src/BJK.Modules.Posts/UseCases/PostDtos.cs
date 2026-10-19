@@ -24,7 +24,9 @@ public sealed record LocationDto(decimal Latitude, decimal Longitude, string? Pl
 /// who may not see it (logged out, or not age-verified), <c>IsBlurred</c> is true, <c>PlaybackUrl</c> and
 /// <c>ThumbnailUrl</c> are null and <c>PreviewUrl</c> is a heavily blurred, low-resolution picture (null for the few
 /// seconds until it's made: show a placeholder). Otherwise the real files: public addresses, or for sensitive media
-/// short-lived signed links valid until <c>LinksExpireAt</c> (fetch the post again for fresh ones).
+/// short-lived signed links valid until <c>LinksExpireAt</c> (fetch the post again for fresh ones). Photos also have
+/// <c>FeedUrl</c>, a 1080 px copy to show in feeds and lists; <c>PlaybackUrl</c> is the full 2048 px image, for when
+/// it's tapped. <c>FeedUrl</c> is null for videos, photos processed before it existed, and blurred media.
 /// </summary>
 public sealed record PostMediaDto(
     Guid MediaId,
@@ -36,7 +38,8 @@ public sealed record PostMediaDto(
     int? Height,
     Uri? PreviewUrl = null,
     bool IsBlurred = false,
-    DateTimeOffset? LinksExpireAt = null);
+    DateTimeOffset? LinksExpireAt = null,
+    Uri? FeedUrl = null);
 
 /// <summary>
 /// A post. <c>IsSensitive</c> posts (graphic injuries, serious crashes) go to everyone, but unless the viewer is an
@@ -278,6 +281,6 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
             .Where(m => m.IsReady && (blurred || m.PlaybackUrl is not null))
             .Select(m => blurred
                 ? new PostMediaDto(m.Id, m.MediaType, null, null, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: true)
-                : new PostMediaDto(m.Id, m.MediaType, m.PlaybackUrl, m.ThumbnailUrl, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: false, m.LinksExpireAt))
+                : new PostMediaDto(m.Id, m.MediaType, m.PlaybackUrl, m.ThumbnailUrl, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: false, m.LinksExpireAt, m.FeedUrl))
             .ToList();
 }

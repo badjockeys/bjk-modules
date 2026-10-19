@@ -62,6 +62,12 @@ public sealed class MediaProcessorTests
             });
         _transcoder.ConvertImageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci => WriteOutputs(ci.ArgAt<string>(1), ci.ArgAt<string>(2)));
+        _transcoder.CreateFeedImageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                File.WriteAllBytes(ci.ArgAt<string>(1), new byte[77]);
+                return Task.CompletedTask;
+            });
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -132,8 +138,13 @@ public sealed class MediaProcessorTests
         Assert.Equal(ProcessingOutcome.Completed, outcome);
         Assert.Equal(MediaStatus.Ready, item.Status);
         Assert.Null(item.DurationSeconds);
-        Assert.Equal(new[] { "image/webp", "image/webp" }, _uploads.Select(u => u.Type));
+        Assert.Equal(
+            new[] { ($"{UserId:D}/{item.Id:D}/image.webp", 1234L), ($"{UserId:D}/{item.Id:D}/thumbnail.webp", 56L), ($"{UserId:D}/{item.Id:D}/feed.webp", 77L) },
+            _uploads.Select(u => (u.Key, u.Size)));
+        Assert.All(_uploads, u => Assert.Equal("image/webp", u.Type));
         Assert.EndsWith("/image.webp", item.PlaybackKey);
+        Assert.Equal($"{UserId:D}/{item.Id:D}/feed.webp", item.FeedKey);
+        await _transcoder.Received(1).CreateFeedImageAsync(Arg.Is<string>(p => p.EndsWith("redacted.ppm")), Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _redactor.DidNotReceiveWithAnyArgs().RedactVideoAsync(default!, default!, default!, default!, Ct);
         await _transcoder.Received(1).ConvertImageAsync(Arg.Is<string>(p => p.EndsWith("redacted.ppm")), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
@@ -308,6 +319,8 @@ public sealed class MediaProcessorTests
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
         Assert.Contains(_privateUploads, u => u.Key == $"{UserId:D}/{item.Id:D}/review/image-r1.webp");
+        Assert.Contains(_privateUploads, u => u.Key == $"{UserId:D}/{item.Id:D}/review/feed-r1.webp");
+        Assert.Null(item.FeedKey);
         Assert.Empty(_uploads);
     }
 }

@@ -11,6 +11,9 @@ public static class MediaKeys
     public const string ImageFile = "image.webp";
     public const string ImageThumbnailFile = "thumbnail.webp";
 
+    /// <summary>Photos only: the feed-size copy (1080 px longest side by default), loaded in feeds; the full image opens on tap.</summary>
+    public const string FeedImageFile = "feed.webp";
+
     /// <summary>Sub-folder, in the private originals bucket, for blurred files waiting for a moderator.</summary>
     public const string ReviewFolder = "review";
 
@@ -32,6 +35,20 @@ public static class MediaKeys
 
     public static string Thumbnail(Guid userId, Guid mediaId, MediaType type, int revision = 0) =>
         $"{Folder(userId, mediaId)}/{Revised(type == MediaType.Video ? VideoThumbnailFile : ImageThumbnailFile, revision)}";
+
+    /// <summary>A photo's feed-size copy, in the public bucket (or the sensitive bucket, under <see cref="Sensitive"/>).</summary>
+    /// <param name="userId">The uploader.</param>
+    /// <param name="mediaId">The media.</param>
+    /// <param name="revision">The media revision.</param>
+    public static string Feed(Guid userId, Guid mediaId, int revision = 0) =>
+        $"{Folder(userId, mediaId)}/{Revised(FeedImageFile, revision)}";
+
+    /// <summary>A photo's blurred feed-size copy waiting for review, in the private originals bucket.</summary>
+    /// <param name="userId">The uploader.</param>
+    /// <param name="mediaId">The media.</param>
+    /// <param name="revision">The media revision.</param>
+    public static string ReviewFeed(Guid userId, Guid mediaId, int revision = 0) =>
+        $"{Folder(userId, mediaId)}/{ReviewFolder}/{Revised(FeedImageFile, revision)}";
 
     /// <summary>The blurred main file waiting for review, in the private originals bucket.</summary>
     public static string ReviewPlayback(Guid userId, Guid mediaId, MediaType type, int revision = 0) =>

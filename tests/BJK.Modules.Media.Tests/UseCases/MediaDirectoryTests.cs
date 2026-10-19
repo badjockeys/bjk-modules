@@ -98,6 +98,22 @@ public sealed class MediaDirectoryTests
     }
 
     [Fact]
+    public async Task Photos_have_a_feed_address_public_or_signed()
+    {
+        var photo = Ready("image/jpeg");
+        _media.GetManyAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaItem> { photo });
+
+        var plain = Assert.Single(await _directory.GetAsync([photo.Id], Ct));
+        Assert.Equal($"https://media.example.com/{UserId:D}/{photo.Id:D}/feed.webp", plain.FeedUrl!.ToString());
+        Assert.EndsWith("/image.webp", plain.PlaybackUrl!.ToString());
+
+        photo.Restrict(MediaKeys.Preview(UserId, photo.Id), Now);
+        Assert.Null(Assert.Single(await _directory.GetAsync([photo.Id], Ct)).FeedUrl);
+        var signed = Assert.Single(await _directory.GetWithSensitiveLinksAsync([photo.Id], Ct));
+        Assert.Contains("/sensitive/feed.webp", signed.FeedUrl!.ToString());
+    }
+
+    [Fact]
     public async Task Public_media_keeps_its_public_addresses_with_sensitive_links()
     {
         var item = Ready();
