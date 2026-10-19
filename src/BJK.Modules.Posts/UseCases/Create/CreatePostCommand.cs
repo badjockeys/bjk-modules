@@ -10,6 +10,7 @@ using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Create;
 
@@ -35,8 +36,8 @@ public sealed record CreatePostCommand(
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
-    public CreatePostCommandValidator(TimeProvider clock)
-        : base(clock)
+    public CreatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
+        : base(clock, options)
     {
         RuleFor(c => c.MediaIds)
             .NotEmpty()

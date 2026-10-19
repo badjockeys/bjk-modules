@@ -15,6 +15,12 @@ internal sealed class UserAccountConfiguration : IEntityTypeConfiguration<UserAc
         builder.Property(u => u.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(u => u.RowVersion).IsRowVersion();
 
+        // Age check: outcome only. The selfie video and ID photo are never stored.
+        builder.Property(u => u.AgeCheckStatus).HasConversion<string>().HasMaxLength(20);
+        builder.Property(u => u.AgeCheckMethod).HasConversion<string>().HasMaxLength(20);
+        builder.Property(u => u.AgeCheckResult).HasConversion<string>().HasMaxLength(30);
+        builder.Property(u => u.AgeCheckProvider).HasMaxLength(UserAccount.ProviderMaxLength);
+
         // Admin lists, newest first; and the retention job's query.
         builder.HasIndex(u => new { u.Status, u.CreatedAt });
         builder.HasIndex(u => new { u.Status, u.DeletionDueAt });

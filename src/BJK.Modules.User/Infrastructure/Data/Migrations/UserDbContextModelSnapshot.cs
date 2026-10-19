@@ -62,6 +62,32 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("AgeCheckAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("AgeCheckAttemptsSince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AgeCheckMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AgeCheckProvider")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("AgeCheckRecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AgeCheckResult")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("AgeCheckStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 

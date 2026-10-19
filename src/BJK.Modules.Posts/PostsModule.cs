@@ -16,6 +16,7 @@ using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts;
 
@@ -64,6 +65,10 @@ public sealed class PostsModule(string connectionStringName) : IModule
                 sql.MigrationsHistoryTable(MigrationsHistoryTable, Schema);
                 sql.EnableRetryOnFailure();
             }));
+        services.AddOptions<PostsOptions>()
+            .Bind(configuration.GetSection(PostsOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<PostsOptions>, PostsOptionsValidator>();
         services.AddScoped<IPostRepository, PostRepository>();
         services.AddScoped<IReactionRepository, ReactionRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();

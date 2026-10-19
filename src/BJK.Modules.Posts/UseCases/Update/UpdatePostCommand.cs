@@ -3,6 +3,7 @@ using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using MediatR;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Update;
 
@@ -21,7 +22,8 @@ public sealed record UpdatePostCommand(
     string? PlaceName,
     bool? IsSensitive = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
-public sealed class UpdatePostCommandValidator(TimeProvider clock) : PostDetailsValidator<UpdatePostCommand>(clock);
+public sealed class UpdatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
+    : PostDetailsValidator<UpdatePostCommand>(clock, options);
 
 public sealed class UpdatePostCommandHandler(
     IPostRepository posts,

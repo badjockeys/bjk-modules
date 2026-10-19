@@ -23,8 +23,12 @@ src/
       Delete/                    Admin "delete now"; the retention job that deletes expired accounts
       Reset/                     Forgot password: request token, confirm with new password
       Get/  List/                Read side (CQRS queries)
+      AgeChecks/                 Age check (18+): selfie or photo ID, status, admin reset
       AccountLifecycle.cs        Deactivate / reactivate / delete, each with an outbox event
     Infrastructure/Services/     IUserRepository, IIdentityService (implemented by the host)
+    Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; HTTP estimator adapter;
+                                 Development stand-ins; settings checked at startup
+    Contracts/                   IAgeVerificationLookup and the age_verified claim, for the identity server's tokens
     Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
     Infrastructure/              AccountRetentionService (hourly), account data export
     Domain/                      UserAccount
@@ -117,10 +121,12 @@ app.MapControllers();
 | `Messaging:UserEventsQueue` | bjk-core only. Default `bjk-core.user-events`. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
+| `AgeAssurance:*` | Identity server only. The age check: see [Age check](#age-check). |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 | `Safety:RequireAgeVerification` | Default `true`: posting, editing posts, commenting, reacting and reporting need the `age_verified` claim. `false` only for local development and tests. |
 | `Safety:NewAccounts:Period`, `:MaxPosts`, `:MaxComments` | New-account limits. Defaults `1.00:00:00`, 3, 20. bjk-core only. |
+| `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
 | `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
 | `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
 | `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
@@ -147,8 +153,48 @@ Nothing is stored twice. The **email and password** are in the sign-in account o
 | `POST /api/users/me/deactivate` | Signed-in user, confirming with their password |
 | `POST /api/users/reactivate` | Anonymous + CAPTCHA: email and password of a deactivated account |
 | `POST /api/users/password-reset`, `.../confirm` | Anonymous (+ CAPTCHA for the request) |
+| `GET /api/users/me/age-check` | Signed-in user: age check status, attempts left, which routes are open |
+| `POST /api/users/me/age-check/face` | Signed-in user: multipart `video` (3–5 s head-turn selfie) |
+| `POST /api/users/me/age-check/document` | Signed-in user: multipart `image` (photo of an ID) |
+| `POST /api/admin/users/{id}/age-check/reset` | Admin: clear the age check so the user takes it again |
 | `GET /api/users?status=`, `GET /api/users/{id}` | Admin (or yourself for `{id}`) |
 | `POST /api/users/{id}/deactivate`, `POST /api/users/{id}/reactivate`, `DELETE /api/users/{id}` | Admin. `DELETE` deletes permanently now. |
+
+## Age check
+
+Minimum age 18. Checked once, at account creation, in the identity server ("Check your age" page, or the endpoints above). An account can sign in before passing, but its tokens only carry **`age_verified` = `"true"`** once it has passed (`IAgeVerificationLookup`, used by the identity server's profile service). Modules that need it check that claim.
+
+1. **Head-turn selfie.** The browser records a 3–5 second video while the user turns their head left, then right.
+   - `ILivenessChecker` (open source, on our servers) checks it shows one live person turning their head. The identity server registers `YuNet` (OpenCV Zoo YuNet face detection through ONNX Runtime).
+   - If it passes, `IAgeEstimator` (a specialist provider behind HTTP) estimates the age.
+2. **Rules** (`AgeCheckRules`):
+   - Estimated **25 or over** (`AgeAssurance:ChallengeAge`) passes.
+   - **18 to 24** needs photo ID. The selfie route then closes, so retrying can't fish for a higher estimate.
+   - **Can't tell** or a failed liveness check: try again, or use photo ID.
+   - **Clearly under 18** (even allowing for the provider's margin of error) fails with a kind message. Photo ID is still offered, because estimates can be wrong.
+3. **Photo ID** (`IDocumentAgeCheck`): 18 or over passes. Under 18 on the ID is final until an admin resets it.
+4. **Retries:** 3 attempts (selfie or ID) per 24 hours (`AgeAssurance:MaxAttemptsPerDay`).
+
+**What's kept.** Only the outcome, on `users.Accounts`: `AgeCheckStatus` (NotChecked, DocumentRequired, Passed, Failed), `AgeCheckMethod` (FaceEstimate, Document), `AgeCheckResult` (the last attempt's outcome), `AgeCheckProvider`, `AgeCheckRecordedAt`, and the attempt counter. The video and ID photo are read into memory (the upload limits stop ASP.NET buffering them to disk), handed to the providers, and zeroed when the request ends. They're never written to the database or logs. Neither are the estimated age or anything read from the ID.
+
+**Where it shows up.**
+- Admins and moderators see the status (never the video) as `ageCheck` on `GET /api/admin/users/{id}`.
+- Admins can reset it.
+- "Download my data" includes it.
+- Deleting the account deletes it, because it lives on the account row.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `AgeAssurance:ChallengeAge` | 25 | At least 18 |
+| `AgeAssurance:MaxAttemptsPerDay` | 3 | |
+| `AgeAssurance:MaxVideoBytes`, `MaxImageBytes` | 15 MB, 10 MB | |
+| `AgeAssurance:Liveness:Provider` | `Development` | `YuNet` (identity server) for real checks |
+| `AgeAssurance:Estimator:Provider` | `Development` | `Http` for a real provider |
+| `AgeAssurance:Estimator:Http:Name`, `Endpoint`, `ApiKey` (secret), `ApiKeyHeader`, `ApiKeyPrefix`, `VideoField`, `AgePath`, `UncertaintyPath`, `Timeout` | | Generic adapter. It POSTs the video as multipart/form-data and reads the age (and an optional margin of error) from the JSON response by dot path, e.g. `result.age.estimate`. A vendor with a different API gets its own `IAgeEstimator`. |
+| `AgeAssurance:Document:Provider` | `Development` | No real photo-ID provider is built yet. Plug one in by registering an `IDocumentAgeCheck`. |
+| `AgeAssurance:*:Development:Age`, `AgeAssurance:Liveness:Development:Pass` | 30, true | What the Development stand-ins answer, for trying every path locally |
+
+**Development providers never run anywhere else.** They don't check anything real, so startup refuses them outside the Development environment, along with an unknown provider name or an Http estimator with no HTTPS endpoint or key. A host adds a provider by registering another `ILivenessChecker`, `IAgeEstimator` or `IDocumentAgeCheck` singleton with its own `Name`.
 
 ## Deactivation, retention and deletion
 
@@ -176,7 +222,7 @@ The identity server and bjk-core have separate databases, so the identity server
 
 | Host | Sections |
 |---|---|
-| Identity server | `account`: id, email, status, dates |
+| Identity server | `account`: id, email, status, dates, age check outcome |
 | bjk-core | `profile`; `posts` (posts, comments, reactions, reports made); `media` (every upload, with a 24-hour download link for each original still kept, and the processed files) |
 
 The apps call both endpoints and offer the two files (or one zip) as "Download my data". A deactivated user can't sign in, so they reactivate, download, then deactivate again if they want.
@@ -426,6 +472,7 @@ Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
 - **Content screening.** Every comment, reply and post text goes through `IContentScreener`, scoring 0 to 1. At or above `Screening:HoldThreshold` (0.8) it's **held for review**: only its author sees it (status `HeldForReview`) until a moderator approves or removes it. At or above `Screening:FlagThreshold` (0.5) it's published but **flagged** for a moderator. The default provider is a built-in keyword and phrase list (threats, slurs, abuse, and calls to find or confront people) with three severities; text is normalised so "k1lll" matches "kill". The `Http` provider also calls a classifier service, intended for an open-source Detoxify model in a sidecar container: `POST {"text": "..."}` returning `{"scores": {"toxicity": 0.97, ...}}`; the higher of the two scores wins, and if the service is down the keyword result is used (labelled `classifier_unavailable`). Edits are screened again; a flag stays until a moderator clears it.
 - **Sensitive posts.** `isSensitive` (graphic injuries, serious crashes) is set by the author on create or edit, or by a moderator. Logged-out callers never get sensitive posts: they're left out of the feed and profile lists, and the post page is a 404.
 - **No comments for logged-out viewers.** The comment and reply lists need a signed-in token. Post responses to logged-out callers carry `commentsRequireSignIn: true`; the comment count is still included (it shows activity without revealing anything), so the apps can show "Sign in to see 12 comments".
+- **UK only at launch.** The pin as given, before rounding, must be inside an allowed region (`Posts:AllowedRegions`, default the UK), or the post is refused with a 400 on `Location`: "Bad Jockeys only accepts incidents in the UK for now." The outlines are simplified polygons embedded in code (`ServiceRegions`), drawn at roughly 5 to 15 km accuracy: mainland Great Britain; Northern Ireland following the land border with Ireland; and the islands (Isle of Wight, Anglesey, Scilly, Arran, the Inner and Outer Hebrides, Orkney, Fair Isle, Shetland and Rathlin). They're generous at sea and tight on the Irish border and the Dover Strait, so Ireland, France and the Netherlands are refused. The Isle of Man and the Channel Islands are outside the UK, so they're refused unless added (`IM`, `JE`, `GG`). Points within a kilometre or two of the Irish border can fall either way (for example, Belcoo and Blacklion face each other across a stream).
 - **Location rounding.** Map pins are rounded to about 500 m when saved (`PinRounding`): latitude to a grid of 0.0045° (500 m north–south), then longitude to 0.0045° / cos(latitude) (about 500 m east–west). The API returns only the rounded pin and the place name. The OnlineSafety migration rounds existing rows the same way (an update; nothing is deleted).
 - **Age check.** Writes (create and edit posts, comment, reply, react, report as a signed-in user) need the token's `age_verified` claim (`"true"`), issued by the identity server once the account has passed the age check, while `Safety:RequireAgeVerification` is on (the default). Without it the API returns 403 with `code: "age_verification_required"` (type `https://badjockeys.com/problems/age-verification-required`), so the apps can send the user to the age check.
 - **New-account limits.** While a profile is younger than `Safety:NewAccounts:Period` (24 hours) it can create at most `MaxPosts` (3) posts and `MaxComments` (20) comments and replies in any rolling 24 hours, counting deleted ones. Over the limit: 429 with `code: "new_account_limit"`.

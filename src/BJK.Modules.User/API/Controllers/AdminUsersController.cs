@@ -3,6 +3,7 @@ using BJK.Modules.Shared.Security;
 using BJK.Modules.User.API.Contracts;
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.UseCases;
+using BJK.Modules.User.UseCases.AgeChecks;
 using BJK.Modules.User.UseCases.Deactivate;
 using BJK.Modules.User.UseCases.Delete;
 using BJK.Modules.User.UseCases.Get;
@@ -72,6 +73,17 @@ public sealed class AdminUsersController(ISender sender) : ControllerBase
         await sender.Send(new DeleteUserNowCommand(id), cancellationToken);
         return NoContent();
     }
+
+    /// <summary>
+    /// Admins: reset the account's age check so the user takes it again. The status (never the video) is in the
+    /// account's <c>ageCheck</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/age-check/reset")]
+    [ProducesResponseType<UserDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<UserDto> ResetAgeCheck(Guid id, CancellationToken cancellationToken) =>
+        await sender.Send(new ResetAgeCheckCommand(id), cancellationToken);
 
     /// <summary>Admins: set the account's staff roles (none, Moderator, Admin).</summary>
     [HttpPut("{id:guid}/roles")]

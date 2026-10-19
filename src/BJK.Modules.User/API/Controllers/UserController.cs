@@ -4,6 +4,7 @@ using BJK.Modules.User.API.Contracts;
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.UseCases;
 using BJK.Modules.User.UseCases.Add;
+using BJK.Modules.User.UseCases.AgeChecks;
 using BJK.Modules.User.UseCases.Confirm;
 using BJK.Modules.User.UseCases.Deactivate;
 using BJK.Modules.User.UseCases.Delete;
@@ -63,6 +64,39 @@ public sealed class UserController(ISender sender) : ControllerBase
     {
         await sender.Send(new ReactivateAccountCommand(request.Email, request.Password), cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>My age check: status, attempts left, and whether the selfie or photo-ID route is available.</summary>
+    [HttpGet("me/age-check")]
+    [ProducesResponseType<AgeCheckDto>(StatusCodes.Status200OK)]
+    public async Task<AgeCheckDto> GetAgeCheck(CancellationToken cancellationToken) =>
+        await sender.Send(new GetMyAgeCheckQuery(), cancellationToken);
+
+    /// <summary>
+    /// Check my age with a 3–5 second head-turn selfie video (multipart field <c>video</c>). The video is checked in
+    /// memory and wiped straight away; only the outcome is kept. Once passed, new tokens carry age_verified=true.
+    /// </summary>
+    [HttpPost("me/age-check/face")]
+    [RequestSizeLimit(AgeCheckUploads.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AgeCheckUploads.MaxRequestBytes, MemoryBufferThreshold = AgeCheckUploads.MaxRequestBytes)]
+    [ProducesResponseType<AgeCheckDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<AgeCheckDto> SubmitFaceAgeCheck(IFormFile? video, CancellationToken cancellationToken)
+    {
+        var (bytes, contentType) = await AgeCheckUploads.ReadAsync(video, cancellationToken);
+        return await sender.Send(new SubmitFaceAgeCheckCommand(bytes, contentType), cancellationToken);
+    }
+
+    /// <summary>Check my age with a photo of my ID instead (multipart field <c>image</c>). Wiped straight away; only the outcome is kept.</summary>
+    [HttpPost("me/age-check/document")]
+    [RequestSizeLimit(AgeCheckUploads.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AgeCheckUploads.MaxRequestBytes, MemoryBufferThreshold = AgeCheckUploads.MaxRequestBytes)]
+    [ProducesResponseType<AgeCheckDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<AgeCheckDto> SubmitDocumentAgeCheck(IFormFile? image, CancellationToken cancellationToken)
+    {
+        var (bytes, contentType) = await AgeCheckUploads.ReadAsync(image, cancellationToken);
+        return await sender.Send(new SubmitDocumentAgeCheckCommand(bytes, contentType), cancellationToken);
     }
 
     /// <summary>Email me another link to confirm my email address.</summary>

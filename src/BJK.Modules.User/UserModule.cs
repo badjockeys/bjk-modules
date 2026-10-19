@@ -4,13 +4,17 @@ using BJK.Modules.Shared.Messaging;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.User.Contracts;
 using BJK.Modules.User.Infrastructure;
+using BJK.Modules.User.Infrastructure.AgeAssurance;
 using BJK.Modules.User.Infrastructure.Data;
 using BJK.Modules.User.Infrastructure.Services;
 using BJK.Modules.User.UseCases;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.User;
 
@@ -59,6 +63,8 @@ public sealed class UserModule(string connectionStringName) : IModule
         services.AddScoped<IPersonalDataExporter, AccountPersonalDataExporter>();
         services.AddOptions<UserOptions>().Bind(configuration.GetSection(UserOptions.SectionName));
 
+        AddAgeAssurance(services, configuration);
+
         // Account changes go out to bjk-core through the outbox (see AccountLifecycle).
         services.AddOutboxPublisher<UserDbContext>(configuration, UserLifecycleEvents.Exchange);
         services.AddHostedService<AccountRetentionService>();
@@ -68,6 +74,28 @@ public sealed class UserModule(string connectionStringName) : IModule
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)));
+    }
+
+    /// <summary>
+    /// The age check: settings (checked at startup), the development stand-ins and the generic HTTP estimator.
+    /// The host adds its own providers (the identity server registers the YuNet liveness checker) as further
+    /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons;
+    /// <c>AgeAssurance:*:Provider</c> picks one of each by name.
+    /// </summary>
+    internal static void AddAgeAssurance(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<AgeAssuranceOptions>()
+            .Bind(configuration.GetSection(AgeAssuranceOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<AgeAssuranceOptions>, AgeAssuranceOptionsValidator>());
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ILivenessChecker, DevelopmentLivenessChecker>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgeEstimator, DevelopmentAgeEstimator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgeEstimator, HttpAgeEstimator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentAgeCheck, DevelopmentDocumentAgeCheck>());
+        services.AddHttpClient(HttpAgeEstimator.ClientName);
+        services.AddSingleton<AgeAssuranceProviders>();
+        services.AddScoped<IAgeVerificationLookup, AgeVerificationLookup>();
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>
