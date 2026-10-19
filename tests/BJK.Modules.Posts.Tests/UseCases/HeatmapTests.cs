@@ -187,7 +187,7 @@ public sealed class HeatmapTests
         Assert.True(new HourRange(22, 6).Contains(23) && new HourRange(22, 6).Contains(5) && !new HourRange(22, 6).Contains(12));
         Assert.Null(HourRange.Parse("7-7"));
         Assert.Null(HourRange.Parse("25-3"));
-        Assert.True(new GetHeatmapQueryValidator().Validate(new GetHeatmapQuery(new HeatmapRequest("nope"), 6)).Errors.Any(e => e.PropertyName == "bbox"));
+        Assert.Contains(new GetHeatmapQueryValidator().Validate(new GetHeatmapQuery(new HeatmapRequest("nope"), 6)).Errors, e => e.PropertyName == "bbox");
         Assert.True(new GetHeatmapQueryValidator().Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, Categories: "Tailgating", Hours: "7-10"), 12)).IsValid);
     }
 }
