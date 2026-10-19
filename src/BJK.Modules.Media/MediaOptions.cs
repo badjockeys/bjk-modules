@@ -206,6 +206,13 @@ public sealed class MediaProcessingOptions
     [Range(320, 8192)]
     public int ImageMaxSize { get; set; } = 2048;
 
+    /// <summary>
+    /// Photos: longest side of the feed-size copy (<c>feed.webp</c>, same quality as the full image), which feeds load;
+    /// the full <see cref="ImageMaxSize"/> image opens on tap. Never enlarged.
+    /// </summary>
+    [Range(320, 4096)]
+    public int FeedImageMaxSize { get; set; } = 1080;
+
     /// <summary>Longest side of thumbnails, in pixels.</summary>
     [Range(64, 1920)]
     public int ThumbnailMaxSize { get; set; } = 640;

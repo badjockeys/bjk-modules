@@ -137,6 +137,26 @@ public sealed class OnlineSafetyTests
     }
 
     [Fact]
+    public async Task Photos_carry_their_feed_address_except_when_blurred()
+    {
+        var plain = Existing(OtherUserId);
+        var sensitive = Existing(OtherUserId, sensitive: true);
+        _posts.SearchAsync(Arg.Any<PostSearch>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((new List<Post> { plain, sensitive }, 2));
+        _media.GetAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaSummary>
+        {
+            Summary(plain.Media[0].MediaId, restricted: false) with { MediaType = MediaType.Image, FeedUrl = new Uri("https://media.example.com/feed.webp") },
+            Summary(sensitive.Media[0].MediaId, restricted: false) with { MediaType = MediaType.Image, FeedUrl = new Uri("https://media.example.com/feed2.webp") },
+        });
+        _caller.AgeVerified.Returns(false);
+
+        var page = await FeedHandler().Handle(new ListPostsQuery(), Ct);
+
+        Assert.Equal("https://media.example.com/feed.webp", page.Items.Single(p => p.Id == plain.Id).Media[0].FeedUrl!.ToString());
+        Assert.Null(page.Items.Single(p => p.Id == sensitive.Id).Media[0].FeedUrl);
+    }
+
+    [Fact]
     public async Task Moderators_get_the_real_media_without_the_age_check()
     {
         var post = Existing(OtherUserId, sensitive: true);

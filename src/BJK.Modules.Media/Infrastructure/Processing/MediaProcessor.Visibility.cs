@@ -119,7 +119,7 @@ internal sealed partial class MediaProcessor
     private async Task<bool> RestrictFilesAsync(MediaItem item, CancellationToken cancellationToken)
     {
         var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
-        var files = new[] { (Key: item.PlaybackKey!, Type: playbackType), (Key: item.ThumbnailKey!, Type: thumbnailType) };
+        var files = ProcessedFiles(item, playbackType, thumbnailType);
 
         // 1. Private copies. Public is the source while the media isn't restricted yet; once it is, the copies already exist.
         foreach (var (key, type) in files)
@@ -182,7 +182,7 @@ internal sealed partial class MediaProcessor
     private async Task<bool> PublishFilesAsync(MediaItem item, CancellationToken cancellationToken)
     {
         var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
-        var files = new[] { (Key: item.PlaybackKey!, Type: playbackType), (Key: item.ThumbnailKey!, Type: thumbnailType) };
+        var files = ProcessedFiles(item, playbackType, thumbnailType);
 
         // 1. Public copies, from the private ones. Also repairs public files deleted by a tag job that raced an untag.
         foreach (var (key, type) in files)
@@ -227,6 +227,18 @@ internal sealed partial class MediaProcessor
         }
 
         return true;
+    }
+
+    /// <summary>The processed files that move between buckets: main file, thumbnail and (photos) the feed-size copy.</summary>
+    private static List<(string Key, string Type)> ProcessedFiles(MediaItem item, string playbackType, string thumbnailType)
+    {
+        var files = new List<(string Key, string Type)> { (item.PlaybackKey!, playbackType), (item.ThumbnailKey!, thumbnailType) };
+        if (item.FeedKey is not null)
+        {
+            files.Add((item.FeedKey, "image/webp"));
+        }
+
+        return files;
     }
 
     /// <summary>Saves, returning false (instead of throwing) if someone else changed the media first.</summary>

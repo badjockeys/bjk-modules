@@ -68,6 +68,10 @@ public interface IMediaDirectory
 /// sensitive (source Automatic) and queues it for a moderator to confirm or undo.
 /// </param>
 /// <param name="SensitiveScore">The graphic content score from the latest processing (0 to 1), or null if not scored.</param>
+/// <param name="FeedUrl">
+/// Photos: the feed-size copy (1080 px), for feeds; <paramref name="PlaybackUrl"/> is the full image. Null for videos and
+/// older photos. Like the other addresses, null or signed for restricted media.
+/// </param>
 public sealed record MediaSummary(
     Guid Id,
     Guid UserId,
@@ -83,7 +87,8 @@ public sealed record MediaSummary(
     bool IsRestricted = false,
     DateTimeOffset? LinksExpireAt = null,
     bool IsAutoSensitive = false,
-    double? SensitiveScore = null)
+    double? SensitiveScore = null,
+    Uri? FeedUrl = null)
 {
     public bool IsReady => Status == MediaStatus.Ready;
 

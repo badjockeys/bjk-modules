@@ -18,7 +18,7 @@ internal static class MediaFiles
             await DeleteReviewFilesAsync(storage, item, cancellationToken);
         }
 
-        var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.PreviewKey }.OfType<string>().ToList();
+        var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.FeedKey, item.PreviewKey }.OfType<string>().ToList();
         if (published.Count > 0)
         {
             await storage.DeletePublicAsync(published, cancellationToken);
@@ -33,7 +33,7 @@ internal static class MediaFiles
     /// </summary>
     public static async Task DeleteSensitiveCopiesAsync(IMediaStorage storage, MediaItem item, CancellationToken cancellationToken)
     {
-        var copies = new[] { item.PlaybackKey, item.ThumbnailKey }.OfType<string>().Select(MediaKeys.Sensitive).ToList();
+        var copies = new[] { item.PlaybackKey, item.ThumbnailKey, item.FeedKey }.OfType<string>().Select(MediaKeys.Sensitive).ToList();
         if (copies.Count > 0)
         {
             await storage.DeleteAsync(MediaBucket.Sensitive, copies, cancellationToken);
@@ -49,5 +49,9 @@ internal static class MediaFiles
     {
         await storage.DeleteOriginalAsync(MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision), cancellationToken);
         await storage.DeleteOriginalAsync(MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision), cancellationToken);
+        if (item.MediaType == MediaType.Image)
+        {
+            await storage.DeleteOriginalAsync(MediaKeys.ReviewFeed(item.UserId, item.Id, item.Revision), cancellationToken);
+        }
     }
 }

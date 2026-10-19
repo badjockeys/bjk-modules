@@ -235,18 +235,34 @@ public sealed class ApproveMediaCommandHandler(
         // the worker makes the blurred preview. Copy first: if copying fails the media stays in review and approving
         // can be retried.
         var sensitive = await media.IsSensitiveAsync(item.Id, cancellationToken);
-        if (sensitive)
+        var files = new List<(string Review, string Published, string Type)>
         {
-            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Playback, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Playback), playbackType, cancellationToken);
-            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Thumbnail, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Thumbnail), thumbnailType, cancellationToken);
-        }
-        else
+            (reviewFiles.Playback, published.Playback, playbackType),
+            (reviewFiles.Thumbnail, published.Thumbnail, thumbnailType),
+        };
+        if (item.MediaType == MediaType.Image)
         {
-            await storage.PublishPrivateAsync(reviewFiles.Playback, published.Playback, playbackType, cancellationToken);
-            await storage.PublishPrivateAsync(reviewFiles.Thumbnail, published.Thumbnail, thumbnailType, cancellationToken);
+            // Photos also have a feed-size copy (none for photos processed before it existed: then nothing to copy).
+            var reviewFeed = MediaKeys.ReviewFeed(item.UserId, item.Id, item.Revision);
+            if (await storage.ExistsAsync(MediaBucket.Originals, reviewFeed, cancellationToken))
+            {
+                files.Add((reviewFeed, MediaKeys.Feed(item.UserId, item.Id, item.Revision), "image/webp"));
+            }
         }
 
-        item.Approve(caller.UserId(), clock.GetUtcNow());
+        foreach (var (review, publishedKey, type) in files)
+        {
+            if (sensitive)
+            {
+                await storage.CopyAsync(MediaBucket.Originals, review, MediaBucket.Sensitive, MediaKeys.Sensitive(publishedKey), type, cancellationToken);
+            }
+            else
+            {
+                await storage.PublishPrivateAsync(review, publishedKey, type, cancellationToken);
+            }
+        }
+
+        item.Approve(caller.UserId(), clock.GetUtcNow(), withFeed: files.Count > 2);
         if (sensitive)
         {
             item.Restrict(previewKey: null, clock.GetUtcNow());
@@ -263,8 +279,10 @@ public sealed class ApproveMediaCommandHandler(
             await media.SaveChangesAsync(cancellationToken);
         }
 
-        await storage.DeleteOriginalAsync(reviewFiles.Playback, cancellationToken);
-        await storage.DeleteOriginalAsync(reviewFiles.Thumbnail, cancellationToken);
+        foreach (var (review, _, _) in files)
+        {
+            await storage.DeleteOriginalAsync(review, cancellationToken);
+        }
 
         // Tagged while we approved it: move the files now.
         if (!sensitive && await media.IsSensitiveAsync(item.Id, cancellationToken))
@@ -402,7 +420,7 @@ public sealed class AddManualRedactionsCommandHandler(
         // review copies. Cloudflare may keep serving a cached public file until it's purged.
         if (item.Status == MediaStatus.Ready)
         {
-            var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.PreviewKey }.OfType<string>().ToList();
+            var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.FeedKey, item.PreviewKey }.OfType<string>().ToList();
             if (published.Count > 0)
             {
                 await storage.DeletePublicAsync(published, cancellationToken);

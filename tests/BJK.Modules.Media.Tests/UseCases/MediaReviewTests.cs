@@ -136,6 +136,20 @@ public sealed class MediaReviewTests
     }
 
     [Fact]
+    public async Task Approving_a_photo_publishes_its_feed_copy_too()
+    {
+        var item = InReview("image/jpeg");
+        _storage.ExistsAsync(MediaBucket.Originals, $"{UserId:D}/{item.Id:D}/review/feed.webp", Arg.Any<CancellationToken>()).Returns(true);
+
+        await new ApproveMediaCommandHandler(_media, _storage, _queue, _audit, _caller, _clock).Handle(new ApproveMediaCommand(item.Id), Ct);
+
+        Assert.Equal($"{UserId:D}/{item.Id:D}/feed.webp", item.FeedKey);
+        await _storage.Received(1).PublishPrivateAsync(
+            $"{UserId:D}/{item.Id:D}/review/feed.webp", $"{UserId:D}/{item.Id:D}/feed.webp", "image/webp", Arg.Any<CancellationToken>());
+        await _storage.Received(1).DeleteOriginalAsync($"{UserId:D}/{item.Id:D}/review/feed.webp", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Only_media_waiting_for_review_can_be_approved()
     {
         var item = MediaItem.Create(UserId, "clip", "video/mp4", Now);

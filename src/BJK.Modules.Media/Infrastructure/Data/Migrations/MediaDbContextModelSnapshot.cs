@@ -45,6 +45,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("FeedKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<int?>("Height")
                         .HasColumnType("int");
 

@@ -145,6 +145,7 @@ internal sealed partial class MediaProcessor(
         var playback = Path.Combine(folder, item.MediaType == MediaType.Video ? MediaKeys.VideoPlaybackFile : MediaKeys.ImageFile);
         var thumbnail = Path.Combine(folder, item.MediaType == MediaType.Video ? MediaKeys.VideoThumbnailFile : MediaKeys.ImageThumbnailFile);
         var manual = item.ManualRedactions;
+        string? feed = null;
         RedactionResult redaction;
 
         if (item.MediaType == MediaType.Video)
@@ -173,6 +174,8 @@ internal sealed partial class MediaProcessor(
             var redacted = Path.Combine(folder, "redacted.ppm");
             redaction = await redactor.RedactImageAsync(original, manual, redacted, cancellationToken);
             await transcoder.ConvertImageAsync(redacted, playback, thumbnail, cancellationToken);
+            feed = Path.Combine(folder, MediaKeys.FeedImageFile);
+            await transcoder.CreateFeedImageAsync(redacted, feed, cancellationToken);
         }
 
         var duration = item.MediaType == MediaType.Video ? probe.DurationSeconds : null;
@@ -185,7 +188,8 @@ internal sealed partial class MediaProcessor(
             ReviewReasons(redaction.ReviewReasons, manual.Count),
             new ProcessedDetails(duration, probe.Width, probe.Height, sha256),
             beforeSave: null,
-            cancellationToken);
+            cancellationToken,
+            feed);
 
         logger.LogInformation(
             "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames); {Classified} frames scored for graphic content in {ClassificationTime}.",
@@ -246,12 +250,14 @@ internal sealed partial class MediaProcessor(
         IReadOnlyList<string> reasons,
         ProcessedDetails details,
         Action? beforeSave,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? feed = null)
     {
         var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
         var revision = item.Revision;
         string playbackKey;
         string thumbnailKey;
+        string? feedKey = null;
         string? previewKey = null;
 
         // Media in a post tagged sensitive is never published: real files to the sensitive bucket, a blurred preview to the public one.
@@ -263,6 +269,12 @@ internal sealed partial class MediaProcessor(
             thumbnailKey = MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, revision);
             await storage.UploadPrivateAsync(playbackKey, playback, playbackType, cancellationToken);
             await storage.UploadPrivateAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            if (feed is not null)
+            {
+                feedKey = MediaKeys.ReviewFeed(item.UserId, item.Id, revision);
+                await storage.UploadPrivateAsync(feedKey, feed, "image/webp", cancellationToken);
+            }
+
             item.MarkNeedsReview(string.Join(" ", reasons), new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
         }
         else if (sensitive)
@@ -271,6 +283,12 @@ internal sealed partial class MediaProcessor(
             thumbnailKey = MediaKeys.Sensitive(MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, revision));
             await storage.UploadAsync(MediaBucket.Sensitive, playbackKey, playback, playbackType, cancellationToken);
             await storage.UploadAsync(MediaBucket.Sensitive, thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            if (feed is not null)
+            {
+                feedKey = MediaKeys.Sensitive(MediaKeys.Feed(item.UserId, item.Id, revision));
+                await storage.UploadAsync(MediaBucket.Sensitive, feedKey, feed, "image/webp", cancellationToken);
+            }
+
             previewKey = MediaKeys.Preview(item.UserId, item.Id, revision);
             await UploadPreviewAsync(thumbnail, previewKey, cancellationToken);
             item.MarkReady(new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
@@ -282,6 +300,12 @@ internal sealed partial class MediaProcessor(
             thumbnailKey = MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, revision);
             await storage.UploadPublicAsync(playbackKey, playback, playbackType, cancellationToken);
             await storage.UploadPublicAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            if (feed is not null)
+            {
+                feedKey = MediaKeys.Feed(item.UserId, item.Id, revision);
+                await storage.UploadPublicAsync(feedKey, feed, "image/webp", cancellationToken);
+            }
+
             item.MarkReady(new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
         }
 
@@ -302,19 +326,22 @@ internal sealed partial class MediaProcessor(
 
             // The owner deleted it while we were working: remove what we just stored.
             logger.LogInformation("Media {MediaId} changed while processing; removing its processed files.", item.Id);
+            var stored = new[] { playbackKey, thumbnailKey, feedKey }.OfType<string>().ToList();
             if (reasons.Count > 0)
             {
-                await storage.DeleteOriginalAsync(playbackKey, CancellationToken.None);
-                await storage.DeleteOriginalAsync(thumbnailKey, CancellationToken.None);
+                foreach (var key in stored)
+                {
+                    await storage.DeleteOriginalAsync(key, CancellationToken.None);
+                }
             }
             else if (sensitive)
             {
-                await storage.DeleteAsync(MediaBucket.Sensitive, [playbackKey, thumbnailKey], CancellationToken.None);
+                await storage.DeleteAsync(MediaBucket.Sensitive, stored, CancellationToken.None);
                 await storage.DeleteAsync(MediaBucket.Public, [previewKey!], CancellationToken.None);
             }
             else
             {
-                await storage.DeletePublicAsync([playbackKey, thumbnailKey], CancellationToken.None);
+                await storage.DeletePublicAsync(stored, CancellationToken.None);
             }
 
             return ProcessingOutcome.Completed;

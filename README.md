@@ -323,6 +323,7 @@ Photos and videos follow the same flow; only the worker's processing differs.
 |---|---|---|
 | Output | `720p.mp4`: H.264, no sound (see `Media:Redaction:RemoveAudio`), at most 720 pixels high and 30 fps, fast start for streaming | `image.webp`: at most 2048 pixels on its longest side |
 | Thumbnail | `thumbnail.jpg`, from one second in | `thumbnail.webp`, at most 640 pixels |
+| Feed copy | (none) | `feed.webp`: at most 1080 pixels on its longest side, same quality (82), never enlarged. Feeds load it (`feedUrl`); the full `image.webp` (`playbackUrl`) opens on tap |
 | Checks | Must contain a picture; no longer than `Media:MaxVideoDurationSeconds` (**30 seconds**, with half a second of slack for clips trimmed to exactly 30 s) | Must contain a picture |
 
 - **Metadata is stripped** from every published file, so no GPS position, device or owner details go public. The original keeps them, in the private bucket, only until it's deleted (see "Originals" below: as soon as the post is published, 24 hours at most otherwise).
@@ -341,13 +342,13 @@ Photos and videos follow the same flow; only the worker's processing differs.
 | `SegmentSeconds` | 5: videos longer than this are split into segments of this length, processed in parallel; 0 turns splitting off |
 | `SegmentOverlapSeconds` | 1.0: extra video each segment analyses either side of its own part, so tracking matches at the joins |
 | `VideoHeight`, `VideoCrf` | 720, 23 |
-| `ImageMaxSize`, `ThumbnailMaxSize` | 2048, 640 |
+| `ImageMaxSize`, `FeedImageMaxSize`, `ThumbnailMaxSize` | 2048, 1080, 640 |
 | `CommandTimeout` | 15 minutes |
 | `WorkingDirectory` | The system temp folder |
 
 HEIC photos from iPhones need an ffmpeg built with HEIF support (ffmpeg 7.1 or later); with an older ffmpeg they fail with a "couldn't read" reason.
 
-Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader's account id (the token's `sub`) and file names are ours (`original.mov`, `720p.mp4`, `thumbnail.jpg`, `image.webp`, `thumbnail.webp`).
+Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader's account id (the token's `sub`) and file names are ours (`original.mov`, `720p.mp4`, `thumbnail.jpg`, `image.webp`, `feed.webp`, `thumbnail.webp`). The feed copy follows the photo everywhere: review copies, approval, the sensitive bucket and signed links for sensitive photos (never public then), re-processing and deletion. Photos processed before it existed have no `feedKey`; the API then returns `feedUrl: null` and the apps use `playbackUrl`.
 
 | Endpoint | Access |
 |---|---|

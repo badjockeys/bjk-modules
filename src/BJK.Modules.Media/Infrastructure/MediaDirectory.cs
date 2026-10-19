@@ -133,6 +133,7 @@ internal sealed class MediaDirectory(
             ready && item.IsRestricted,
             ready ? links.ExpiresAt : null,
             automatic,
-            item.SensitiveScore);
+            item.SensitiveScore,
+            ready ? links.Feed : null);
     }
 }

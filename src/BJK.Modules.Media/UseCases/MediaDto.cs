@@ -8,7 +8,8 @@ namespace BJK.Modules.Media.UseCases;
 /// A piece of media. <c>IsSensitive</c> media (in a post tagged sensitive) is shown blurred to anyone but the uploader,
 /// moderators and age-verified adults: <c>IsBlurred</c> is then true, <c>PlaybackUrl</c> and <c>ThumbnailUrl</c> are
 /// null and only <c>PreviewUrl</c> (a heavily blurred picture; null until it's made) is given. Callers who may see it
-/// get short-lived signed links once its files are private, valid until <c>LinksExpireAt</c>.
+/// get short-lived signed links once its files are private, valid until <c>LinksExpireAt</c>. Photos have <c>FeedUrl</c>,
+/// a 1080 px copy for feeds (<c>PlaybackUrl</c> is the full 2048 px image); null for videos and older photos.
 /// </summary>
 public sealed record MediaDto(
     Guid Id,
@@ -27,7 +28,8 @@ public sealed record MediaDto(
     bool IsSensitive = false,
     Uri? PreviewUrl = null,
     bool IsBlurred = false,
-    DateTimeOffset? LinksExpireAt = null)
+    DateTimeOffset? LinksExpireAt = null,
+    Uri? FeedUrl = null)
 {
     /// <summary>Public addresses only (none for restricted media). For media that isn't Ready yet, e.g. just uploaded.</summary>
     internal static MediaDto From(MediaItem media, IMediaStorage storage) =>
@@ -74,5 +76,6 @@ public sealed record MediaDto(
         isSensitive,
         preview,
         blurred,
-        links.ExpiresAt);
+        links.ExpiresAt,
+        links.Feed);
 }

@@ -104,6 +104,18 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
         }
     }
 
+    public async Task CreateFeedImageAsync(string inputPath, string feedPath, CancellationToken cancellationToken)
+    {
+        var size = _options.FeedImageMaxSize;
+        var fit = $"scale='min({size},iw)':'min({size},ih)':force_original_aspect_ratio=decrease";
+        await RunOrThrowAsync(
+            _options.FfmpegPath,
+            ["-hide_banner", "-nostdin", "-y", "-i", inputPath, "-map_metadata", "-1", "-frames:v", "1", "-vf", fit,
+             "-c:v", "libwebp", "-quality", "82", feedPath],
+            "make the feed-size photo",
+            cancellationToken);
+    }
+
     public async Task CreateSensitivePreviewAsync(string inputPath, string previewPath, CancellationToken cancellationToken)
     {
         // Longest side down to a few dozen pixels (area averaging), blur, back up to the preview size, blur hard again.
