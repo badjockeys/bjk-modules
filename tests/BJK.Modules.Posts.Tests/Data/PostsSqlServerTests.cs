@@ -91,4 +91,29 @@ public sealed class PostsSqlServerTests : IAsyncLifetime
             Assert.Null(feed.Single(p => p.Id == pending.Id).NotifyEmail);
         }
     }
+
+    [Fact]
+    public async Task The_feed_filters_by_any_of_a_posts_types()
+    {
+        var both = Post.Create(UserId, Details("Tailgated then shouted at") with { Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage] }, [Guid.NewGuid()], Now);
+        var parking = Post.Create(UserId, Details("Across two bays") with { Category = IncidentCategory.BadParking }, [Guid.NewGuid()], Now);
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            repository.Add(both);
+            repository.Add(parking);
+            await repository.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            var (rage, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.RoadRage, null, IncludeHidden: false), 1, 20, Ct);
+            Assert.Equal(new[] { both.Id }, rage.Select(p => p.Id));
+            Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.RoadRage }, rage[0].Types);
+
+            var (parked, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.BadParking, null, IncludeHidden: false), 1, 20, Ct);
+            Assert.Equal(new[] { parking.Id }, parked.Select(p => p.Id));
+        }
+    }
 }

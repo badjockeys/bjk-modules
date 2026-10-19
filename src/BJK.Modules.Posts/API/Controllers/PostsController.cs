@@ -25,7 +25,8 @@ public sealed class PostsController(ISender sender) : ControllerBase
     /// The public feed, newest first. Anyone can call this; logged-out callers never get sensitive posts, and
     /// signed-in callers don't get posts by people they've blocked.
     /// </summary>
-    /// <param name="category">Only this kind of incident.</param>
+    /// <param name="type">Only posts with this type of bad driving among their types.</param>
+    /// <param name="category">The old name for <paramref name="type"/>, still accepted.</param>
     /// <param name="author">Only posts by this @handle.</param>
     /// <param name="lat">Centre of an area to search (with lng and radiusKm).</param>
     /// <param name="lng">Centre of an area to search (with lat and radiusKm).</param>
@@ -38,6 +39,7 @@ public sealed class PostsController(ISender sender) : ControllerBase
     [ProducesResponseType<PagedResult<PostDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<PagedResult<PostDto>> List(
+        [FromQuery] IncidentCategory? type,
         [FromQuery] IncidentCategory? category,
         [FromQuery] string? author,
         [FromQuery] decimal? lat,
@@ -46,7 +48,7 @@ public sealed class PostsController(ISender sender) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListPostsQuery(category, author, lat, lng, radiusKm, page, pageSize), cancellationToken);
+        await sender.Send(new ListPostsQuery(type ?? category, author, lat, lng, radiusKm, page, pageSize), cancellationToken);
 
     /// <summary>The signed-in user's posts, including hidden ones.</summary>
     [HttpGet("mine")]
@@ -94,7 +96,8 @@ public sealed class PostsController(ISender sender) : ControllerBase
                 request.Latitude,
                 request.Longitude,
                 request.PlaceName,
-                request.IsSensitive),
+                request.IsSensitive,
+                request.Types),
             cancellationToken);
 
     /// <summary>Delete your post and its photos and videos.</summary>
@@ -270,15 +273,17 @@ public sealed class PostsController(ISender sender) : ControllerBase
     }
 }
 
+/// <summary>A post's new details. Send <c>Types</c> (the first is the main one), or one <c>Category</c>.</summary>
 public sealed record UpdatePostRequest(
     string Title,
     string? Description,
-    IncidentCategory Category,
+    IncidentCategory? Category,
     DateTimeOffset IncidentAt,
     decimal Latitude,
     decimal Longitude,
     string? PlaceName,
-    bool? IsSensitive = null);
+    bool? IsSensitive = null,
+    IReadOnlyList<IncidentCategory>? Types = null);
 
 public sealed record ReactRequest(ReactionType Type);
 

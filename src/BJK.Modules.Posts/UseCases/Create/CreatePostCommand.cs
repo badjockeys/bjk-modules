@@ -23,18 +23,20 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// needs a confirmed email and a profile (and a passed age check if <c>Safety:RequireAgeVerification</c> is on).
 /// <c>IsSensitive</c> marks graphic content: the post shows to everyone, its media blurred except for age-verified
 /// adults, and the media are kept privately. If automatic detection already flagged any of the media, the post is
-/// tagged sensitive automatically (and queued for a moderator) whatever <c>IsSensitive</c> says.
+/// tagged sensitive automatically (and queued for a moderator) whatever <c>IsSensitive</c> says. <c>Types</c> are the
+/// types of bad driving (at least one; the first is the main one); older clients can send one <c>Category</c> instead.
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
     string? Description,
-    IncidentCategory Category,
+    IncidentCategory? Category,
     DateTimeOffset IncidentAt,
     decimal Latitude,
     decimal Longitude,
     string? PlaceName,
     IReadOnlyList<Guid> MediaIds,
-    bool IsSensitive = false) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    bool IsSensitive = false,
+    IReadOnlyList<IncidentCategory>? Types = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {

@@ -220,4 +220,30 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
         var places = await heatmap.CountByPlaceAsync(Filter(), 3, Ct);
         Assert.Equal(new[] { ("A57 Warrington Road, Prescot", 6), ("Market Place, Prescot", 3) }, places.Select(p => (p.Key, p.Count)));
     }
+
+    [Fact]
+    public async Task The_heat_map_counts_a_post_under_each_of_its_types()
+    {
+        var monday = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.FromHours(1));
+        var posts = Enumerable.Range(0, 3)
+            .Select(i => Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday.AddHours(i)) with { Types = [IncidentCategory.Speeding, IncidentCategory.MobilePhoneUse] }, [Guid.NewGuid()], Now))
+            .Append(Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday, IncidentCategory.Speeding), [Guid.NewGuid()], Now))
+            .ToArray();
+        await SaveAsync(posts);
+
+        var box = new GeoBox(53.40m, 53.46m, -2.85m, -2.75m);
+        var (from, to) = (UkCalendar.StartOf(new DateOnly(2026, 10, 12)), UkCalendar.StartOf(new DateOnly(2026, 10, 19)));
+        HeatmapFilter Filter(params IncidentCategory[] types) => new(box, from, to, types, null, HeatmapDays.All);
+
+        await using var db = Context();
+        var heatmap = new HeatmapRepository(db);
+
+        Assert.Equal(4, await heatmap.CountAsync(Filter(), Ct));
+        Assert.Equal(3, await heatmap.CountAsync(Filter(IncidentCategory.MobilePhoneUse), Ct));
+        Assert.Equal(4, await heatmap.CountAsync(Filter(IncidentCategory.MobilePhoneUse, IncidentCategory.Speeding), Ct));
+        Assert.Equal(0, await heatmap.CountAsync(Filter(IncidentCategory.BadParking), Ct));
+
+        var types = await heatmap.CountByCategoryAsync(Filter(), Ct);
+        Assert.Equal(new[] { ("Speeding", 4), ("MobilePhoneUse", 3) }, types.Select(t => (t.Key, t.Count)));
+    }
 }

@@ -11,7 +11,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 public sealed record ReelCursor(double Score, DateTimeOffset CreatedAt);
 
 /// <summary>Which reels to list.</summary>
-/// <param name="Category">Only this kind of incident.</param>
+/// <param name="Category">Only posts with this type of bad driving (among their types).</param>
 /// <param name="IncludeSensitive">Include sensitive posts (age-verified viewers and moderators).</param>
 /// <param name="ViewerId">The viewer, if signed in: their own sensitive posts are always included.</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors (blocked either way).</param>
@@ -66,7 +66,8 @@ internal sealed class ReelRepository(PostsDbContext db) : IReelRepository
 
         if (search.Category is { } category)
         {
-            query = query.Where(p => p.Category == category);
+            var bit = IncidentTypeFlags.Bit(category);
+            query = query.Where(p => (p.TypeFlags & bit) != 0);
         }
 
         if (!search.IncludeSensitive)

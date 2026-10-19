@@ -145,4 +145,44 @@ public sealed class PostTests
         Assert.Equal(PostSensitiveSource.Moderator, post.SensitiveSource);
         Assert.False(post.AuthorMayRemoveSensitive);
     }
+
+    [Fact]
+    public void A_post_keeps_every_type_the_main_one_first()
+    {
+        var details = Details() with { Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage, IncidentCategory.Tailgating] };
+
+        var post = Post.Create(UserId, details, [Guid.NewGuid()], Now);
+
+        Assert.Equal(IncidentCategory.Tailgating, post.Category);
+        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.RoadRage }, post.Types);
+        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.Tailgating) | IncidentTypeFlags.Bit(IncidentCategory.RoadRage), post.TypeFlags);
+    }
+
+    [Fact]
+    public void Without_types_a_post_has_just_its_category()
+    {
+        var post = Post.Create(UserId, Details() with { Category = IncidentCategory.BadParking }, [Guid.NewGuid()], Now);
+
+        Assert.Equal(new[] { IncidentCategory.BadParking }, post.Types);
+        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.BadParking), post.TypeFlags);
+    }
+
+    [Fact]
+    public void Editing_replaces_the_types()
+    {
+        var post = Post.Create(UserId, Details() with { Types = [IncidentCategory.Speeding, IncidentCategory.ClosePass] }, [Guid.NewGuid()], Now);
+
+        post.Update(Details() with { Types = [IncidentCategory.MobilePhoneUse] }, Now);
+
+        Assert.Equal(IncidentCategory.MobilePhoneUse, post.Category);
+        Assert.Equal(new[] { IncidentCategory.MobilePhoneUse }, post.Types);
+    }
+
+    [Fact]
+    public void Rows_from_before_types_read_as_their_category()
+    {
+        Assert.Equal(new[] { IncidentCategory.Other }, IncidentTypeFlags.ToList(0, IncidentCategory.Other));
+        Assert.False(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.BadParking));
+        Assert.True(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.Tailgating));
+    }
 }
