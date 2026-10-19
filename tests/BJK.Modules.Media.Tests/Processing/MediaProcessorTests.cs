@@ -3,6 +3,7 @@ using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing;
+using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using BJK.Modules.Media.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,7 +21,10 @@ public sealed class MediaProcessorTests
     private readonly IMediaRepository _media = Substitute.For<IMediaRepository>();
     private readonly IMediaStorage _storage = Substitute.For<IMediaStorage>();
     private readonly IMediaTranscoder _transcoder = Substitute.For<IMediaTranscoder>();
+    private readonly IMediaRedactor _redactor = Substitute.For<IMediaRedactor>();
     private readonly List<(string Key, string Type, long Size)> _uploads = [];
+    private readonly List<(string Key, string Type)> _privateUploads = [];
+    private RedactionResult _redaction = new(2, 1, [], 300, 60, TimeSpan.FromSeconds(3));
 
     public MediaProcessorTests()
     {
@@ -32,8 +36,30 @@ public sealed class MediaProcessorTests
                 _uploads.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(2), new FileInfo(ci.ArgAt<string>(1)).Length));
                 return Task.CompletedTask;
             });
-        _transcoder.TranscodeVideoAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(ci => WriteOutputs(ci.ArgAt<string>(1), ci.ArgAt<string>(2)));
+        _storage.UploadPrivateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                _privateUploads.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(2)));
+                return Task.CompletedTask;
+            });
+        _redactor.RedactVideoAsync(Arg.Any<string>(), Arg.Any<ProbeResult>(), Arg.Any<IReadOnlyList<ManualRedaction>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                File.WriteAllBytes(ci.ArgAt<string>(3), new byte[1234]);
+                return Task.FromResult(_redaction);
+            });
+        _redactor.RedactImageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ManualRedaction>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                File.WriteAllBytes(ci.ArgAt<string>(2), new byte[99]);
+                return Task.FromResult(_redaction with { Frames = 1, FramesAnalysed = 1 });
+            });
+        _transcoder.CreateVideoThumbnailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                File.WriteAllBytes(ci.ArgAt<string>(1), new byte[56]);
+                return Task.CompletedTask;
+            });
         _transcoder.ConvertImageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci => WriteOutputs(ci.ArgAt<string>(1), ci.ArgAt<string>(2)));
     }
@@ -59,6 +85,7 @@ public sealed class MediaProcessorTests
         _media,
         _storage,
         _transcoder,
+        _redactor,
         Microsoft.Extensions.Options.Options.Create(new MediaOptions { MaxVideoDurationSeconds = 300 }),
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions { WorkingDirectory = Path.GetTempPath() }),
         new FixedTimeProvider(Now),
@@ -103,7 +130,8 @@ public sealed class MediaProcessorTests
         Assert.Null(item.DurationSeconds);
         Assert.Equal(new[] { "image/webp", "image/webp" }, _uploads.Select(u => u.Type));
         Assert.EndsWith("/image.webp", item.PlaybackKey);
-        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, Ct);
+        await _redactor.DidNotReceiveWithAnyArgs().RedactVideoAsync(default!, default!, default!, default!, Ct);
+        await _transcoder.Received(1).ConvertImageAsync(Arg.Is<string>(p => p.EndsWith("redacted.ppm")), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -117,7 +145,7 @@ public sealed class MediaProcessorTests
         Assert.Equal(ProcessingOutcome.Failed, outcome);
         Assert.Equal(MediaStatus.Failed, item.Status);
         Assert.Contains("5 minutes", item.FailureReason);
-        await _transcoder.DidNotReceiveWithAnyArgs().TranscodeVideoAsync(default!, default!, default!, Ct);
+        await _redactor.DidNotReceiveWithAnyArgs().RedactVideoAsync(default!, default!, default!, default!, Ct);
         Assert.Empty(_uploads);
     }
 
@@ -219,5 +247,63 @@ public sealed class MediaProcessorTests
         await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
         Assert.False(Directory.Exists(Path.Combine(Path.GetTempPath(), "bjk-media", item.Id.ToString("N"))));
+    }
+
+    [Fact]
+    public async Task Blur_counts_are_recorded_and_the_thumbnail_comes_from_the_blurred_video()
+    {
+        var item = ProcessingItem();
+        _transcoder.ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProbeResult(true, 10m, 1280, 720, 30));
+
+        await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(MediaStatus.Ready, item.Status);
+        Assert.Equal((2, 1), (item.FacesBlurred, item.PlatesBlurred));
+        await _transcoder.Received(1).CreateVideoThumbnailAsync(
+            Arg.Is<string>(p => p.EndsWith("720p.mp4")), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task When_detection_is_unsure_the_blurred_files_stay_private_and_it_needs_review()
+    {
+        var item = ProcessingItem();
+        _transcoder.ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProbeResult(true, 10m, 1280, 720));
+        _redaction = _redaction with { ReviewReasons = ["The NumberPlate detection model is not configured (Media:Redaction:PlateModelPath)."] };
+
+        var outcome = await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(ProcessingOutcome.Completed, outcome);
+        Assert.Equal(MediaStatus.NeedsReview, item.Status);
+        Assert.Contains("not configured", item.ReviewReason);
+        Assert.Null(item.PlaybackKey);
+        Assert.Null(item.ThumbnailKey);
+        Assert.Empty(_uploads);
+        Assert.Equal(
+            new[] { ($"{UserId:D}/{item.Id:D}/review/720p.mp4", "video/mp4"), ($"{UserId:D}/{item.Id:D}/review/thumbnail.jpg", "image/jpeg") },
+            _privateUploads);
+    }
+
+    [Fact]
+    public async Task Manual_regions_are_applied_and_the_result_goes_back_to_review()
+    {
+        var item = ProcessingItem("image/jpeg");
+        _transcoder.ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProbeResult(true, null, 4000, 3000));
+        await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+        Assert.Equal(MediaStatus.Ready, item.Status);
+
+        var region = new ManualRedaction(0.1, 0.2, 0.3, 0.1);
+        item.AddManualRedactions([region], Now);
+        _uploads.Clear();
+        await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(MediaStatus.NeedsReview, item.Status);
+        Assert.Contains("moderator added 1 blur region", item.ReviewReason);
+        await _redactor.Received(1).RedactImageAsync(
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyList<ManualRedaction>>(r => r.Count == 1 && r[0] == region),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+        Assert.Contains(_privateUploads, u => u.Key == $"{UserId:D}/{item.Id:D}/review/image-r1.webp");
+        Assert.Empty(_uploads);
     }
 }

@@ -15,6 +15,13 @@ public interface IMediaRepository
         int pageSize,
         CancellationToken cancellationToken);
 
+    /// <summary>Media in one state, oldest first (e.g. the review queue).</summary>
+    Task<(IReadOnlyList<MediaItem> Items, int TotalCount)> ListByStatusAsync(
+        MediaStatus status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
     /// <summary>Several media by id, except deleted. Tracked, so changes can be saved.</summary>
     Task<IReadOnlyList<MediaItem>> GetManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 
@@ -41,6 +48,24 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderByDescending(m => m.CreatedAt)
+            .ThenBy(m => m.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public async Task<(IReadOnlyList<MediaItem> Items, int TotalCount)> ListByStatusAsync(
+        MediaStatus status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = db.Media.AsNoTracking().Where(m => m.Status == status);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(m => m.CreatedAt)
             .ThenBy(m => m.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

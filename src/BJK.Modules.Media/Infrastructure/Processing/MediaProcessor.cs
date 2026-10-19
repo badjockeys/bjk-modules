@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
+using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using BJK.Modules.Media.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -23,13 +24,16 @@ public enum ProcessingOutcome
 }
 
 /// <summary>
-/// Turns one uploaded original into the published files: downloads it, checks it, converts it with ffmpeg (stripping
-/// metadata such as GPS), uploads the results to the public bucket and marks the media Ready.
+/// Turns one uploaded original into the published files: downloads it, checks it, blurs faces and number plates
+/// (<see cref="IMediaRedactor"/>), converts it with ffmpeg (stripping metadata such as GPS, and the soundtrack), then
+/// either publishes the results and marks the media Ready, or, if detection failed or wasn't sure, keeps them in the
+/// private bucket and marks it NeedsReview for a moderator. Thumbnails are always made from the blurred files.
 /// </summary>
 internal sealed class MediaProcessor(
     IMediaRepository media,
     IMediaStorage storage,
     IMediaTranscoder transcoder,
+    IMediaRedactor redactor,
     IOptions<MediaOptions> mediaOptions,
     IOptions<MediaProcessingOptions> processingOptions,
     TimeProvider clock,
@@ -103,12 +107,12 @@ internal sealed class MediaProcessor(
             return await FailAsync(item, "This file has no picture. Upload a video or photo.", cancellationToken);
         }
 
-        var playbackKey = MediaKeys.Playback(item.UserId, item.Id, item.MediaType);
-        var thumbnailKey = MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType);
-        var playback = Path.Combine(folder, Path.GetFileName(playbackKey));
-        var thumbnail = Path.Combine(folder, Path.GetFileName(thumbnailKey));
+        var playback = Path.Combine(folder, item.MediaType == MediaType.Video ? MediaKeys.VideoPlaybackFile : MediaKeys.ImageFile);
+        var thumbnail = Path.Combine(folder, item.MediaType == MediaType.Video ? MediaKeys.VideoThumbnailFile : MediaKeys.ImageThumbnailFile);
+        var manual = item.ManualRedactions;
         string playbackType;
         string thumbnailType;
+        RedactionResult redaction;
 
         if (item.MediaType == MediaType.Video)
         {
@@ -120,25 +124,45 @@ internal sealed class MediaProcessor(
                     cancellationToken);
             }
 
-            await transcoder.TranscodeVideoAsync(original, playback, thumbnail, cancellationToken);
+            redaction = await redactor.RedactVideoAsync(original, probe, manual, playback, cancellationToken);
+            await transcoder.CreateVideoThumbnailAsync(playback, thumbnail, cancellationToken);
             (playbackType, thumbnailType) = ("video/mp4", "image/jpeg");
         }
         else
         {
-            await transcoder.ConvertImageAsync(original, playback, thumbnail, cancellationToken);
+            var redacted = Path.Combine(folder, "redacted.ppm");
+            redaction = await redactor.RedactImageAsync(original, manual, redacted, cancellationToken);
+            await transcoder.ConvertImageAsync(redacted, playback, thumbnail, cancellationToken);
             (playbackType, thumbnailType) = ("image/webp", "image/webp");
         }
 
-        await storage.UploadPublicAsync(playbackKey, playback, playbackType, cancellationToken);
-        await storage.UploadPublicAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+        var reasons = redaction.ReviewReasons.ToList();
+        if (manual.Count > 0)
+        {
+            reasons.Add($"A moderator added {manual.Count} blur region(s); check the result.");
+        }
 
-        item.MarkReady(
-            new FileInfo(playback).Length,
-            item.MediaType == MediaType.Video ? probe.DurationSeconds : null,
-            probe.Width,
-            probe.Height,
-            sha256,
-            clock.GetUtcNow());
+        var duration = item.MediaType == MediaType.Video ? probe.DurationSeconds : null;
+        item.RecordRedaction(redaction.FacesBlurred, redaction.PlatesBlurred);
+        string playbackKey;
+        string thumbnailKey;
+        if (reasons.Count > 0)
+        {
+            // Not public until a moderator approves: the blurred files wait in the private bucket.
+            playbackKey = MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision);
+            thumbnailKey = MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision);
+            await storage.UploadPrivateAsync(playbackKey, playback, playbackType, cancellationToken);
+            await storage.UploadPrivateAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            item.MarkNeedsReview(string.Join(" ", reasons), new FileInfo(playback).Length, duration, probe.Width, probe.Height, sha256, clock.GetUtcNow());
+        }
+        else
+        {
+            playbackKey = MediaKeys.Playback(item.UserId, item.Id, item.MediaType, item.Revision);
+            thumbnailKey = MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, item.Revision);
+            await storage.UploadPublicAsync(playbackKey, playback, playbackType, cancellationToken);
+            await storage.UploadPublicAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            item.MarkReady(new FileInfo(playback).Length, duration, probe.Width, probe.Height, sha256, clock.GetUtcNow());
+        }
 
         try
         {
@@ -146,19 +170,29 @@ internal sealed class MediaProcessor(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // The owner deleted it while we were working: remove what we just published.
-            logger.LogInformation("Media {MediaId} changed while processing; removing its published files.", item.Id);
-            await storage.DeletePublicAsync([playbackKey, thumbnailKey], CancellationToken.None);
+            // The owner deleted it while we were working: remove what we just stored.
+            logger.LogInformation("Media {MediaId} changed while processing; removing its processed files.", item.Id);
+            if (reasons.Count > 0)
+            {
+                await storage.DeleteOriginalAsync(playbackKey, CancellationToken.None);
+                await storage.DeleteOriginalAsync(thumbnailKey, CancellationToken.None);
+            }
+            else
+            {
+                await storage.DeletePublicAsync([playbackKey, thumbnailKey], CancellationToken.None);
+            }
+
             return ProcessingOutcome.Completed;
         }
 
         logger.LogInformation(
-            "Media {MediaId} is ready ({Type}, {Width}x{Height}, {Seconds}s).",
+            "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames).",
             item.Id,
-            item.MediaType,
-            probe.Width,
-            probe.Height,
-            probe.DurationSeconds);
+            item.Status,
+            redaction.FacesBlurred,
+            redaction.PlatesBlurred,
+            redaction.Elapsed,
+            redaction.Frames);
         return ProcessingOutcome.Completed;
     }
 

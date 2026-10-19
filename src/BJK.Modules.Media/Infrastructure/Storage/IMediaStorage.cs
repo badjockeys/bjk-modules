@@ -27,6 +27,15 @@ public interface IMediaStorage
     Task DeletePublicAsync(IEnumerable<string> keys, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Stores a processed file in the private originals bucket, e.g. blurred files waiting for a moderator. Read them
+    /// with <see cref="CreateOriginalDownloadUrlAsync"/> and remove them with <see cref="DeleteOriginalAsync"/>.
+    /// </summary>
+    Task UploadPrivateAsync(string key, string filePath, string contentType, CancellationToken cancellationToken);
+
+    /// <summary>Copies a file from the private originals bucket to the public bucket, e.g. once a moderator approves it.</summary>
+    Task PublishPrivateAsync(string privateKey, string publicKey, string contentType, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Deletes every file under the user's folder (<c>{userId}/</c>) in both buckets, including any left behind
     /// by failed uploads. Used when an account is permanently deleted.
     /// </summary>

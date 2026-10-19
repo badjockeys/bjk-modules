@@ -90,4 +90,97 @@ public sealed class MediaItemTests
 
         Assert.Equal(MediaItem.FailureReasonMaxLength, item.FailureReason!.Length);
     }
+
+    private static MediaItem Processed(string contentType = "video/mp4")
+    {
+        var item = MediaItem.Create(UserId, "clip", contentType, Now);
+        item.MarkUploaded(1234, Now, TimeSpan.FromDays(90));
+        return item;
+    }
+
+    [Fact]
+    public void MarkNeedsReview_keeps_the_files_out_of_public_view()
+    {
+        var item = Processed();
+
+        item.MarkNeedsReview("Plate detector failed.", 999, 10m, 1280, 720, null, Now);
+
+        Assert.Equal(MediaStatus.NeedsReview, item.Status);
+        Assert.Null(item.PlaybackKey);
+        Assert.Null(item.ThumbnailKey);
+        Assert.Equal("Plate detector failed.", item.ReviewReason);
+    }
+
+    [Fact]
+    public void Approve_makes_it_ready_with_public_keys_and_records_the_moderator()
+    {
+        var item = Processed("image/png");
+        item.MarkNeedsReview("unsure", 999, null, 1280, 720, null, Now);
+        var moderator = Guid.NewGuid();
+
+        item.Approve(moderator, Now.AddHours(1));
+
+        Assert.Equal(MediaStatus.Ready, item.Status);
+        Assert.Equal($"{UserId:D}/{item.Id:D}/image.webp", item.PlaybackKey);
+        Assert.Equal(moderator, item.ReviewedBy);
+        Assert.Null(item.ReviewReason);
+    }
+
+    [Fact]
+    public void Reject_fails_it_with_the_reason()
+    {
+        var item = Processed();
+        item.MarkNeedsReview("unsure", 999, 10m, 1280, 720, null, Now);
+
+        item.Reject("Faces couldn't be blurred reliably.", null, Now);
+
+        Assert.Equal(MediaStatus.Failed, item.Status);
+        Assert.Equal("Faces couldn't be blurred reliably.", item.FailureReason);
+    }
+
+    [Fact]
+    public void Ready_media_cannot_be_approved_again()
+    {
+        var item = Processed();
+        item.MarkReady(999, 10m, 1280, 720, null, Now);
+
+        Assert.Throws<InvalidOperationException>(() => item.Approve(null, Now));
+    }
+
+    [Fact]
+    public void Manual_regions_accumulate_and_each_reprocessing_gets_new_file_names()
+    {
+        var item = Processed();
+        item.MarkReady(999, 10m, 1280, 720, null, Now);
+
+        item.AddManualRedactions([new ManualRedaction(0.1, 0.1, 0.1, 0.1)], Now);
+        item.MarkNeedsReview("check", 999, 10m, 1280, 720, null, Now);
+        item.AddManualRedactions([new ManualRedaction(0.5, 0.5, 0.1, 0.1, 1, 2)], Now);
+        item.MarkNeedsReview("check", 999, 10m, 1280, 720, null, Now);
+        item.Approve(null, Now);
+
+        Assert.Equal(2, item.Revision);
+        Assert.Equal(2, item.ManualRedactions.Count);
+        Assert.Equal($"{UserId:D}/{item.Id:D}/720p-r2.mp4", item.PlaybackKey);
+        Assert.Equal($"{UserId:D}/{item.Id:D}/thumbnail-r2.jpg", item.ThumbnailKey);
+    }
+
+    [Fact]
+    public void Manual_regions_cannot_be_added_before_processing()
+    {
+        var item = Processed();
+
+        Assert.Throws<InvalidOperationException>(() => item.AddManualRedactions([new ManualRedaction(0, 0, 1, 1)], Now));
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(0.5, false)]
+    [InlineData(1.0, true)]
+    [InlineData(2.0, true)]
+    [InlineData(2.5, false)]
+    public void A_manual_region_with_a_time_range_applies_only_within_it(double? seconds, bool expected)
+    {
+        Assert.Equal(expected, new ManualRedaction(0, 0, 1, 1, 1, 2).AppliesAt(seconds));
+    }
 }

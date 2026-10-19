@@ -55,7 +55,7 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
                 duration = Math.Round(seconds, 3);
             }
 
-            return new ProbeResult(true, duration, width, height);
+            return new ProbeResult(true, duration, width, height, FrameRate(video));
         }
         catch (JsonException ex)
         {
@@ -63,26 +63,8 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
         }
     }
 
-    public async Task TranscodeVideoAsync(string inputPath, string playbackPath, string thumbnailPath, CancellationToken cancellationToken)
+    public async Task CreateVideoThumbnailAsync(string playbackPath, string thumbnailPath, CancellationToken cancellationToken)
     {
-        // Scale down to VideoHeight (never up), keep even dimensions for H.264, 30 fps at most, fast start for streaming.
-        var scale = $"scale=-2:'min({_options.VideoHeight},ih)':flags=lanczos";
-        await RunOrThrowAsync(
-            _options.FfmpegPath,
-            [
-                "-hide_banner", "-nostdin", "-y", "-i", inputPath,
-                "-map", "0:v:0", "-map", "0:a:0?",
-                "-map_metadata", "-1", "-map_chapters", "-1",
-                "-vf", scale, "-fpsmax", "30",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", _options.VideoCrf.ToString(CultureInfo.InvariantCulture),
-                "-profile:v", "high", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-                "-movflags", "+faststart",
-                playbackPath,
-            ],
-            "encode the video",
-            cancellationToken);
-
         // A frame one second in (or the first frame of a shorter clip) as the thumbnail.
         var thumb = $"scale='min({_options.ThumbnailMaxSize},iw)':-2";
         var result = await RunAsync(
@@ -112,6 +94,28 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
                 "convert the photo",
                 cancellationToken);
         }
+    }
+
+    /// <summary>Average frame rate ("30000/1001"), falling back to the nominal rate; null if neither makes sense.</summary>
+    internal static double? FrameRate(JsonElement video)
+    {
+        foreach (var name in new[] { "avg_frame_rate", "r_frame_rate" })
+        {
+            if (video.TryGetProperty(name, out var value) && value.GetString() is { } text)
+            {
+                var parts = text.Split('/');
+                if (parts.Length == 2
+                    && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var numerator)
+                    && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var denominator)
+                    && denominator > 0
+                    && numerator / denominator is > 0 and < 1000 and var rate)
+                {
+                    return rate;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool IsRotatedSideways(JsonElement video)
