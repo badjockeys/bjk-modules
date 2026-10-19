@@ -2,25 +2,66 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BJK.Modules.Shared.Messaging;
 
-/// <summary>RabbitMQ settings shared by every module in a host. Section <c>Messaging</c>.</summary>
+/// <summary>
+/// Durable queues and events, stored in SQL Server (section <c>Messaging</c>). Every value has a default; a host only
+/// sets <see cref="ConnectionStringName"/> when its messages live in another database than its modules' data (the
+/// identity server writes to the app database's queues).
+/// </summary>
 public sealed class MessagingOptions
 {
     public const string SectionName = "Messaging";
 
-    /// <summary>e.g. amqp://user:password@host:5672/vhost. Secret: user secrets locally, Key Vault in Azure.</summary>
+    /// <summary>
+    /// The connection string (a name under <c>ConnectionStrings</c>) for the database holding the queue tables. Empty
+    /// (the default): the database of the module that registers messaging, e.g. <c>AppDatabase</c> in bjk-core. The
+    /// identity server sets <c>Messaging</c>, a login allowed to use only the <see cref="Schema"/> tables of the app
+    /// database (see the bjk-modules README).
+    /// </summary>
+    public string? ConnectionStringName { get; set; }
+
+    /// <summary>The schema holding the queue tables (one table per queue, plus <c>subscriptions</c>).</summary>
     [Required]
-    public Uri? ConnectionUri { get; set; }
+    [RegularExpression("^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
+    public string Schema { get; set; } = "messaging";
+
+    /// <summary>How long an idle consumer waits before looking for new messages again.</summary>
+    [Range(typeof(TimeSpan), "00:00:00.010", "00:01:00")]
+    public TimeSpan PollingInterval { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// The queue this host reads user lifecycle events from. Each host that reacts to them (bjk-core)
-    /// has its own queue bound to the <see cref="Users.UserLifecycleEvents.Exchange"/> exchange.
+    /// How long a consumer holds a message while working on it. The lease is renewed while the work goes on, so this is
+    /// how soon a message is retried after a worker crashes or is stopped without finishing.
+    /// </summary>
+    [Range(typeof(TimeSpan), "00:00:01", "01:00:00")]
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// The wait before the first retry of a failed message; each further retry waits twice as long, up to
+    /// <see cref="MaxRetryDelay"/>.
+    /// </summary>
+    [Range(typeof(TimeSpan), "00:00:00", "01:00:00")]
+    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The longest wait between two attempts.</summary>
+    [Range(typeof(TimeSpan), "00:00:00", "1.00:00:00")]
+    public TimeSpan MaxRetryDelay { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Create missing queue tables (and the schema) on startup. Leave on wherever the login may create tables; the
+    /// identity server turns it off, because its login may only read and write the queues bjk-core created.
+    /// </summary>
+    public bool CreateTables { get; set; } = true;
+
+    /// <summary>
+    /// The queue this host reads user lifecycle events from (bjk-core). It subscribes to the
+    /// <see cref="Users.UserLifecycleEvents.Topic"/> topic, so each event published there is copied into it.
     /// </summary>
     [Required]
     public string UserEventsQueue { get; set; } = "bjk-core.user-events";
 
     /// <summary>
-    /// The queue this host reads media events (<c>media.ready</c>, <c>media.failed</c>) from, bound to the Media
-    /// module's <c>bjk.media</c> exchange. The Posts module uses them to publish posts once their media are ready.
+    /// The queue this host reads media events (<c>media.ready</c>, <c>media.failed</c>) from, subscribed to the Media
+    /// module's <c>bjk.media</c> topic. The Posts module uses them to publish posts once their media are ready.
     /// </summary>
     [Required]
     public string MediaEventsQueue { get; set; } = "bjk-core.media-events";

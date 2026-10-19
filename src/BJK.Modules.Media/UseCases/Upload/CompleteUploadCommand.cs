@@ -49,12 +49,9 @@ public sealed class CompleteUploadCommandHandler(
 
         item.MarkUploaded(file.SizeBytes, clock.GetUtcNow(), options.Value.OriginalRetention);
 
-        // Queue first, then save: if queueing fails the media stays Uploading and the app can retry.
-        // If saving fails after queueing, the worker still finds the file and processes it.
-        await queue.EnqueueAsync(
-            new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType),
-            cancellationToken);
-        await media.SaveChangesAsync(cancellationToken);
+        // The job is queued in the same transaction as the status change: both happen, or neither (and the app can retry).
+        var job = new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);
+        await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(job, ct), cancellationToken);
 
         return MediaDto.From(item, storage);
     }

@@ -17,7 +17,8 @@ namespace BJK.Modules.Media;
 public static class MediaServices
 {
     /// <summary>
-    /// Registers the media processing worker: reads jobs from <c>Media:Queue:QueueName</c>, blurs faces and number
+    /// Registers the media processing worker: reads jobs from the <c>Media:Queue:QueueName</c> queue (a SQL Server
+    /// table, read with row locks, so replicas share the work and retries survive crashes), blurs faces and number
     /// plates (ONNX models from <c>Media:Redaction</c>), converts files with ffmpeg and publishes them, or holds them for
     /// review. Longer videos are split into segment jobs on the same queue, so run several replicas. For the worker
     /// host only (bjk-core's media worker), which needs ffmpeg installed. It doesn't register the Media API, the user
@@ -43,14 +44,21 @@ public static class MediaServices
             .Validate(o => o.FaceConfidentAt >= o.FaceMinConfidence, "Media:Redaction:FaceConfidentAt must be at least FaceMinConfidence.")
             .Validate(o => o.PlateConfidentAt >= o.PlateMinConfidence, "Media:Redaction:PlateConfidentAt must be at least PlateMinConfidence.")
             .ValidateOnStart();
-        services.TryAddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+        services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
         services.TryAddScoped<IVideoJobStore, VideoJobStore>();
         services.AddSingleton<IMediaTranscoder, FfmpegTranscoder>();
         services.AddSingleton<IRedactionDetector, YuNetFaceDetector>();
         services.AddSingleton<IRedactionDetector, LpdYuNetPlateDetector>();
         services.AddSingleton<IMediaRedactor, MediaRedactor>();
         services.AddScoped<MediaProcessor>();
-        services.AddHostedService<MediaProcessingWorker>();
+
+        // One job per replica by default (Media:Processing:MaxConcurrentJobs): each job already uses every core.
+        var queue = configuration.GetSection(MediaQueueOptions.SectionName).Get<MediaQueueOptions>()?.QueueName ?? new MediaQueueOptions().QueueName;
+        var concurrency = configuration.GetSection(MediaProcessingOptions.SectionName).Get<MediaProcessingOptions>()?.MaxConcurrentJobs ?? 1;
+        services.AddMessageConsumer<MediaJobConsumer>(
+            configuration,
+            connectionStringName,
+            new MessageConsumerDefinition(queue) { MaxAttempts = MediaQueueTopology.MaxDeliveries, Concurrency = Math.Clamp(concurrency, 1, 16) });
         return services;
     }
 
@@ -80,7 +88,7 @@ public static class MediaServices
             .Bind(configuration.GetSection(MediaQueueOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
-        services.AddBjkMessaging(configuration);
+        services.AddBjkMessaging(configuration, connectionStringName);
         services.TryAddSingleton(TimeProvider.System);
 
         services.TryAddSingleton<IAmazonS3>(sp =>

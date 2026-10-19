@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Shared</PackageId>
-    <Description>Shared building blocks for Bad Jockeys modules: module registration, MediatR pipeline, validation, error handling, messaging (RabbitMQ and outbox), user lifecycle events, personal data export, and online safety (text checks, content screening, CAPTCHA, age verification, moderation audit contract).</Description>
+    <Description>Shared building blocks for Bad Jockeys modules: module registration, MediatR pipeline, validation, error handling, durable messaging (SQL Server queues via Rebus, outbox), user lifecycle events, personal data export, and online safety (text checks, content screening, CAPTCHA, age verification, moderation audit contract).</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +15,8 @@
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Rebus" />
+    <PackageReference Include="Rebus.SqlServer" />
   </ItemGroup>
 
   <ItemGroup>

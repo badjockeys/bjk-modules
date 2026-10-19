@@ -378,11 +378,9 @@ public sealed class AddManualRedactionsCommandHandler(
         var before = item.Status;
         item.AddManualRedactions(request.Regions, clock.GetUtcNow());
 
-        // Save first, then queue: the worker skips media that isn't Processing yet, so queueing first could lose the job.
-        await media.SaveChangesAsync(cancellationToken);
-        await queue.EnqueueAsync(
-            new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType),
-            cancellationToken);
+        // The job is queued in the same transaction as the change back to Processing: both happen, or neither.
+        var job = new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);
+        await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(job, ct), cancellationToken);
 
         await audit.RecordAsync(
             new ModerationAuditEntry(
