@@ -6,7 +6,11 @@ using RabbitMQ.Client;
 
 namespace BJK.Modules.Media.Infrastructure.Messaging;
 
-/// <summary>Publishes processing jobs to RabbitMQ over the host's shared connection; a channel per publish.</summary>
+/// <summary>
+/// Publishes processing jobs to RabbitMQ over the host's shared connection; a channel per publish. Publisher
+/// confirmations are on, so a job only counts as queued once the broker has it (workers queue segment jobs, and a lost
+/// one would leave a video stuck at Processing).
+/// </summary>
 internal sealed class RabbitMqMediaJobQueue(IRabbitMqConnection rabbit, IOptions<MediaQueueOptions> options) : IMediaJobQueue
 {
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -15,12 +19,14 @@ internal sealed class RabbitMqMediaJobQueue(IRabbitMqConnection rabbit, IOptions
     };
 
     private readonly MediaQueueOptions _options = options.Value;
-    private bool _topologyDeclared;
+    private volatile bool _topologyDeclared;
 
     public async Task EnqueueAsync(MediaProcessingJob job, CancellationToken cancellationToken)
     {
         var connection = await rabbit.GetAsync(cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(
+            new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true),
+            cancellationToken);
 
         if (!_topologyDeclared)
         {
@@ -32,7 +38,7 @@ internal sealed class RabbitMqMediaJobQueue(IRabbitMqConnection rabbit, IOptions
         {
             Persistent = true,
             ContentType = "application/json",
-            MessageId = job.MediaId.ToString("D"),
+            MessageId = job.MessageId,
             Type = nameof(MediaProcessingJob),
         };
 

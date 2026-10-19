@@ -55,7 +55,15 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
                 duration = Math.Round(seconds, 3);
             }
 
-            return new ProbeResult(true, duration, width, height, FrameRate(video));
+            double? start = null;
+            if (video.TryGetProperty("start_time", out var st)
+                && double.TryParse(st.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var startSeconds)
+                && double.IsFinite(startSeconds))
+            {
+                start = startSeconds;
+            }
+
+            return new ProbeResult(true, duration, width, height, FrameRate(video), start);
         }
         catch (JsonException ex)
         {
@@ -94,6 +102,38 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
                 "convert the photo",
                 cancellationToken);
         }
+    }
+
+    public async Task ConcatenateVideoAsync(
+        IReadOnlyList<string> segmentPaths,
+        string? audioSourcePath,
+        string outputPath,
+        CancellationToken cancellationToken)
+    {
+        if (segmentPaths.Count == 0)
+        {
+            throw new ArgumentException("There are no segments to join.", nameof(segmentPaths));
+        }
+
+        // The concat demuxer's list: one "file" line per segment. The names are ours, but quote them properly anyway.
+        var list = Path.Combine(Path.GetDirectoryName(outputPath) ?? ".", "segments.txt");
+        await File.WriteAllLinesAsync(
+            list,
+            segmentPaths.Select(p => "file '" + Path.GetFullPath(p).Replace("'", "'\\''", StringComparison.Ordinal) + "'"),
+            cancellationToken);
+
+        var arguments = new List<string> { "-hide_banner", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", list };
+        if (audioSourcePath is not null)
+        {
+            arguments.AddRange(["-i", audioSourcePath, "-map", "0:v:0", "-map", "1:a:0?", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-shortest"]);
+        }
+        else
+        {
+            arguments.AddRange(["-map", "0:v:0", "-an"]);
+        }
+
+        arguments.AddRange(["-c:v", "copy", "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", outputPath]);
+        await RunOrThrowAsync(_options.FfmpegPath, arguments, "join the video segments", cancellationToken);
     }
 
     /// <summary>Average frame rate ("30000/1001"), falling back to the nominal rate; null if neither makes sense.</summary>

@@ -82,6 +82,46 @@ internal static class FfmpegTestSupport
         return frames;
     }
 
+    /// <summary>Decodes only the frames with these numbers (from 0), in order, so long clips needn't all be in memory.</summary>
+    public static async Task<List<RgbFrame>> FramesAt(string path, params int[] indices)
+    {
+        var select = "select='" + string.Join("+", indices.Select(i => $"eq(n,{i})")) + "'";
+        var start = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in new[] { "-hide_banner", "-nostdin", "-i", path, "-map", "0:v:0", "-vf", select, "-fps_mode", "passthrough", "-f", "image2pipe", "-c:v", "ppm", "-pix_fmt", "rgb24", "pipe:1" })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        var errors = process.StandardError.ReadToEndAsync();
+        var reader = new PpmReader(process.StandardOutput.BaseStream);
+        var frames = new List<RgbFrame>();
+        while (await reader.ReadAsync(CancellationToken.None) is { } frame)
+        {
+            frames.Add(frame);
+        }
+
+        await process.WaitForExitAsync();
+        await errors;
+        Assert.Equal(indices.Length, frames.Count);
+        return frames;
+    }
+
+    /// <summary>Number of video frames in a file, counted by decoding it.</summary>
+    public static async Task<int> CountFrames(string path)
+    {
+        var start = new ProcessStartInfo("ffprobe") { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in new[] { "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "default=nw=1:nk=1", path })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        var output = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return int.Parse(output.Trim(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>Standard deviation of brightness in a rectangle: high for the checkerboard, low once blurred.</summary>
     public static double Detail(RgbFrame frame, int left, int top, int right, int bottom)
     {

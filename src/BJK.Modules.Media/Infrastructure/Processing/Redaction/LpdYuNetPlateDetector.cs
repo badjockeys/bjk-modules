@@ -24,7 +24,7 @@ internal sealed class LpdYuNetPlateDetector : OnnxDetector
     /// <param name="options">Model path and tiling.</param>
     /// <param name="logger">For load failures.</param>
     public LpdYuNetPlateDetector(IOptions<MediaRedactionOptions> options, ILogger<LpdYuNetPlateDetector> logger)
-        : base(options.Value.PlateModelPath, "Media:Redaction:PlateModelPath", options.Value.InferenceThreads, logger)
+        : base(options.Value.PlateModelPath, "Media:Redaction:PlateModelPath", options.Value, logger)
     {
         _tiles = options.Value.PlateTiles;
         _input = new Lazy<(int, int, float[])>(() =>

@@ -49,6 +49,7 @@ internal sealed class MediaDirectory(IMediaRepository media, IMediaStorage stora
             ready && item.ThumbnailKey is not null ? storage.PublicUrl(item.ThumbnailKey) : null,
             item.DurationSeconds,
             item.Width,
-            item.Height);
+            item.Height,
+            item.Status == MediaStatus.Failed ? item.FailureReason : null);
     }
 }

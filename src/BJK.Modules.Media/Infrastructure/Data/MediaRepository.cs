@@ -28,6 +28,9 @@ public interface IMediaRepository
     /// <summary>Permanently removes every media row of a user, including deleted ones.</summary>
     Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>The media's status and revision as saved now (not tracked), or null if it's gone.</summary>
+    Task<(MediaStatus Status, int Revision)?> GetSavedStateAsync(Guid id, CancellationToken cancellationToken);
+
     void Add(MediaItem media);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
@@ -83,6 +86,15 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
 
     public Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken) =>
         db.Media.Where(m => m.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+
+    public async Task<(MediaStatus Status, int Revision)?> GetSavedStateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var row = await db.Media.AsNoTracking()
+            .Where(m => m.Id == id)
+            .Select(m => new { m.Status, m.Revision })
+            .FirstOrDefaultAsync(cancellationToken);
+        return row is null ? null : (row.Status, row.Revision);
+    }
 
     public void Add(MediaItem media) => db.Media.Add(media);
 

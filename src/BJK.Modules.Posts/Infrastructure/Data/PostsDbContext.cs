@@ -47,7 +47,11 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.PlaceName).HasMaxLength(Post.PlaceNameMaxLength);
         builder.Property(p => p.HiddenReason).HasMaxLength(Post.HiddenReasonMaxLength);
         builder.Property(p => p.ScreeningLabels).HasMaxLength(ScreeningText.LabelsMaxLength);
+        builder.Property(p => p.MediaState).HasConversion<string>().HasMaxLength(20);
+        builder.Property(p => p.MediaFailureReason).HasMaxLength(Post.MediaFailureReasonMaxLength);
+        builder.Property(p => p.NotifyEmail).HasMaxLength(Post.NotifyEmailMaxLength);
         builder.Property(p => p.RowVersion).IsRowVersion();
+        builder.Ignore(p => p.IsMediaPending);
 
         builder.HasMany(p => p.Media)
             .WithOne()

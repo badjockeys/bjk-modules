@@ -10,6 +10,7 @@ using BJK.Modules.Posts.UseCases.Create;
 using BJK.Modules.Posts.UseCases.Delete;
 using BJK.Modules.Posts.UseCases.Get;
 using BJK.Modules.Posts.UseCases.Moderation;
+using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Posts.UseCases.Safety;
@@ -104,15 +105,20 @@ public sealed class PostHandlerTests
     }
 
     [Fact]
-    public async Task Create_rejects_media_still_processing()
+    public async Task Create_rejects_media_still_uploading_or_failed()
     {
-        var mediaId = Guid.NewGuid();
-        MediaAre(new MediaSummary(mediaId, UserId, MediaType.Video, MediaStatus.Processing, null, null, null, null, null));
-        var handler = CreateHandler();
+        var uploading = Guid.NewGuid();
+        MediaAre(new MediaSummary(uploading, UserId, MediaType.Video, MediaStatus.Uploading, null, null, null, null, null));
 
-        var ex = await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(Command(mediaId), Ct));
+        var ex = await Assert.ThrowsAsync<ValidationException>(() => CreateHandler().Handle(Command(uploading), Ct));
+        Assert.Contains("finished uploading", ex.Errors.Single().ErrorMessage);
 
-        Assert.Contains("Processing", ex.Errors.Single().ErrorMessage);
+        var failed = Guid.NewGuid();
+        MediaAre(new MediaSummary(failed, UserId, MediaType.Video, MediaStatus.Failed, null, null, null, null, null, "Videos can be up to 30 seconds long."));
+
+        ex = await Assert.ThrowsAsync<ValidationException>(() => CreateHandler().Handle(Command(failed), Ct));
+        Assert.Contains("30 seconds", ex.Errors.Single().ErrorMessage);
+        _posts.DidNotReceive().Add(Arg.Any<Post>());
     }
 
     [Fact]
@@ -305,7 +311,10 @@ public sealed class PostHandlerTests
     }
 
     private CreatePostCommandHandler CreateHandler() =>
-        new(_posts, _profiles, _media, _screener, Limits(), _views, _caller, _clock);
+        new(_posts, _profiles, _media, _screener, Limits(), _views, Publisher(), _caller, _clock);
+
+    private PostMediaPublisher Publisher() =>
+        new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance);
 
     private DeletePostCommandHandler DeleteHandler() =>
         new(_posts, _media, _audit, _caller, _clock, NullLogger<DeletePostCommandHandler>.Instance);

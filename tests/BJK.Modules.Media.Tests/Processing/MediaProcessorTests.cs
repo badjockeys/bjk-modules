@@ -81,13 +81,17 @@ public sealed class MediaProcessorTests
         return item;
     }
 
+    // These tests cover photos and videos processed in one job; MediaSegmentProcessingTests covers splitting.
     private MediaProcessor Processor() => new(
         _media,
+        new InMemoryVideoJobStore(),
+        Substitute.For<IMediaJobQueue>(),
         _storage,
         _transcoder,
         _redactor,
         Microsoft.Extensions.Options.Options.Create(new MediaOptions { MaxVideoDurationSeconds = 300 }),
-        Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions { WorkingDirectory = Path.GetTempPath() }),
+        Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions { WorkingDirectory = Path.GetTempPath(), SegmentSeconds = 0 }),
+        Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
         new FixedTimeProvider(Now),
         NullLogger<MediaProcessor>.Instance);
 
@@ -144,7 +148,7 @@ public sealed class MediaProcessorTests
 
         Assert.Equal(ProcessingOutcome.Failed, outcome);
         Assert.Equal(MediaStatus.Failed, item.Status);
-        Assert.Contains("5 minutes", item.FailureReason);
+        Assert.Equal("Videos can be up to 5 minutes long, and this one is 5 minutes 1 second. Trim it to 5 minutes or less and upload it again.", item.FailureReason);
         await _redactor.DidNotReceiveWithAnyArgs().RedactVideoAsync(default!, default!, default!, default!, Ct);
         Assert.Empty(_uploads);
     }

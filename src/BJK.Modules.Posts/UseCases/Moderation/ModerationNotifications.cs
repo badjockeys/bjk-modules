@@ -9,8 +9,8 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Posts.UseCases.Moderation;
 
 /// <summary>
-/// The emails about reports and appeals: acknowledgement, outcome, appeal received and appeal decided. Sent straight
-/// away through the Email module (no queue). A failed send is logged and reported back as false; it never undoes the
+/// The emails about reports and appeals (acknowledgement, outcome, appeal received and appeal decided), and to an
+/// author whose pending post couldn't be published. Sent straight away through the Email module (no queue). A failed send is logged and reported back as false; it never undoes the
 /// report or decision, which are already saved. Nothing is sent when there's no contact address.
 /// </summary>
 public sealed class ModerationNotifications(
@@ -56,6 +56,17 @@ public sealed class ModerationNotifications(
 
         return false;
     }
+
+    /// <summary>
+    /// Tells a post's author it couldn't be published because a photo or video failed, using the address saved with
+    /// the pending post. False if there's no address or sending failed.
+    /// </summary>
+    public Task<bool> PostNotPublishedAsync(Post post, CancellationToken cancellationToken) =>
+        SendAsync(
+            post.NotifyEmail,
+            EmailTemplates.PostNotPublished(post.Title, post.MediaFailureReason ?? "A photo or video couldn't be processed."),
+            $"post {post.Id}",
+            cancellationToken);
 
     public Task<bool> AppealReceivedAsync(Appeal appeal, CancellationToken cancellationToken) =>
         SendAsync(appeal.ContactEmail, EmailTemplates.AppealReceived(appeal.Reference, Appeal.ResponseTime), appeal.Reference, cancellationToken);

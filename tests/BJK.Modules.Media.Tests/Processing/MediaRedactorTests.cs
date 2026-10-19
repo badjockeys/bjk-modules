@@ -21,7 +21,8 @@ public sealed class MediaRedactorTests : IDisposable
 
     private static MediaRedactor Redactor(MediaRedactionOptions? options = null, params IRedactionDetector[] detectors) => new(
         detectors.Length > 0 ? detectors : [FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate)],
-        Microsoft.Extensions.Options.Options.Create(options ?? new MediaRedactionOptions()),
+        // The stand-in detectors answer in full-frame coordinates, so detect at full size unless a test says otherwise.
+        Microsoft.Extensions.Options.Options.Create(options ?? new MediaRedactionOptions { DetectionMaxSize = 0 }),
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions()),
         NullLogger<MediaRedactor>.Instance);
 
@@ -75,13 +76,52 @@ public sealed class MediaRedactorTests : IDisposable
     }
 
     [Fact]
+    public async Task Video_detection_runs_on_a_640_pixel_copy_and_boxes_are_mapped_back_to_the_frame()
+    {
+        RequireFfmpeg();
+        var input = CheckerVideo("input.mp4", seconds: 1, audio: false);
+        var output = Path.Combine(_folder, "720p.mp4");
+        var sizes = new List<(int, int)>();
+
+        // Answers in the coordinates of whatever it's given: the same spot as Face, as fractions of the picture.
+        var face = new FakeDetector(RedactionTarget.Face, f =>
+        {
+            lock (sizes)
+            {
+                sizes.Add((f.Width, f.Height));
+            }
+
+            var (sx, sy) = (f.Width / 1280f, f.Height / 720f);
+            return [new DetectionBox(RedactionTarget.Face, Face.X * sx, Face.Y * sy, Face.Width * sx, Face.Height * sy, 0.95f)];
+        });
+
+        await Redactor(new MediaRedactionOptions(), face, FakeDetector.Nothing(RedactionTarget.NumberPlate))
+            .RedactVideoAsync(input, new ProbeResult(true, 1m, 1920, 1080, 60), [], output, Ct);
+
+        Assert.All(sizes, s => Assert.Equal((640, 360), s));
+        var frames = await Frames(output);
+        Assert.InRange(Detail(frames[10], 520, 220, 680, 330), 0, 30);
+        Assert.InRange(Detail(frames[10], 900, 400, 1200, 700), 80, 255);
+    }
+
+    [Theory]
+    [InlineData(1280, 720, 640, 0.5)]
+    [InlineData(640, 360, 640, 1.0)]
+    [InlineData(720, 1280, 640, 0.5)]
+    [InlineData(1920, 1080, 0, 1.0)]
+    public void Detection_scale_fits_the_longest_side(int width, int height, int max, double expected)
+    {
+        Assert.Equal(expected, (double)MediaRedactor.DetectionScale(width, height, max), 3);
+    }
+
+    [Fact]
     public async Task Sound_is_kept_only_when_audio_removal_is_switched_off()
     {
         RequireFfmpeg();
         var input = CheckerVideo("input.mp4", seconds: 1);
         var output = Path.Combine(_folder, "720p.mp4");
 
-        await Redactor(new MediaRedactionOptions { RemoveAudio = false }).RedactVideoAsync(input, new ProbeResult(true, 1m, 1920, 1080, 60), [], output, Ct);
+        await Redactor(new MediaRedactionOptions { RemoveAudio = false, DetectionMaxSize = 0 }).RedactVideoAsync(input, new ProbeResult(true, 1m, 1920, 1080, 60), [], output, Ct);
 
         Assert.Contains("codec_type=audio", await Ffprobe(output));
     }
@@ -183,7 +223,7 @@ public sealed class MediaRedactorTests : IDisposable
         RequireFfmpeg();
         var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
 
-        var result = await Redactor(new MediaRedactionOptions { ReviewEverything = true })
+        var result = await Redactor(new MediaRedactionOptions { ReviewEverything = true, DetectionMaxSize = 0 })
             .RedactImageAsync(input, [], Path.Combine(_folder, "redacted.ppm"), Ct);
 
         Assert.True(result.NeedsReview);

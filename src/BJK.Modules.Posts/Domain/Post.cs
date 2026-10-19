@@ -3,10 +3,11 @@ using BJK.Modules.Shared.Safety;
 namespace BJK.Modules.Posts.Domain;
 
 /// <summary>
-/// A post of a driving incident with 1 to 10 photos or videos. Stored in <c>posts.Posts</c>, with its media
-/// in <c>posts.PostMedia</c>. Visible to everyone as soon as it's created, because its media must already be
-/// processed (Ready) by then, unless content screening holds it for review. Its map pin is rounded to about 500 m
-/// (<see cref="PinRounding"/>).
+/// A post of a driving incident with 1 to 10 photos or one video. Stored in <c>posts.Posts</c>, with its media
+/// in <c>posts.PostMedia</c>. If its media are already Ready it's visible to everyone as soon as it's created (unless
+/// content screening holds it for review); otherwise it waits, visible only to its author and moderators
+/// (<see cref="PostMediaState.Pending"/>), and is published automatically when they're all Ready. Its map pin is
+/// rounded to about 500 m (<see cref="PinRounding"/>).
 /// </summary>
 public sealed class Post
 {
@@ -14,6 +15,8 @@ public sealed class Post
     public const int DescriptionMaxLength = 5000;
     public const int PlaceNameMaxLength = 200;
     public const int HiddenReasonMaxLength = 500;
+    public const int MediaFailureReasonMaxLength = 500;
+    public const int NotifyEmailMaxLength = 254;
     public const int MaxMedia = 10;
 
     private readonly List<PostMedia> _media = [];
@@ -79,17 +82,46 @@ public sealed class Post
 
     public Guid? ReviewedBy { get; private set; }
 
+    /// <summary>
+    /// Whether the photos and video are ready. Others see the post only when it's <see cref="PostStatus.Published"/>
+    /// and this is <see cref="PostMediaState.Ready"/>.
+    /// </summary>
+    public PostMediaState MediaState { get; private set; }
+
+    /// <summary>Why the post couldn't be published (when <see cref="MediaState"/> is Failed), for its author.</summary>
+    public string? MediaFailureReason { get; private set; }
+
+    /// <summary>When every photo and video became ready (null if they were ready when the post was created).</summary>
+    public DateTimeOffset? MediaReadyAt { get; private set; }
+
+    /// <summary>
+    /// Where to email the author if the post can't be published: the address in their token when they posted, kept
+    /// only while the post is Pending and cleared as soon as it's published or they've been told.
+    /// </summary>
+    public string? NotifyEmail { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     /// <summary>The photos and videos, in the order the author chose.</summary>
     public IReadOnlyList<PostMedia> Media => _media;
 
+    /// <param name="authorId">The author's user id.</param>
+    /// <param name="details">Title, description, category, time and place.</param>
+    /// <param name="mediaIds">The photos or video, in order.</param>
+    /// <param name="now">The time.</param>
+    /// <param name="isSensitive">Graphic content.</param>
+    /// <param name="mediaPending">
+    /// True if any of the media is still being processed: the post waits (<see cref="PostMediaState.Pending"/>).
+    /// </param>
+    /// <param name="notifyEmail">For a pending post: where to tell the author if it can't be published.</param>
     public static Post Create(
         Guid authorId,
         PostDetails details,
         IReadOnlyList<Guid> mediaIds,
         DateTimeOffset now,
-        bool isSensitive = false)
+        bool isSensitive = false,
+        bool mediaPending = false,
+        string? notifyEmail = null)
     {
         if (authorId == Guid.Empty)
         {
@@ -113,6 +145,10 @@ public sealed class Post
             Status = PostStatus.Published,
             CreatedAt = now,
             IsSensitive = isSensitive,
+            MediaState = mediaPending ? PostMediaState.Pending : PostMediaState.Ready,
+            NotifyEmail = mediaPending && !string.IsNullOrWhiteSpace(notifyEmail) && notifyEmail.Trim().Length <= NotifyEmailMaxLength
+                ? notifyEmail.Trim()
+                : null,
         };
         post.SetDetails(details);
         for (var i = 0; i < mediaIds.Count; i++)
@@ -127,8 +163,53 @@ public sealed class Post
 
     public bool IsPublished => Status == PostStatus.Published;
 
-    /// <summary>Published and its author's account is active: anyone can see it.</summary>
-    public bool IsPublic => IsPublished && !IsAuthorDeactivated;
+    /// <summary>Published, its media are ready and its author's account is active: anyone can see it.</summary>
+    public bool IsPublic => IsPublished && MediaState == PostMediaState.Ready && !IsAuthorDeactivated;
+
+    /// <summary>Still waiting for its photos or video to finish processing.</summary>
+    public bool IsMediaPending => MediaState == PostMediaState.Pending;
+
+    /// <summary>
+    /// Every photo and video is ready: the post is published (to others too, if its status allows). Only from
+    /// Pending; returns false if there was nothing to do (already ready, failed or deleted), so repeats are harmless.
+    /// </summary>
+    /// <param name="now">The time.</param>
+    public bool MarkMediaReady(DateTimeOffset now)
+    {
+        if (Status == PostStatus.Deleted || MediaState != PostMediaState.Pending)
+        {
+            return false;
+        }
+
+        MediaState = PostMediaState.Ready;
+        MediaReadyAt = now;
+        NotifyEmail = null;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// A photo or video can never be ready: the post stays unpublished, with the reason for its author. Only from
+    /// Pending; returns false if there was nothing to do, so repeats are harmless (and the author is emailed once).
+    /// </summary>
+    /// <param name="reason">Why, in words the author understands.</param>
+    /// <param name="now">The time.</param>
+    public bool MarkMediaFailed(string reason, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        if (Status == PostStatus.Deleted || MediaState != PostMediaState.Pending)
+        {
+            return false;
+        }
+
+        MediaState = PostMediaState.Failed;
+        MediaFailureReason = reason.Length <= MediaFailureReasonMaxLength ? reason : reason[..MediaFailureReasonMaxLength];
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>Forgets the author's email address once they've been told (or it couldn't be sent).</summary>
+    public void ClearNotifyEmail() => NotifyEmail = null;
 
     public void Update(PostDetails details, DateTimeOffset now)
     {

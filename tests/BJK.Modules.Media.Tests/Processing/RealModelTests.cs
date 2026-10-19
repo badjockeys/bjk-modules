@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -174,6 +175,75 @@ public sealed class RealModelTests : IDisposable
             $"{timer.Elapsed.TotalSeconds:0.0}s total, {result.DetectionTime.TotalSeconds:0.0}s detecting " +
             $"({perMinute:0.0}s per minute of video, ~{perMinute * 5:0}s for 5 minutes), " +
             $"{Environment.ProcessorCount} CPUs, {result.FacesBlurred} faces, {result.PlatesBlurred} plates tracked.");
+        await Report(report);
+    }
+
+    /// <summary>
+    /// End-to-end processing time of a 30-second 1080p30 clip on this machine, as one job (decode, detect, track, blur,
+    /// encode, thumbnail) and split into 5-second segments (each segment timed separately, as a separate worker replica
+    /// would run it, then the join and thumbnail). The parallel estimate is the probe plus the slowest segment plus the
+    /// join, i.e. with one replica per segment (6 for 30 seconds) and no queue wait. Storage transfers aren't included.
+    /// </summary>
+    [Fact]
+    public async Task A_30_second_1080p_clip_is_timed_in_one_job_and_in_segments()
+    {
+        var models = Models();
+        PerfSeconds();
+        const int seconds = 30;
+        var input = Make(
+            Path.Combine(_folder, "clip30.mp4"),
+            "-loop", "1", "-framerate", "30", "-t", "30", "-i", Path.Combine(models, "test-faces.jpg"),
+            "-vf", "scale=2400:1350,crop=1920:1080:'mod(t*40,480)':100,format=yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast");
+        var options = Options(models);
+        using var faces = new YuNetFaceDetector(options, NullLogger<YuNetFaceDetector>.Instance);
+        using var plates = new LpdYuNetPlateDetector(options, NullLogger<LpdYuNetPlateDetector>.Instance);
+        var processing = Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions());
+        var redactor = new MediaRedactor([faces, plates], options, processing, NullLogger<MediaRedactor>.Instance);
+        var transcoder = new FfmpegTranscoder(processing, NullLogger<FfmpegTranscoder>.Instance);
+
+        // Warm up the models so neither run pays for loading them.
+        faces.Detect(new RgbFrame(64, 64), 0.5f);
+        plates.Detect(new RgbFrame(64, 64), 0.5f);
+
+        // One job.
+        var timer = Stopwatch.StartNew();
+        var probe = await transcoder.ProbeAsync(input, Ct);
+        var probeTime = timer.Elapsed;
+        var single = await redactor.RedactVideoAsync(input, probe, [], Path.Combine(_folder, "single.mp4"), Ct);
+        await transcoder.CreateVideoThumbnailAsync(Path.Combine(_folder, "single.mp4"), Path.Combine(_folder, "single.jpg"), Ct);
+        var singleTime = timer.Elapsed;
+        Assert.Equal(seconds * 30, single.Frames);
+
+        // Segments, one after another, each timed as its own job.
+        var plan = VideoSegmentPlan.For((double)probe.DurationSeconds!.Value, MediaRedactor.OutputFrameRate(probe.FrameRate), probe.StartSeconds ?? 0, 5, 1.0);
+        var segmentTimes = new List<TimeSpan>();
+        var parts = new List<string>();
+        for (var i = 0; i < plan.SegmentCount; i++)
+        {
+            var part = Path.Combine(_folder, $"part{i:D3}.mp4");
+            var segmentTimer = Stopwatch.StartNew();
+            await redactor.RedactVideoSegmentAsync(input, plan, i, [], part, Ct);
+            segmentTimes.Add(segmentTimer.Elapsed);
+            parts.Add(part);
+        }
+
+        var joinTimer = Stopwatch.StartNew();
+        var joined = Path.Combine(_folder, "joined.mp4");
+        await transcoder.ConcatenateVideoAsync(parts, null, joined, Ct);
+        await transcoder.CreateVideoThumbnailAsync(joined, Path.Combine(_folder, "joined.jpg"), Ct);
+        var joinTime = joinTimer.Elapsed;
+        Assert.Equal(seconds * 30, await CountFrames(joined));
+
+        var parallel = probeTime + segmentTimes.Max() + joinTime;
+        var report = string.Create(
+            CultureInfo.InvariantCulture,
+            $"30s 1080p30 clip, end to end on {Environment.ProcessorCount} CPUs: one job {singleTime.TotalSeconds:0.0}s " +
+            $"({single.DetectionTime.TotalSeconds:0.0}s detecting, {single.FramesAnalysed} frames analysed at <= 640 px); " +
+            $"{plan.SegmentCount} segments of 5s took {string.Join(", ", segmentTimes.Select(t => t.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)))}s " +
+            $"(sum {segmentTimes.Sum(t => t.TotalSeconds):0.0}s), join + thumbnail {joinTime.TotalSeconds:0.00}s; " +
+            $"estimated with {plan.SegmentCount} parallel replicas {parallel.TotalSeconds:0.0}s " +
+            $"({singleTime.TotalSeconds / parallel.TotalSeconds:0.0}x faster).");
         await Report(report);
     }
 }

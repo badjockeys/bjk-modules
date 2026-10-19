@@ -4,11 +4,13 @@ using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Messaging;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace BJK.Modules.Media;
 
@@ -44,7 +46,10 @@ public sealed class MediaModule(string connectionStringName) : IModule
     {
         MediaServices.AddStorageAndData(services, configuration, connectionStringName);
         services.AddScoped<IMediaDirectory, MediaDirectory>();
-        services.AddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+        services.TryAddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+
+        // media.ready / media.failed: written to media.Outbox by the API and the workers, published from here.
+        services.AddOutboxPublisher<MediaDbContext>(configuration, MediaEvents.Exchange);
 
         services.AddScoped<IPersonalDataExporter, MediaPersonalDataExporter>();
         services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration);

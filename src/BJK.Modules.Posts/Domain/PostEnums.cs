@@ -35,6 +35,28 @@ public enum PostStatus
     Deleted,
 }
 
+/// <summary>
+/// Whether a post's photos and video are ready to show. A post can be created while its media are still being
+/// processed (or waiting for a moderator to check the blurring); it's then <see cref="Pending"/>, seen only by its
+/// author and moderators, and is published automatically once every item is Ready. Separate from
+/// <see cref="PostStatus"/>, which is about moderation: a post is visible to others only when it's Published and its
+/// media are Ready.
+/// </summary>
+public enum PostMediaState
+{
+    /// <summary>Every photo or video is ready: the post shows to others if its status allows.</summary>
+    Ready,
+
+    /// <summary>Waiting for media processing (or review). Only the author and moderators see the post.</summary>
+    Pending,
+
+    /// <summary>
+    /// A photo or video failed processing, was rejected by a moderator, or was deleted, so the post won't be published.
+    /// The author sees why and was emailed. They can delete the post and try again.
+    /// </summary>
+    Failed,
+}
+
 public enum ReactionType
 {
     Like,

@@ -17,4 +17,11 @@ public sealed class MessagingOptions
     /// </summary>
     [Required]
     public string UserEventsQueue { get; set; } = "bjk-core.user-events";
+
+    /// <summary>
+    /// The queue this host reads media events (<c>media.ready</c>, <c>media.failed</c>) from, bound to the Media
+    /// module's <c>bjk.media</c> exchange. The Posts module uses them to publish posts once their media are ready.
+    /// </summary>
+    [Required]
+    public string MediaEventsQueue { get; set; } = "bjk-core.media-events";
 }

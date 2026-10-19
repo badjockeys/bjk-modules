@@ -9,7 +9,7 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// and again scaled down to 640 pixels for faces close to the camera. The decoding matches OpenCV's FaceDetectorYN.
 /// </summary>
 internal sealed class YuNetFaceDetector(IOptions<MediaRedactionOptions> options, ILogger<YuNetFaceDetector> logger)
-    : OnnxDetector(options.Value.FaceModelPath, "Media:Redaction:FaceModelPath", options.Value.InferenceThreads, logger)
+    : OnnxDetector(options.Value.FaceModelPath, "Media:Redaction:FaceModelPath", options.Value, logger)
 {
     private const int MaxInputSide = 2048;
     private const int SmallPassSide = 640;

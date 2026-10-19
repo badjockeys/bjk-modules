@@ -7,15 +7,69 @@ public sealed class MediaOptions
 {
     public const string SectionName = "Media";
 
+    /// <summary>
+    /// Largest video upload. 150 MB leaves plenty of room for 30 seconds of 4K dashcam footage (about 80 to 100 MB at
+    /// typical bit rates); the apps shrink videos on the phone before uploading anyway.
+    /// </summary>
     [Range(1, long.MaxValue)]
-    public long MaxVideoBytes { get; set; } = 500L * 1024 * 1024;
+    public long MaxVideoBytes { get; set; } = 150L * 1024 * 1024;
 
     [Range(1, long.MaxValue)]
     public long MaxImageBytes { get; set; } = 25L * 1024 * 1024;
 
-    /// <summary>Checked by the worker once ffmpeg has read the video.</summary>
+    /// <summary>
+    /// Longest video, in seconds (30 since 19 Oct 2026). Checked by the worker once ffmpeg has read the video, with
+    /// <see cref="DurationTolerance"/> to spare, because a clip trimmed to exactly 30 seconds is often a few
+    /// hundredths over once it's in a file.
+    /// </summary>
     [Range(1, int.MaxValue)]
-    public int MaxVideoDurationSeconds { get; set; } = 300;
+    public int MaxVideoDurationSeconds { get; set; } = 30;
+
+    /// <summary>How far over <see cref="MaxVideoDurationSeconds"/> a video may run before it's refused.</summary>
+    public static readonly decimal DurationTolerance = 0.5m;
+
+    /// <summary>True if a video of this length is over the limit.</summary>
+    /// <param name="seconds">The video's length.</param>
+    public bool IsTooLong(decimal seconds) => seconds > MaxVideoDurationSeconds + DurationTolerance;
+
+    /// <summary>The message the uploader sees when a video is too long, e.g. "Videos can be up to 30 seconds long...".</summary>
+    /// <param name="seconds">The video's length.</param>
+    public string TooLongMessage(decimal seconds) =>
+        $"Videos can be up to {Describe(MaxVideoDurationSeconds)} long, and this one is {Describe((int)Math.Ceiling(seconds))}. Trim it to {Describe(MaxVideoDurationSeconds)} or less and upload it again.";
+
+    /// <summary>The message the uploader sees when a file is too big, e.g. "Videos can be up to 150 MB...".</summary>
+    /// <param name="type">Video or photo.</param>
+    /// <param name="sizeBytes">The file's size, if known.</param>
+    public string TooBigMessage(Domain.MediaType type, long? sizeBytes = null)
+    {
+        var limit = MaxBytesFor(type) / (1024 * 1024);
+        var what = type == Domain.MediaType.Video ? "Videos" : "Photos";
+        var size = sizeBytes is { } bytes ? $", and this one is {Math.Max(1, (bytes + (1024 * 1024) - 1) / (1024 * 1024))} MB" : string.Empty;
+        var hint = type == Domain.MediaType.Video
+            ? $" Trim it to {Describe(MaxVideoDurationSeconds)} or export it at a lower quality, then upload it again."
+            : " Export it at a smaller size, then upload it again.";
+        return $"{what} can be up to {limit} MB{size}.{hint}";
+    }
+
+    /// <summary>"30 seconds", "1 minute", "2 minutes 30 seconds".</summary>
+    /// <param name="seconds">A whole number of seconds.</param>
+    public static string Describe(int seconds)
+    {
+        var minutes = seconds / 60;
+        var rest = seconds % 60;
+        var parts = new List<string>();
+        if (minutes > 0)
+        {
+            parts.Add(minutes == 1 ? "1 minute" : $"{minutes} minutes");
+        }
+
+        if (rest > 0 || minutes == 0)
+        {
+            parts.Add(rest == 1 ? "1 second" : $"{rest} seconds");
+        }
+
+        return string.Join(" ", parts);
+    }
 
     public TimeSpan UploadUrlLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
@@ -80,9 +134,40 @@ public sealed class MediaProcessingOptions
     /// <summary>Where each job's temporary files go; each job gets its own folder, removed when it finishes.</summary>
     public string? WorkingDirectory { get; set; }
 
-    /// <summary>Jobs one worker runs at once. Video encoding uses every core, so 1 is usually right.</summary>
+    /// <summary>
+    /// Jobs one worker runs at once. Each job (a photo, a short video, or one segment of a longer video) already uses
+    /// every core for detection and encoding, so keep 1 and scale out with more worker replicas instead.
+    /// </summary>
     [Range(1, 16)]
     public int MaxConcurrentJobs { get; set; } = 1;
+
+    /// <summary>
+    /// Threads each ffmpeg process may use for decoding and encoding. 0 (the default) means every core this worker has
+    /// (<see cref="Environment.ProcessorCount"/>, which respects the container's CPU limit; ffmpeg's own automatic
+    /// choice doesn't).
+    /// </summary>
+    [Range(0, 64)]
+    public int FfmpegThreads { get; set; }
+
+    /// <summary>
+    /// Videos longer than this are split into segments of this many seconds, each blurred and encoded as a separate
+    /// queue job, so several worker replicas can work on one video at once; a final job joins them. Shorter videos are
+    /// processed in one job. 0 turns splitting off.
+    /// </summary>
+    [Range(0, 300)]
+    public int SegmentSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Extra video each segment job decodes and runs detection on, before and after its own part, so faces and plates
+    /// crossing a segment boundary are tracked as if the video were in one piece and blurs don't drop at the joins.
+    /// Should cover <c>Media:Redaction:DetectEveryNthFrame</c> x (<c>MaxMissedDetections</c> + 1) frames (20 frames,
+    /// two thirds of a second at 30 fps, by default).
+    /// </summary>
+    [Range(0.0, 10.0)]
+    public double SegmentOverlapSeconds { get; set; } = 1.0;
+
+    /// <summary>The ffmpeg thread count to use: <see cref="FfmpegThreads"/>, or every core if 0.</summary>
+    public int EffectiveFfmpegThreads => FfmpegThreads > 0 ? FfmpegThreads : Environment.ProcessorCount;
 
     /// <summary>Height of the playback video. Smaller videos keep their size.</summary>
     [Range(240, 2160)]
@@ -177,7 +262,47 @@ public sealed class MediaRedactionOptions
     /// </summary>
     public TimeSpan VideoTimeout { get; set; } = TimeSpan.FromMinutes(25);
 
-    /// <summary>Threads ONNX Runtime may use per detection; 0 lets it decide (all cores).</summary>
+    /// <summary>
+    /// Threads ONNX Runtime uses within one detection (intra-op). 0 (the default) means every core this worker has
+    /// (<see cref="Environment.ProcessorCount"/>, which respects the container's CPU limit).
+    /// </summary>
     [Range(0, 64)]
     public int InferenceThreads { get; set; }
+
+    /// <summary>
+    /// Detection runs on a copy of each frame scaled down so its longest side is at most this many pixels (boxes are
+    /// mapped back to the full picture before blurring). Much faster for faces; plates are searched in zoomed tiles of
+    /// the smaller copy, so their cost barely changes. Faces smaller than about 10 pixels in the copy (20 pixels in a
+    /// 720p frame) may be missed. 0 runs detection at full resolution.
+    /// </summary>
+    [Range(0, 4096)]
+    public int DetectionMaxSize { get; set; } = 640;
+
+    /// <summary>
+    /// Where the detection models run. <see cref="RedactionExecutionProvider.Cpu"/> (the default) works everywhere.
+    /// <see cref="RedactionExecutionProvider.Cuda"/> is for a future GPU worker image built with the
+    /// <c>Microsoft.ML.OnnxRuntime.Gpu</c> package; with the standard CPU package the detectors report themselves
+    /// unavailable, so media goes to review rather than being published unblurred.
+    /// </summary>
+    public RedactionExecutionProvider ExecutionProvider { get; set; } = RedactionExecutionProvider.Cpu;
+
+    /// <summary>The GPU to use when <see cref="ExecutionProvider"/> is Cuda.</summary>
+    [Range(0, 16)]
+    public int CudaDeviceId { get; set; }
+
+    /// <summary>The ONNX Runtime thread count to use: <see cref="InferenceThreads"/>, or every core if 0.</summary>
+    public int EffectiveInferenceThreads => InferenceThreads > 0 ? InferenceThreads : Environment.ProcessorCount;
+}
+
+/// <summary>Hardware the detection models run on (<c>Media:Redaction:ExecutionProvider</c>).</summary>
+public enum RedactionExecutionProvider
+{
+    /// <summary>ONNX Runtime's CPU provider, in the standard <c>Microsoft.ML.OnnxRuntime</c> package.</summary>
+    Cpu,
+
+    /// <summary>
+    /// NVIDIA GPUs through ONNX Runtime's CUDA provider. Reserved for a GPU worker image: needs the
+    /// <c>Microsoft.ML.OnnxRuntime.Gpu</c> package (same API) and CUDA libraries in the image.
+    /// </summary>
+    Cuda,
 }

@@ -31,7 +31,9 @@ public sealed record PostMediaDto(
 /// <summary>
 /// A post. <c>IsSensitive</c> posts are never sent to logged-out viewers. <c>CommentsRequireSignIn</c> is true for
 /// logged-out viewers: comments aren't shown to them (the count still is), so the app shows "Sign in to see comments".
-/// <c>Status</c> is HeldForReview or Hidden only for the author (and moderators).
+/// <c>Status</c> is HeldForReview or Hidden only for the author (and moderators). <c>MediaState</c> is Pending while
+/// the photos or video are still processing (show a "processing" badge; <c>Media</c> lists only the ready ones) and
+/// Failed, with <c>MediaFailureReason</c>, if the post can't be published; others only ever see Ready posts.
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -50,7 +52,13 @@ public sealed record PostDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
     bool IsSensitive = false,
-    bool CommentsRequireSignIn = false);
+    bool CommentsRequireSignIn = false,
+    PostMediaState MediaState = PostMediaState.Ready,
+    string? MediaFailureReason = null)
+{
+    /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
+    public bool IsProcessing => MediaState == PostMediaState.Pending;
+}
 
 /// <summary>
 /// A comment or reply. <c>Status</c> is HeldForReview only for its author, while a moderator reviews it.
@@ -205,7 +213,9 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 p.CreatedAt,
                 p.UpdatedAt,
                 p.IsSensitive,
-                CommentsRequireSignIn: viewerId is null);
+                CommentsRequireSignIn: viewerId is null,
+                MediaState: p.MediaState,
+                MediaFailureReason: p.MediaFailureReason);
         }).ToList();
     }
 
