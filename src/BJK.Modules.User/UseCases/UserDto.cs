@@ -1,5 +1,6 @@
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.Infrastructure.Services;
+using BJK.Modules.User.UseCases.AgeChecks;
 
 namespace BJK.Modules.User.UseCases;
 
@@ -13,8 +14,12 @@ public sealed record UserDto(
     UserAccountStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeactivatedAt,
-    DateTimeOffset? DeletionDueAt)
+    DateTimeOffset? DeletionDueAt,
+    AgeCheckSummaryDto AgeCheck)
 {
+    /// <summary>True once the account has passed the age check (tokens carry age_verified=true).</summary>
+    public bool AgeVerified => AgeCheck.Status == AgeCheckStatus.Passed;
+
     internal static UserDto From(UserAccount account, SignInAccount? signIn) => new(
         account.Id,
         signIn?.Email,
@@ -24,5 +29,6 @@ public sealed record UserDto(
         account.Status,
         account.CreatedAt,
         account.DeactivatedAt,
-        account.DeletionDueAt);
+        account.DeletionDueAt,
+        AgeCheckSummaryDto.From(account));
 }
