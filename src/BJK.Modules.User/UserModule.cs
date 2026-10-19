@@ -66,7 +66,7 @@ public sealed class UserModule(string connectionStringName) : IModule
         AddAgeAssurance(services, configuration);
 
         // Account changes go out to bjk-core through the outbox (see AccountLifecycle).
-        services.AddOutboxPublisher<UserDbContext>(configuration, UserLifecycleEvents.Exchange);
+        services.AddOutboxPublisher<UserDbContext>(configuration, UserLifecycleEvents.Topic, connectionStringName);
         services.AddHostedService<AccountRetentionService>();
 
         services.AddAuthorizationBuilder()

@@ -1,5 +1,6 @@
 using BJK.Modules.Media.Domain;
 using Microsoft.EntityFrameworkCore;
+using BJK.Modules.Shared.Messaging;
 
 namespace BJK.Modules.Media.Infrastructure.Data;
 
@@ -72,6 +73,14 @@ public interface IMediaRepository
     void Add(MediaItem media);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves the changes and whatever <paramref name="queueMessages"/> queues (e.g. a processing job) in one database
+    /// transaction: both are saved, or neither.
+    /// </summary>
+    /// <param name="queueMessages">Queues the messages, e.g. through <see cref="BJK.Modules.Media.Infrastructure.Messaging.IMediaJobQueue"/>.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    Task SaveChangesWithMessagesAsync(Func<CancellationToken, Task> queueMessages, CancellationToken cancellationToken);
 }
 
 internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
@@ -216,4 +225,7 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
     public void Add(MediaItem media) => db.Media.Add(media);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+
+    public Task SaveChangesWithMessagesAsync(Func<CancellationToken, Task> queueMessages, CancellationToken cancellationToken) =>
+        db.SaveChangesWithMessagesAsync(queueMessages, cancellationToken);
 }

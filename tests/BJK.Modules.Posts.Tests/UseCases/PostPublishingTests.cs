@@ -178,7 +178,7 @@ public sealed class PostPublishingTests
         Assert.Null(_saved.NotifyEmail);
         await _posts.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
 
-        // The same event again (RabbitMQ can deliver twice): nothing more happens.
+        // The same event again (a queue can deliver twice): nothing more happens.
         await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
         await _posts.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
         Assert.Empty(_sent);

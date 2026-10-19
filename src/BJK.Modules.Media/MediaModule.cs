@@ -50,13 +50,13 @@ public sealed class MediaModule(string connectionStringName) : IModule
         // Originals are deleted once their post is published; the sweeper catches the rest after 24 hours.
         services.AddScoped<OriginalsCleanup>();
         services.AddHostedService<OriginalsSweeper>();
-        services.TryAddSingleton<IMediaJobQueue, RabbitMqMediaJobQueue>();
+        services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
 
         // media.ready / media.failed: written to media.Outbox by the API and the workers, published from here.
-        services.AddOutboxPublisher<MediaDbContext>(configuration, MediaEvents.Exchange);
+        services.AddOutboxPublisher<MediaDbContext>(configuration, MediaEvents.Topic, connectionStringName);
 
         services.AddScoped<IPersonalDataExporter, MediaPersonalDataExporter>();
-        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration);
+        services.AddUserLifecycleHandler<MediaUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

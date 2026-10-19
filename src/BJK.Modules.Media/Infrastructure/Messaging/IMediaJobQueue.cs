@@ -34,7 +34,7 @@ public sealed record MediaProcessingJob(
     /// <summary>For Visibility: unique per request, so each request is a separate message.</summary>
     public Guid? RequestId { get; init; }
 
-    /// <summary>A RabbitMQ message id unique to this step.</summary>
+    /// <summary>A message id unique to this step.</summary>
     [JsonIgnore]
     public string MessageId => Step switch
     {

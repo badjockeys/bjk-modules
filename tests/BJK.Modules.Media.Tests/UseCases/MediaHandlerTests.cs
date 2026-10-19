@@ -27,6 +27,8 @@ public sealed class MediaHandlerTests
     public MediaHandlerTests()
     {
         _caller.IdentityId.Returns(UserId.ToString());
+        _media.SaveChangesWithMessagesAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ci.ArgAt<Func<CancellationToken, Task>>(0)(ci.ArgAt<CancellationToken>(1)));
         _storage.PublicUrl(Arg.Any<string>()).Returns(ci => new Uri("https://media.example.com/" + ci.Arg<string>()));
     }
 
@@ -70,7 +72,7 @@ public sealed class MediaHandlerTests
         await _queue.Received(1).EnqueueAsync(
             Arg.Is<MediaProcessingJob>(j => j.MediaId == item.Id && j.OriginalKey == item.OriginalKey && j.MediaType == MediaType.Video),
             Arg.Any<CancellationToken>());
-        await _media.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await _media.Received(1).SaveChangesWithMessagesAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

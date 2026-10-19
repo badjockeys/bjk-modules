@@ -27,6 +27,8 @@ public sealed class MediaReviewTests
     public MediaReviewTests()
     {
         _caller.IdentityId.Returns(ModeratorId.ToString());
+        _media.SaveChangesWithMessagesAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ci.ArgAt<Func<CancellationToken, Task>>(0)(ci.ArgAt<CancellationToken>(1)));
         _caller.HasScope(MediaModule.ManageScope).Returns(true);
         _caller.HasRole(StaffRoles.Moderator).Returns(true);
         _caller.UsedMfa.Returns(true);

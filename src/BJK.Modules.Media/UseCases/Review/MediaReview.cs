@@ -252,12 +252,22 @@ public sealed class ApproveMediaCommandHandler(
             item.Restrict(previewKey: null, clock.GetUtcNow());
         }
 
-        await media.SaveChangesAsync(cancellationToken);
+        // Sensitive: the worker makes the preview; the job is queued in the same transaction as the approval.
+        if (sensitive)
+        {
+            var visibility = MediaProcessingJob.ForVisibility(item);
+            await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(visibility, ct), cancellationToken);
+        }
+        else
+        {
+            await media.SaveChangesAsync(cancellationToken);
+        }
+
         await storage.DeleteOriginalAsync(reviewFiles.Playback, cancellationToken);
         await storage.DeleteOriginalAsync(reviewFiles.Thumbnail, cancellationToken);
 
-        // The preview is made by the worker; a job also moves the files if the post was tagged or untagged meanwhile.
-        if (sensitive || await media.IsSensitiveAsync(item.Id, cancellationToken))
+        // Tagged while we approved it: move the files now.
+        if (!sensitive && await media.IsSensitiveAsync(item.Id, cancellationToken))
         {
             await queue.EnqueueAsync(MediaProcessingJob.ForVisibility(item), cancellationToken);
         }
@@ -408,11 +418,9 @@ public sealed class AddManualRedactionsCommandHandler(
         var before = item.Status;
         item.AddManualRedactions(request.Regions, clock.GetUtcNow(), source);
 
-        // Save first, then queue: the worker skips media that isn't Processing yet, so queueing first could lose the job.
-        await media.SaveChangesAsync(cancellationToken);
-        await queue.EnqueueAsync(
-            new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType),
-            cancellationToken);
+        // The job is queued in the same transaction as the change back to Processing: both happen, or neither.
+        var job = new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);
+        await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(job, ct), cancellationToken);
         if (previousSource is not null && previousSource != source)
         {
             await storage.DeleteOriginalAsync(previousSource, cancellationToken);
