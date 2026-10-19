@@ -101,7 +101,7 @@ public sealed class OnlineSafetyTests
         Assert.Null(media.PlaybackUrl);
         Assert.Null(media.ThumbnailUrl);
         Assert.Equal("https://media.example.com/preview.webp", media.PreviewUrl!.ToString());
-        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, default);
+        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, Ct);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class OnlineSafetyTests
         Assert.False(dto.CommentsRequireSignIn);
         Assert.True(Assert.Single(dto.Media).IsBlurred);
         Assert.Null(dto.Media[0].PlaybackUrl);
-        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, default);
+        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, Ct);
     }
 
     [Fact]

@@ -107,8 +107,8 @@ public sealed class MediaReviewTests
 
         Assert.Equal(MediaStatus.Ready, item.Status);
         Assert.True(item.IsRestricted);
-        await _storage.DidNotReceiveWithAnyArgs().PublishPrivateAsync(default!, default!, default!, default);
-        await _storage.DidNotReceiveWithAnyArgs().UploadPublicAsync(default!, default!, default!, default);
+        await _storage.DidNotReceiveWithAnyArgs().PublishPrivateAsync(default!, default!, default!, Ct);
+        await _storage.DidNotReceiveWithAnyArgs().UploadPublicAsync(default!, default!, default!, Ct);
         await _storage.Received(1).CopyAsync(
             MediaBucket.Originals, $"{UserId:D}/{item.Id:D}/review/720p.mp4",
             MediaBucket.Sensitive, $"{UserId:D}/{item.Id:D}/sensitive/720p.mp4", "video/mp4", Arg.Any<CancellationToken>());

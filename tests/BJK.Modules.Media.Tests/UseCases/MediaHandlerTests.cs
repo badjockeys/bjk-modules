@@ -155,7 +155,7 @@ public sealed class MediaHandlerTests
         Assert.Null(dto.PlaybackUrl);
         Assert.Null(dto.ThumbnailUrl);
         Assert.Equal($"https://media.example.com/{OtherUserId:D}/{item.Id:D}/preview.webp", dto.PreviewUrl!.ToString());
-        await _storage.DidNotReceiveWithAnyArgs().CreateDownloadUrlAsync(default, default!, default, default);
+        await _storage.DidNotReceiveWithAnyArgs().CreateDownloadUrlAsync(default, default!, default, Ct);
     }
 
     [Fact]

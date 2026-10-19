@@ -65,7 +65,7 @@ public sealed class MediaDirectoryTests
 
         Assert.Equal($"https://media.example.com/{UserId:D}/{item.Id:D}/720p.mp4", signed.PlaybackUrl!.ToString());
         Assert.Null(signed.LinksExpireAt);
-        await _storage.DidNotReceiveWithAnyArgs().CreateDownloadUrlAsync(default, default!, default, default);
+        await _storage.DidNotReceiveWithAnyArgs().CreateDownloadUrlAsync(default, default!, default, Ct);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class MediaDirectoryTests
 
         await _directory.SetSensitiveAsync([item.Id], true, Ct);
 
-        await _queue.DidNotReceiveWithAnyArgs().EnqueueAsync(default!, default);
+        await _queue.DidNotReceiveWithAnyArgs().EnqueueAsync(default!, Ct);
     }
 
     [Fact]

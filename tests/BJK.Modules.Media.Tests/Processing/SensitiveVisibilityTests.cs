@@ -179,7 +179,7 @@ public sealed class SensitiveVisibilityTests
 
         await Processor(new SensitiveDetectionOptions { Enabled = true, Threshold = 0.35 }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
-        await _media.DidNotReceiveWithAnyArgs().SetSensitiveAsync(default, default, default, default, default, default, default);
+        await _media.DidNotReceiveWithAnyArgs().SetSensitiveAsync(default, default, default, Ct, default, default, default);
         Assert.Equal(0.2, item.SensitiveScore);
         Assert.False(item.IsRestricted);
     }
@@ -255,7 +255,7 @@ public sealed class SensitiveVisibilityTests
 
         Assert.Equal(new[] { $"{Folder(item)}/preview.webp" }, _storage.Keys(MediaBucket.Public));
         Assert.Empty(_storage.Copies);
-        await _transcoder.DidNotReceiveWithAnyArgs().CreateSensitivePreviewAsync(default!, default!, default);
+        await _transcoder.DidNotReceiveWithAnyArgs().CreateSensitivePreviewAsync(default!, default!, Ct);
         await _media.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
