@@ -61,7 +61,7 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
         services.AddScoped<IBlockDirectory, BlockDirectory>();
         services.AddScoped<IProfileModeration, ProfileModeration>();
         services.AddScoped<IPersonalDataExporter, ProfilePersonalDataExporter>();
-        services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration);
+        services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

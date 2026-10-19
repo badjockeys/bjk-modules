@@ -109,7 +109,7 @@ public sealed class MediaStorageOptions
     public Uri? PublicBaseUrl { get; set; }
 }
 
-/// <summary>The processing queue. Section <c>Media:Queue</c>. The RabbitMQ connection itself is <c>Messaging:ConnectionUri</c>.</summary>
+/// <summary>The processing queue. Section <c>Media:Queue</c>. It is a table in the messaging schema (see <c>Messaging</c>).</summary>
 public sealed class MediaQueueOptions
 {
     public const string SectionName = "Media:Queue";
@@ -257,8 +257,8 @@ public sealed class MediaRedactionOptions
     public bool ReviewEverything { get; set; }
 
     /// <summary>
-    /// Gives up blurring one video after this long (then retried, and Failed after the last attempt). Keep it under
-    /// RabbitMQ's consumer acknowledgement timeout (30 minutes by default).
+    /// Gives up blurring one video after this long (then retried, and Failed after the last attempt). The queue keeps
+    /// renewing the job's lease meanwhile, so another worker doesn't pick it up.
     /// </summary>
     public TimeSpan VideoTimeout { get; set; } = TimeSpan.FromMinutes(25);
 

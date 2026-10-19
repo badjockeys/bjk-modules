@@ -21,6 +21,9 @@ public enum ProcessingOutcome
 
     /// <summary>Something temporary went wrong: put the job back for another attempt.</summary>
     Retry,
+
+    /// <summary>Still failing on the last attempt; the media is marked Failed and the job goes to the failed table.</summary>
+    GaveUp,
 }
 
 /// <summary>
@@ -59,7 +62,7 @@ internal sealed partial class MediaProcessor(
     /// <param name="job">The queue message.</param>
     /// <param name="isLastAttempt">If true, a temporary failure marks the media Failed instead of retrying.</param>
     /// <param name="cancellationToken">Stops the job when the worker shuts down; the job is then retried.</param>
-    /// <param name="isRedelivery">True if RabbitMQ has delivered this message before (a worker stopped or failed on it).</param>
+    /// <param name="isRedelivery">True if the job has been delivered before (a worker stopped, failed or crashed on it).</param>
     public Task<ProcessingOutcome> ProcessAsync(
         MediaProcessingJob job,
         bool isLastAttempt,
@@ -71,6 +74,24 @@ internal sealed partial class MediaProcessor(
             MediaJobStep.Assemble => AssembleAsync(job, isLastAttempt, cancellationToken),
             _ => ProcessMediaAsync(job, isLastAttempt, cancellationToken),
         };
+
+    /// <summary>
+    /// The queue gave up on a job (its attempts ran out without a result, e.g. the worker crashed on each): marks the
+    /// media Failed if it's still processing this revision, so the uploader is told and nothing stays at Processing.
+    /// </summary>
+    /// <param name="job">The job given up on.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    public async Task GiveUpAsync(MediaProcessingJob job, CancellationToken cancellationToken)
+    {
+        var item = await media.GetByIdAsync(job.MediaId, cancellationToken);
+        if (item is null || item.Status != MediaStatus.Processing || (job.Step != MediaJobStep.Process && item.Revision != job.Revision))
+        {
+            return;
+        }
+
+        logger.LogError("Giving up on media {MediaId} ({Step}): every attempt failed or never finished.", job.MediaId, job.Step);
+        await FailAsync(item, GaveUpReason, cancellationToken);
+    }
 
     private async Task<ProcessingOutcome> ProcessMediaAsync(MediaProcessingJob job, bool isLastAttempt, CancellationToken cancellationToken)
     {
@@ -272,7 +293,8 @@ internal sealed partial class MediaProcessor(
         {
             logger.LogError(ex, "Processing media {MediaId} failed on its last attempt.", item.Id);
             await TryAsync(onFailed);
-            return await FailAsync(item, GaveUpReason, CancellationToken.None);
+            await FailAsync(item, GaveUpReason, CancellationToken.None);
+            return ProcessingOutcome.GaveUp;
         }
         catch (Exception ex)
         {

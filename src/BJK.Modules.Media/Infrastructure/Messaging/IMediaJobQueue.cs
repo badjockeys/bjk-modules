@@ -31,7 +31,7 @@ public sealed record MediaProcessingJob(
     /// <summary>For Segment: which segment (from 0).</summary>
     public int? Segment { get; init; }
 
-    /// <summary>A RabbitMQ message id unique to this step.</summary>
+    /// <summary>A message id unique to this step.</summary>
     [JsonIgnore]
     public string MessageId => Step switch
     {

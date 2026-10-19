@@ -5,13 +5,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using RabbitMQ.Client;
 
 namespace BJK.Modules.Shared.Messaging;
 
 /// <summary>
 /// An event waiting to be published. It's saved in the same transaction as the change it describes,
-/// then <see cref="OutboxPublisher{TContext}"/> sends it to RabbitMQ, so an event is never lost
+/// then <see cref="OutboxPublisher{TContext}"/> publishes it to its topic's queues, so an event is never lost
 /// (or sent for a change that was rolled back). Stored in the module's own schema, table <c>Outbox</c>.
 /// </summary>
 public sealed class OutboxMessage
@@ -51,7 +50,7 @@ public sealed class OutboxMessage
 
     /// <summary>An event with an explicit message type, such as <c>media.ready</c>.</summary>
     /// <param name="id">The message id (consumers use it to spot repeats).</param>
-    /// <param name="type">Sent as the RabbitMQ message type.</param>
+    /// <param name="type">Sent as the message type.</param>
     /// <param name="payload">The event, serialised as JSON.</param>
     /// <param name="occurredAt">When it happened.</param>
     public static OutboxMessage For<TEvent>(Guid id, string type, TEvent payload, DateTimeOffset occurredAt)
@@ -104,23 +103,29 @@ public static class OutboxModelBuilderExtensions
 }
 
 /// <summary>
-/// Sends a module's outbox to a RabbitMQ fanout exchange, oldest first, waiting for the broker to confirm
-/// each message. Runs in every instance of the host; a message may very occasionally be sent twice, so
-/// consumers must be idempotent. Published messages are kept for 30 days, then removed.
+/// Publishes a module's outbox to a topic (every subscribed queue gets a copy), oldest first. Runs in every instance
+/// of the host. When the queues are in the module's own database (bjk-core), each batch is published and marked as
+/// published in one transaction, so it goes out exactly once. When they're in another database (the identity server
+/// publishes into bjk-core's queues), an event is published first and marked afterwards, so very occasionally it may
+/// go out twice; consumers are idempotent. Events wait while nothing subscribes to the topic yet (bjk-core subscribes
+/// when it starts), so none are lost on a fresh environment. Published events are kept for 30 days, then removed.
 /// </summary>
 public sealed class OutboxPublisher<TContext>(
     IServiceScopeFactory scopes,
-    IRabbitMqConnection rabbit,
-    string exchange,
+    IMessageSender sender,
+    string topic,
     TimeProvider clock,
     ILogger<OutboxPublisher<TContext>> logger)
     : BackgroundService
     where TContext : DbContext
 {
-    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ErrorDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan NoSubscriberWarningEvery = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan KeepPublished = TimeSpan.FromDays(30);
     private const int BatchSize = 50;
+
+    private DateTimeOffset _lastNoSubscriberWarning = DateTimeOffset.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -140,13 +145,15 @@ public sealed class OutboxPublisher<TContext>(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Publishing the {Context} outbox to '{Exchange}' failed; retrying shortly.", typeof(TContext).Name, exchange);
-                await Task.Delay(ErrorDelay, clock, stoppingToken);
+                logger.LogError(ex, "Publishing the {Context} outbox to '{Topic}' failed; retrying shortly.", typeof(TContext).Name, topic);
+                await Task.Delay(ErrorDelay, clock, stoppingToken).ContinueWith(_ => { }, TaskScheduler.Default);
             }
         }
     }
 
-    private async Task<int> PublishBatchAsync(CancellationToken cancellationToken)
+    /// <summary>Publishes up to one batch; returns how many were published.</summary>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    internal async Task<int> PublishBatchAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<TContext>();
@@ -160,43 +167,39 @@ public sealed class OutboxPublisher<TContext>(
 
         if (pending.Count > 0)
         {
-            var connection = await rabbit.GetAsync(cancellationToken);
-            await using var channel = await connection.CreateChannelAsync(
-                new CreateChannelOptions(publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true),
-                cancellationToken);
-            await channel.ExchangeDeclareAsync(exchange, ExchangeType.Fanout, durable: true, autoDelete: false, cancellationToken: cancellationToken);
-
-            foreach (var message in pending)
+            if (await sender.CountSubscribersAsync(topic, cancellationToken) == 0)
             {
-                try
-                {
-                    var properties = new BasicProperties
-                    {
-                        Persistent = true,
-                        ContentType = "application/json",
-                        MessageId = message.Id.ToString("D"),
-                        Type = message.Type,
-                    };
-
-                    // With publisher confirmations on, this completes once the broker has the message.
-                    await channel.BasicPublishAsync(
-                        exchange,
-                        routingKey: string.Empty,
-                        mandatory: false,
-                        basicProperties: properties,
-                        body: System.Text.Encoding.UTF8.GetBytes(message.Payload),
-                        cancellationToken: cancellationToken);
-                    message.MarkPublished(clock.GetUtcNow());
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    message.MarkFailed(ex.Message);
-                    await db.SaveChangesAsync(cancellationToken);
-                    throw;
-                }
+                WarnNoSubscribers(pending.Count);
+                return 0;
             }
 
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesWithMessagesAsync(
+                    async ct =>
+                    {
+                        foreach (var message in pending)
+                        {
+                            await sender.PublishAsync(topic, new OutgoingMessage(message.Id.ToString("D"), message.Type, message.Payload), ct);
+                            message.MarkPublished(clock.GetUtcNow());
+                        }
+                    },
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Record the error on the oldest event, in a fresh context (the failed one may hold half-applied changes).
+                await using var errorScope = scopes.CreateAsyncScope();
+                var errorDb = errorScope.ServiceProvider.GetRequiredService<TContext>();
+                var first = await errorDb.Set<OutboxMessage>().FirstOrDefaultAsync(m => m.Id == pending[0].Id, cancellationToken);
+                if (first is not null && first.PublishedAt is null)
+                {
+                    first.MarkFailed(ex.Message);
+                    await errorDb.SaveChangesAsync(cancellationToken);
+                }
+
+                throw;
+            }
         }
 
         var cutoff = clock.GetUtcNow() - KeepPublished;
@@ -204,19 +207,40 @@ public sealed class OutboxPublisher<TContext>(
 
         return pending.Count;
     }
+
+    private void WarnNoSubscribers(int waiting)
+    {
+        var now = clock.GetUtcNow();
+        if (now - _lastNoSubscriberWarning < NoSubscriberWarningEvery)
+        {
+            return;
+        }
+
+        _lastNoSubscriberWarning = now;
+        logger.LogWarning(
+            "No queue subscribes to '{Topic}' yet, so {Count} {Context} outbox event(s) are waiting. Start bjk-core (it subscribes when it starts).",
+            topic,
+            waiting,
+            typeof(TContext).Name);
+    }
 }
 
 public static class OutboxServiceCollectionExtensions
 {
-    /// <summary>Publishes <typeparamref name="TContext"/>'s outbox to a RabbitMQ fanout exchange.</summary>
+    /// <summary>Publishes <typeparamref name="TContext"/>'s outbox to a topic.</summary>
+    /// <param name="services">The host's services.</param>
+    /// <param name="configuration">Its configuration.</param>
+    /// <param name="topic">The topic, e.g. <c>bjk.users</c>.</param>
+    /// <param name="connectionStringName">The module's connection string (the queues' default database).</param>
     public static IServiceCollection AddOutboxPublisher<TContext>(
         this IServiceCollection services,
         IConfiguration configuration,
-        string exchange)
+        string topic,
+        string connectionStringName)
         where TContext : DbContext
     {
-        services.AddBjkMessaging(configuration);
-        services.AddHostedService(sp => ActivatorUtilities.CreateInstance<OutboxPublisher<TContext>>(sp, exchange));
+        services.AddBjkMessaging(configuration, connectionStringName);
+        services.AddHostedService(sp => ActivatorUtilities.CreateInstance<OutboxPublisher<TContext>>(sp, topic));
         return services;
     }
 }

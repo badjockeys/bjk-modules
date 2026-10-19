@@ -88,9 +88,9 @@ public sealed class PostsModule(string connectionStringName) : IModule
 
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();
-        services.AddMediaEventHandler<PostsMediaEventHandler>(configuration);
+        services.AddMediaEventHandler<PostsMediaEventHandler>(configuration, connectionStringName);
         services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
-        services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration);
+        services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()
             .AddPolicy(UsePolicy, policy => policy

@@ -7,7 +7,7 @@ Feature modules for the Bad Jockeys platform. Each module is a self-contained ve
 ```
 src/
   BJK.Modules.Shared/            Module registration, MediatR validation pipeline, error handling,
-                                 current user, safe startup migrations, RabbitMQ connection and outbox,
+                                 current user, safe startup migrations, durable messaging (SQL Server queues via Rebus) and outbox,
                                  provider retries and MessageDeliveryException (Email, SMS),
                                  user lifecycle events, GET /api/me/data-export
     Safety/                      Online safety: TextSafety (plates, phones, emails, addresses, handles),
@@ -41,7 +41,7 @@ src/
       Delete/                    Delete files and mark the record Deleted
       Review/                    Moderators: review queue, approve, reject, add blur regions (audited)
     Infrastructure/Storage/      IMediaStorage over the S3 API (Cloudflare R2)
-    Infrastructure/Messaging/    IMediaJobQueue over RabbitMQ (process, segment and assemble jobs), queue topology
+    Infrastructure/Messaging/    IMediaJobQueue on the media.process SQL Server queue (process, segment and assemble jobs)
     Infrastructure/Processing/   The worker: MediaProcessor (whole media, segments, assembly), ffmpeg, Redaction/
     Infrastructure/Data/         MediaDbContext (schema: media; outbox), VideoJobStore and Migrations/
     Domain/                      MediaItem, VideoJob + VideoSegment (segment progress), formats, storage keys
@@ -117,8 +117,7 @@ app.MapControllers();
 | Key | Notes |
 |---|---|
 | `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema of the `idsrv` database (the identity server hosts this module). |
-| `Messaging:ConnectionUri` | RabbitMQ, e.g. `amqp://user:password@host:5672/vhost`. Secret. The identity server publishes user lifecycle events; bjk-core consumes them and Media queues processing jobs. |
-| `Messaging:UserEventsQueue` | bjk-core only. Default `bjk-core.user-events`. |
+| `Messaging:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server sets `Messaging:ConnectionStringName` and `Messaging:CreateTables=false`. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `AgeAssurance:*` | Identity server only. The age check: see [Age check](#age-check). |
@@ -211,9 +210,9 @@ Minimum age 18. Checked once, at account creation, in the identity server ("Chec
 
 The identity server and bjk-core have separate databases, so the identity server tells core through **user lifecycle events** (`Deactivated`, `Reactivated`, `Deleted`):
 
-- **Outbox.** Each event is saved in `users.Outbox` in the same transaction as the account change. A background publisher then sends it to the RabbitMQ fanout exchange `bjk.users` and waits for the broker to confirm. An event is never lost, and never sent for a change that was rolled back.
-- **Core's queue.** bjk-core reads its own queue, `bjk-core.user-events`, and passes each event to every module's `IUserLifecycleHandler` (Profiles, Posts, Media).
-- **Failures.** A failing event is retried. After 5 attempts it moves to `bjk-core.user-events.failed` for someone to look at.
+- **Outbox.** Each event is saved in `users.Outbox` in the same transaction as the account change. A background publisher then publishes it to the topic `bjk.users`, which writes a copy into every subscribed queue table in the app database (see [Messaging](#messaging-sql-server-queues) for how the identity server reaches it). An event is never lost, and never sent for a change that was rolled back. Events wait in the outbox until a queue subscribes, so nothing is lost on a fresh environment where bjk-core hasn't started yet.
+- **Core's queue.** bjk-core reads its own queue, `[messaging].[bjk-core.user-events]` (subscribed to `bjk.users` when it starts), and passes each event to every module's `IUserLifecycleHandler` (Profiles, Posts, Media), one at a time.
+- **Failures.** A failing event is retried after 5, 10, 20 and 40 seconds. After 5 attempts it moves to `[messaging].[bjk-core.user-events.failed]` for someone to look at.
 - **Idempotent.** Handlers are safe to run twice.
 
 ## Download my data
@@ -227,13 +226,83 @@ The identity server and bjk-core have separate databases, so the identity server
 
 The apps call both endpoints and offer the two files (or one zip) as "Download my data". A deactivated user can't sign in, so they reactivate, download, then deactivate again if they want.
 
+## Messaging (SQL Server queues)
+
+Durable jobs and events are rows in SQL Server, in the `messaging` schema of the app database (`badjockeys`), handled by [Rebus](https://github.com/rebus-org/Rebus) and [Rebus.SqlServer](https://github.com/rebus-org/Rebus.SqlServer) (both MIT). There's no separate broker, so the queues get the zone-redundant Azure SQL database's redundancy and backups at no extra cost, and run anywhere SQL Server runs. MediatR stays for in-process commands and queries; Rebus is only used for queues and events.
+
+**Abstractions** (`BJK.Modules.Shared.Messaging`), which is all the modules see:
+
+- `IMessageSender`: `SendAsync(queue, message)` (point to point, e.g. a media job) and `PublishAsync(topic, message)` (a copy to every subscribed queue, e.g. user lifecycle events). Messages are a type name plus JSON (`OutgoingMessage`), optionally delayed (`Delay`).
+- `IMessageConsumer` + `services.AddMessageConsumer<T>(configuration, connectionStringName, new MessageConsumerDefinition(queue) { MaxAttempts, Concurrency, Topics })`: returns `Completed`, `Retry` or `DeadLetter`; `OnGivenUpAsync` runs once when a message is given up on.
+- `db.SaveChangesWithMessagesAsync(ct => sender.SendAsync(...), ct)`: saves a DbContext's changes and the messages sent meanwhile in **one transaction**, so a job is never queued for a change that was rolled back, and never lost after one that was saved.
+- The outbox (`OutboxMessage`, `AddOutboxPublisher<TContext>(configuration, topic, connectionStringName)`), for events that must reach another database.
+
+Rebus only appears in `Messaging/SqlServer/`. Going back to a broker later (Rebus has RabbitMQ and Azure Service Bus transports) is a change there and in configuration, not in the modules.
+
+**Tables**, created on first use (`Messaging:CreateTables`):
+
+| Table | What |
+|---|---|
+| `[messaging].[media.process]` | Media processing jobs (process, segment, assemble). Fed by the API (upload complete, moderator re-process; in the same transaction as the media change) and the workers (segment and assemble jobs). Read by the media worker. 3 attempts. |
+| `[messaging].[bjk-core.media-events]` | `media.ready` / `media.failed` for Posts, subscribed to the topic `bjk.media`. Read by the API host. 5 attempts. |
+| `[messaging].[bjk-core.user-events]` | `Deactivated` / `Reactivated` / `Deleted` from the identity server, subscribed to the topic `bjk.users`. Read by the API host. 5 attempts. |
+| `[messaging].[<queue>.failed]` | Dead letters: messages given up on, with the error (`rbs2-error-details` header) and the queue they came from. |
+| `[messaging].[subscriptions]` | Which queues subscribe to which topics (`topic`, `address`). |
+
+Each queue row has `id`, `priority`, `visible` (hidden until then: delays and retries), `expiration`, `headers`, `body` (UTF-8 JSON, readable in SQL), and the lease columns `leasedat`, `leaseduntil`, `leasedby`, `deliverycount`.
+
+**How a message is handled.**
+
+- **Competing consumers.** A consumer claims the next visible row with `UPDLOCK, READPAST, ROWLOCK` (others skip locked rows, so each message goes to one consumer) and leases it for `Messaging:LeaseDuration` (60 s), renewed every 20 s while the work goes on. Done: the row is deleted. Replicas share a queue simply by reading the same table.
+- **Attempts.** `deliverycount` goes up on every claim, including claims by a worker that then crashed, like RabbitMQ's `x-delivery-count`; it reaches the code as `ReceivedMessage.Attempt` (Rebus's `rbs2-delivery-count` header). A host that stops cleanly hands its message back without using up an attempt.
+- **Retries.** A failure (an exception or `Retry`) hides the message for `Messaging:RetryDelay` (5 s), doubling each time up to `Messaging:MaxRetryDelay` (5 min).
+- **Dead letters.** If the last attempt fails, `OnGivenUpAsync` runs (the media worker marks the media `Failed`) and the message moves to `<queue>.failed`. If a worker crashed on the last attempt, the next delivery gives up straight away without running the work again. A consumer can also dead-letter an unreadable message at once.
+- **Crashes.** A worker that dies stops renewing its lease, so the message is delivered again when the lease ends (within about a minute).
+- **At least once.** A message can occasionally be handled twice (a crash after the work but before the delete), so every handler is idempotent.
+
+**The identity server (another database).** The identity server's data is in `idsrv`; the queues are in `badjockeys` on the same server. The identity server keeps its transactional outbox (`users.Outbox`, in the same transaction as the account change) and its outbox publisher writes the events straight into bjk-core's queue tables through a second connection string, `ConnectionStrings:Messaging`, chosen with `Messaging:ConnectionStringName=Messaging`. Because that's another database, an event is published first and then marked as published, so it may very occasionally be delivered twice (handlers are idempotent). Events wait in the outbox while no queue subscribes to `bjk.users`, so a fresh environment loses nothing before bjk-core's first start. The identity server sets `Messaging:CreateTables=false`; bjk-core creates the tables.
+
+That connection uses its own database user in `badjockeys`, allowed to read the subscriptions and add rows to the queue tables, and nothing else (no access to bjk-core's data, no deletes, no schema changes):
+
+```sql
+-- In the badjockeys database. Azure: the identity server's managed identity (Entra ID authentication).
+CREATE USER [bjk-identity-server] FROM EXTERNAL PROVIDER;
+-- Locally / SQL authentication instead: CREATE LOGIN bjk_idsrv_messaging WITH PASSWORD = '...'; (in master), then
+-- CREATE USER bjk_idsrv_messaging FOR LOGIN bjk_idsrv_messaging;
+GRANT SELECT ON OBJECT::[messaging].[subscriptions] TO [bjk-identity-server];
+GRANT INSERT ON SCHEMA::[messaging] TO [bjk-identity-server];
+```
+
+**Settings** (section `Messaging`, all optional):
+
+| Key | Default | Notes |
+|---|---|---|
+| `ConnectionStringName` | the module's own | The connection string holding the queues. bjk-core: leave empty (`AppDatabase`). Identity server: `Messaging`. |
+| `Schema` | `messaging` | |
+| `PollingInterval` | `00:00:01` | How often an idle consumer looks for new messages. |
+| `LeaseDuration` | `00:01:00` | How soon a crashed worker's message is retried. |
+| `RetryDelay`, `MaxRetryDelay` | `00:00:05`, `00:05:00` | Waits between attempts. |
+| `CreateTables` | `true` | `false` where the login can't create tables (the identity server). |
+| `UserEventsQueue`, `MediaEventsQueue` | `bjk-core.user-events`, `bjk-core.media-events` | bjk-core's queues. |
+
+**Why Rebus, not Wolverine.** Both are MIT, support .NET 10 and have a SQL Server transport with row locking, retries, dead letters, delayed messages and pub/sub. Rebus is a small bus that sits next to MediatR rather than replacing it, has a stable API (v8; the project is over ten years old), needs no code generation at startup (the media worker scales from zero), stores the queues in plain tables we can query (and scale on with KEDA), and its transport's connection is independent of the app database, which makes the identity server's cross-database publishing simple. Wolverine has more built in (durable attempt counts, an EF Core outbox) but is a whole application framework: a second handler model alongside MediatR, runtime code generation, a dozen tables plus node and leader agents, its transport tied to its own message store's database, and crash recovery that depends on detecting dead nodes. Rebus's SQL transport doesn't keep a delivery count or delay retries, so `SqlServerQueueTransport` adds both (about 200 lines over Rebus's lease transport).
+
+**Scaling the media worker.** Container Apps can scale the worker with KEDA's SQL Server (`mssql`) scaler on the number of jobs due, waiting or in progress, so a busy replica isn't removed while it works (see bjk-core's docs):
+
+```sql
+SELECT COUNT(*) FROM [messaging].[media.process] WITH (NOLOCK)
+WHERE [visible] <= SYSDATETIMEOFFSET() AND [expiration] > SYSDATETIMEOFFSET()
+```
+
+Dead letters to watch (e.g. a Grafana alert): `SELECT COUNT(*) FROM [messaging].[media.process.failed]`, and the same for the other `.failed` tables.
+
 ## Media module
 
 Photos and videos follow the same flow; only the worker's processing differs.
 
 1. `POST /api/media/uploads` with `{ fileName, contentType, sizeBytes }` creates a `media.Media` row (`Uploading`) and returns a signed link, valid for 15 minutes, to PUT the file straight into the private **originals** bucket. The API never handles the file.
 2. The app PUTs the file to that link, sending the `Content-Type` header it was given.
-3. `POST /api/media/{id}/complete` checks the file is in storage and within the size limit, sets `Processing`, and puts a job on the RabbitMQ queue.
+3. `POST /api/media/{id}/complete` checks the file is in storage and within the size limit, sets `Processing`, and puts a job on the `media.process` queue in the same database transaction (both happen, or neither).
 4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, blurs faces and number plates, converts the file and publishes it to the **public** bucket, then sets `Ready`. If automatic blurring failed or wasn't sure, it keeps the blurred files private and sets `NeedsReview` instead; a moderator approves (then `Ready`) or rejects (then `Failed`). Videos longer than 5 seconds are split into segments that several worker replicas blur at once (see "Videos in segments"). Only `Ready` media is visible to other users.
 5. Every change to `Ready` or `Failed` (and deleting media before it was ready) publishes a `media.ready` / `media.failed` event (see "Media events"). The Posts module uses them to publish posts that were created while their media were still processing.
 
@@ -288,9 +357,9 @@ Configuration (user secrets locally, Key Vault in Azure):
 | `Media:Storage:AccessKeyId`, `Media:Storage:SecretAccessKey` | R2 API token. Secret. |
 | `Media:Storage:OriginalsBucket`, `Media:Storage:PublicBucket` | Private and public buckets |
 | `Media:Storage:PublicBaseUrl` | Where the public bucket is served through Cloudflare |
-| `Media:Queue:QueueName` | Default `media.process`; failed jobs go to `media.process.failed` |
+| `Media:Queue:QueueName` | Default `media.process` (table `[messaging].[media.process]`); jobs given up on go to `[messaging].[media.process.failed]` |
 | `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime`, `Media:OriginalRetention` | Defaults: 150 MB (157286400), 25 MB, 30 s, 15 min, 90 days |
-| `Messaging:MediaEventsQueue` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (failed events go to `.failed` after 5 attempts) |
+| `Messaging:MediaEventsQueue` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (dead-lettered to `.failed` after 5 attempts) |
 
 ### Videos in segments (parallel processing)
 
@@ -304,7 +373,7 @@ A 30-second video is processed as six 5-second pieces by up to six worker replic
 
 ### Media events (`media.ready`, `media.failed`)
 
-When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the RabbitMQ fanout exchange **`bjk.media`** with publisher confirms (message type `media.ready` or `media.failed`), using Shared's outbox publisher, as for user events. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration)`; the host reads them from `Messaging:MediaEventsQueue` (a quorum queue, 5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
+When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the topic **`bjk.media`** (message type `media.ready` or `media.failed`) using Shared's outbox publisher, as for user events; the queues are in the same database, so each batch is published and marked as published in one transaction. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration, connectionStringName)`; the host reads them from `Messaging:MediaEventsQueue` (5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
 
 ### Automatic blurring (faces and number plates)
 
@@ -380,7 +449,7 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | **Estimated with 6 worker replicas in parallel** (probe + slowest segment + join) | **7.5–11.6 s, about 4x faster** | |
 | Moving test pattern (no faces, detailed picture), one job | 41–62 s | 16–30 s |
 
-Per frame analysed: faces 24–59 ms at full 720p, about 4 times less on the 640 px copy now used; plates 65–138 ms with the zoomed tiles (12–26 ms whole frame only), which is now most of the detection time. For comparison, before this change the same clips took 106–172 s per minute of video. Add a second or two per segment for downloading the original from R2, plus the queue wait if fewer than 6 replicas are free; with one replica the segments run one after another (about 25% slower than one job), so give the worker a KEDA maximum of at least 6. Speed scales roughly with cores. To go faster at some cost in safety: `PlateTiles=false` (detection would drop to roughly a quarter) or `DetectEveryNthFrame=10`. `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
+Per frame analysed: faces 24–59 ms at full 720p, about 4 times less on the 640 px copy now used; plates 65–138 ms with the zoomed tiles (12–26 ms whole frame only), which is now most of the detection time. For comparison, before this change the same clips took 106–172 s per minute of video. Add a second or two per segment for downloading the original from R2, plus the queue wait if fewer than 6 replicas are free; with one replica the segments run one after another (about 25% slower than one job), so give the worker a KEDA maximum of at least 6. Speed scales roughly with cores. To go faster at some cost in safety: `PlateTiles=false` (detection would drop to roughly a quarter) or `DetectEveryNthFrame=10`. `VideoTimeout` (25 minutes) stops a runaway job; meanwhile the worker keeps renewing the job's lease on the queue.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
@@ -492,7 +561,7 @@ A module never reads another module's tables. Each module that others depend on 
 | `IBlockDirectory` (Profiles) | Posts | Who the viewer has blocked; has the author blocked this user |
 | `IProfileModeration` (Profiles) | Posts | Resetting a reported profile |
 | `IModerationAuditLog` (Shared, stored by Posts) | Profiles, Media, Posts | Recording moderation actions |
-| `media.ready` / `media.failed` events (Media, RabbitMQ `bjk.media`) | Posts | Publishing (or failing) posts made while their media were processing |
+| `media.ready` / `media.failed` events (Media, topic `bjk.media`) | Posts | Publishing (or failing) posts made while their media were processing |
 
 ## Database migrations
 
@@ -532,7 +601,7 @@ await smsSender.SendAsync(SMSTemplates.SignInCode("+447700900123", code), cancel
 ```
 
 - **Templates live in code.** The wording of every email is in `BJK.Modules.Email/Templates/EmailTemplates.cs` and of every text in `BJK.Modules.SMS/Templates/SMSTemplates.cs`, so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
-- **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no RabbitMQ queue for email or SMS.
+- **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no queue for email or SMS.
 - **Providers.** `Email:Provider` is `SendGrid` or `Log`; `SMS:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
 - **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
 - **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds), using `ProviderRetry` from Shared. A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException` (Shared), whose `IsTransient` says which it was.
