@@ -8,11 +8,12 @@ public sealed class SafetyOptions
     public const string SectionName = "Safety";
 
     /// <summary>
-    /// When true (the default), posting, editing posts, commenting, reacting and reporting need a token with the
-    /// <c>age_verified</c> claim, which the identity server issues once the account has passed the age check.
-    /// Set false only for local development and tests.
+    /// When true, posting, editing posts, commenting, reacting and reporting need a token with the
+    /// <c>age_verified</c> claim (the age check, 18 and over). Default <b>false</b> since the age policy changed on
+    /// 19 Oct 2026: people aged 13 and over can join, and the age check is only needed to view sensitive posts.
+    /// Kept for future use.
     /// </summary>
-    public bool RequireAgeVerification { get; set; } = true;
+    public bool RequireAgeVerification { get; set; }
 
     /// <summary>Limits for accounts in their first day. Section <c>Safety:NewAccounts</c>.</summary>
     public NewAccountLimitOptions NewAccounts { get; set; } = new();

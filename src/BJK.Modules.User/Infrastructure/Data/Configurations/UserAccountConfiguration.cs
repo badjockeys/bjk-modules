@@ -21,6 +21,9 @@ internal sealed class UserAccountConfiguration : IEntityTypeConfiguration<UserAc
         builder.Property(u => u.AgeCheckResult).HasConversion<string>().HasMaxLength(30);
         builder.Property(u => u.AgeCheckProvider).HasMaxLength(UserAccount.ProviderMaxLength);
 
+        // The declared date of birth (a date, no time).
+        builder.Property(u => u.DateOfBirth).HasColumnType("date");
+
         // Admin lists, newest first; and the retention job's query.
         builder.HasIndex(u => new { u.Status, u.CreatedAt });
         builder.HasIndex(u => new { u.Status, u.DeletionDueAt });

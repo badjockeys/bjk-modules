@@ -12,6 +12,10 @@ namespace BJK.Modules.User.UseCases.AgeChecks;
 /// <param name="CanUseFaceCheck">True if the head-turn selfie is available now.</param>
 /// <param name="CanUseDocumentCheck">True if the photo-ID route is available now.</param>
 /// <param name="Message">A plain-English explanation of the latest outcome, for the user.</param>
+/// <param name="UnderAgeByDateOfBirth">
+/// True if the declared date of birth says the user is under 18: sensitive posts aren't for them yet, so the check
+/// isn't offered at all.
+/// </param>
 public sealed record AgeCheckDto(
     AgeCheckStatus Status,
     AgeCheckMethod? Method,
@@ -20,10 +24,12 @@ public sealed record AgeCheckDto(
     int AttemptsLeft,
     bool CanUseFaceCheck,
     bool CanUseDocumentCheck,
-    string? Message)
+    string? Message,
+    bool UnderAgeByDateOfBirth = false)
 {
     internal static AgeCheckDto From(UserAccount account, DateTimeOffset now, int maxPerDay, LivenessFailure? livenessFailure = null)
     {
+        var minor = account.IsMinorOn(DateOnly.FromDateTime(now.UtcDateTime)) || account.DateOfBirth is null;
         var attemptsLeft = account.IsAgeVerified ? 0 : account.AgeCheckAttemptsLeft(now, maxPerDay);
         return new AgeCheckDto(
             account.AgeCheckStatus,
@@ -31,9 +37,12 @@ public sealed record AgeCheckDto(
             account.AgeCheckResult,
             account.AgeCheckRecordedAt,
             attemptsLeft,
-            account.CanUseFaceCheck && attemptsLeft > 0,
-            account.CanUseDocumentCheck && attemptsLeft > 0,
-            AgeCheckMessages.For(account, attemptsLeft, livenessFailure));
+            !minor && account.CanUseFaceCheck && attemptsLeft > 0,
+            !minor && account.CanUseDocumentCheck && attemptsLeft > 0,
+            account.DateOfBirth is null ? AgeCheckMessages.NoDateOfBirth
+                : minor && !account.IsAgeVerified ? AgeCheckMessages.UnderAgeByDateOfBirth
+                : AgeCheckMessages.For(account, attemptsLeft, livenessFailure),
+            minor && account.DateOfBirth is not null);
     }
 }
 
@@ -61,6 +70,12 @@ public sealed record AgeCheckSummaryDto(
 /// <summary>What we tell the user. Kind and plain; never mentions an estimated age.</summary>
 internal static class AgeCheckMessages
 {
+    public const string UnderAgeByDateOfBirth =
+        "Sensitive posts are only for adults (18 and over). The date of birth you gave us says you're under 18, "
+        + "so there's nothing to check yet. Everything else on Bad Jockeys is open to you.";
+
+    public const string NoDateOfBirth = "Please finish setting up your account first: we need your date of birth.";
+
     public static string? For(UserAccount account, int attemptsLeft, LivenessFailure? livenessFailure)
     {
         if (account.AgeCheckResult is null)
@@ -74,25 +89,29 @@ internal static class AgeCheckMessages
 
         return account.AgeCheckResult switch
         {
-            AgeCheckResult.Passed => "Thanks, you're all set. You can now post, comment and react.",
+            AgeCheckResult.Passed => "Thanks, you're all set. You can now view sensitive posts.",
             AgeCheckResult.Under25 =>
                 "Thanks. We couldn't confirm your age from the video alone, so please finish with a photo of your ID." + outOfTries,
             AgeCheckResult.Uncertain =>
                 "Sorry, we couldn't get a clear enough look to check your age. Try again in good light, or use photo ID instead." + outOfTries,
-            AgeCheckResult.LivenessFailed => LivenessHint(livenessFailure) + " Or use photo ID instead." + outOfTries,
+            AgeCheckResult.LivenessFailed => LivenessMessages.Hint(livenessFailure) + " Or use photo ID instead." + outOfTries,
             AgeCheckResult.DocumentUnreadable =>
                 "Sorry, we couldn't read that ID. Try a sharp, well-lit photo of the whole card or page, with no glare." + outOfTries,
             AgeCheckResult.Underage when account.AgeCheckStatus == AgeCheckStatus.Failed && account.CanUseDocumentCheck =>
-                "Bad Jockeys is only for people aged 18 and over, and we couldn't confirm you're 18 yet. "
+                "Sensitive posts are only for adults (18 and over), and we couldn't confirm you're 18 yet. "
                 + "If you are, you can use photo ID instead." + outOfTries,
             AgeCheckResult.Underage =>
-                "Bad Jockeys is only for people aged 18 and over, so we can't let you post or comment. "
-                + "You can still browse the public feed. If you think we've got this wrong, contact support.",
+                "Sensitive posts are only for adults (18 and over), so we can't show them to you. "
+                + "Everything else on Bad Jockeys is still open to you. If you think we've got this wrong, contact support.",
             _ => null,
         };
     }
+}
 
-    private static string LivenessHint(LivenessFailure? failure) => failure switch
+/// <summary>Hints for a failed liveness check, at sign-up or in the age check.</summary>
+internal static class LivenessMessages
+{
+    public static string Hint(LivenessFailure? failure) => failure switch
     {
         LivenessFailure.NoFace => "We couldn't see your face clearly. Face the camera in good light and try again.",
         LivenessFailure.MultipleFaces => "We saw more than one face. Make sure only you are in the picture and try again.",

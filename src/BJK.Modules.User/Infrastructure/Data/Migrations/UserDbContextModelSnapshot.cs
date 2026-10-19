@@ -91,6 +91,9 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date");
+
                     b.Property<DateTimeOffset?>("DeactivatedAt")
                         .HasColumnType("datetimeoffset");
 

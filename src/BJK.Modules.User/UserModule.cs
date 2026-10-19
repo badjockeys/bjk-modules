@@ -77,7 +77,8 @@ public sealed class UserModule(string connectionStringName) : IModule
     }
 
     /// <summary>
-    /// The age check: settings (checked at startup), the development stand-ins and the generic HTTP estimator.
+    /// The on-demand age check (for sensitive posts): settings (checked at startup),
+    /// the development stand-ins and the generic HTTP estimator.
     /// The host adds its own providers (the identity server registers the YuNet liveness checker) as further
     /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons;
     /// <c>AgeAssurance:*:Provider</c> picks one of each by name.
@@ -95,7 +96,7 @@ public sealed class UserModule(string connectionStringName) : IModule
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentAgeCheck, DevelopmentDocumentAgeCheck>());
         services.AddHttpClient(HttpAgeEstimator.ClientName);
         services.AddSingleton<AgeAssuranceProviders>();
-        services.AddScoped<IAgeVerificationLookup, AgeVerificationLookup>();
+        services.AddScoped<IAccountAgeLookup, AccountAgeLookup>();
     }
 
     public Task InitialiseAsync(IServiceProvider services, CancellationToken cancellationToken) =>

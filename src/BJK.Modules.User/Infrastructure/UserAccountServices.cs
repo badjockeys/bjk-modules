@@ -56,7 +56,9 @@ internal sealed class AccountRetentionService(
     }
 }
 
-/// <summary>The account section of "download my data": email, status, dates and the age check outcome.</summary>
+/// <summary>
+/// The account section of "download my data": email, status, dates, date of birth and the age check outcome.
+/// </summary>
 internal sealed class AccountPersonalDataExporter(IUserRepository users, IIdentityService identity) : IPersonalDataExporter
 {
     public string Section => "account";
@@ -81,6 +83,7 @@ internal sealed class AccountPersonalDataExporter(IUserRepository users, IIdenti
             CreatedAt = account?.CreatedAt,
             DeactivatedAt = account?.DeactivatedAt,
             DeletionDueAt = account?.DeletionDueAt,
+            DateOfBirth = account?.DateOfBirth,
 
             // Outcome only: the selfie video and ID photo are deleted straight after the check and never stored.
             AgeCheck = account is null ? null : new

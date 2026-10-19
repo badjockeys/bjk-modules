@@ -37,7 +37,7 @@ public sealed class AgeCheckHandlerTests
         _estimator.Name.Returns("Development");
         _document.Name.Returns("Development");
         _liveness.CheckAsync(Arg.Any<SelfieVideo>(), Arg.Any<CancellationToken>()).Returns(LivenessResult.Live);
-        _account = UserAccount.Create(User1, Now.AddDays(-1));
+        _account = UserAccount.Create(User1, TestDates.Adult, Now.AddDays(-1));
         _users.GetByIdAsync(_account.Id, Arg.Any<CancellationToken>()).Returns(_account);
         _caller.IdentityId.Returns(User1);
     }
@@ -199,6 +199,39 @@ public sealed class AgeCheckHandlerTests
     }
 
     [Fact]
+    public async Task Under_18_by_date_of_birth_cannot_start_the_check()
+    {
+        var minor = UserAccount.Create("00000000-0000-4000-8000-000000000015", TestDates.Fifteen, Now.AddDays(-1));
+        _users.GetByIdAsync(minor.Id, Arg.Any<CancellationToken>()).Returns(minor);
+        _caller.IdentityId.Returns("00000000-0000-4000-8000-000000000015");
+
+        var status = await new GetMyAgeCheckQueryHandler(_users, _caller, Options.Create(_settings), _clock)
+            .Handle(new GetMyAgeCheckQuery(), Ct);
+        var face = await Assert.ThrowsAsync<ValidationException>(() => Face().Handle(FaceCommand(), Ct));
+        var document = await Assert.ThrowsAsync<ValidationException>(() => Document().Handle(DocumentCommand(), Ct));
+
+        Assert.True(status.UnderAgeByDateOfBirth);
+        Assert.False(status.CanUseFaceCheck);
+        Assert.False(status.CanUseDocumentCheck);
+        Assert.Contains("only for adults", status.Message);
+        Assert.Contains("only for adults", face.Errors.Single().ErrorMessage);
+        Assert.Contains("only for adults", document.Errors.Single().ErrorMessage);
+        await _liveness.DidNotReceive().CheckAsync(Arg.Any<SelfieVideo>(), Arg.Any<CancellationToken>());
+        Assert.Equal(0, minor.AgeCheckAttempts);
+    }
+
+    [Fact]
+    public async Task Passing_says_sensitive_posts_are_now_open()
+    {
+        EstimateIs(40);
+
+        var result = await Face().Handle(FaceCommand(), Ct);
+
+        Assert.Contains("sensitive posts", result.Message);
+        Assert.False(result.UnderAgeByDateOfBirth);
+    }
+
+    [Fact]
     public async Task Only_admins_can_reset()
     {
         _account.RecordAgeCheck(AgeCheckMethod.FaceEstimate, AgeCheckResult.Passed, "Development", Now);
@@ -227,6 +260,7 @@ public sealed class AgeCheckHandlerTests
         var json = JsonSerializer.Serialize(section, new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } });
 
         Assert.Contains("\"AgeCheck\":{\"Status\":\"Passed\",\"Method\":\"FaceEstimate\"", json);
+        Assert.Contains("\"DateOfBirth\":\"1990-06-15\"", json);
     }
 
     [Fact]

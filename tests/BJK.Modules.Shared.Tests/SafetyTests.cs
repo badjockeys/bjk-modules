@@ -61,11 +61,23 @@ public sealed class SafetyTests
     }
 
     [Fact]
-    public void Safety_defaults_require_the_age_check_and_limit_new_accounts()
+    public void Minor_claim_is_read_from_the_token()
+    {
+        static ClaimsPrincipal User(params Claim[] claims) => new(new ClaimsIdentity(claims, "test"));
+
+        Assert.True(User(new Claim("minor", "true")).IsMinor());
+        Assert.False(User(new Claim("minor", "false")).IsMinor());
+        Assert.False(User().IsMinor());
+        Assert.False(new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("minor", "true") })).IsMinor());
+    }
+
+    [Fact]
+    public void Safety_defaults_no_longer_require_the_age_check_to_write_and_limit_new_accounts()
     {
         var options = new SafetyOptions();
 
-        Assert.True(options.RequireAgeVerification);
+        // Since 19 Oct 2026 the age check is only for viewing sensitive posts (13+ can post, comment and react).
+        Assert.False(options.RequireAgeVerification);
         Assert.Equal(TimeSpan.FromHours(24), options.NewAccounts.Period);
         Assert.Equal(3, options.NewAccounts.MaxPosts);
         Assert.Equal(20, options.NewAccounts.MaxComments);
