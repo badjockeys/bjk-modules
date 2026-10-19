@@ -1,4 +1,5 @@
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
@@ -83,8 +84,11 @@ public static class MediaReview
         }
         else if (item.Status == MediaStatus.Ready)
         {
-            preview = item.PlaybackKey is null ? null : storage.PublicUrl(item.PlaybackKey);
-            thumbnail = item.ThumbnailKey is null ? null : storage.PublicUrl(item.ThumbnailKey);
+            // Moderators always see the real (blurred-for-privacy) files, signed links if they're private (sensitive).
+            var links = await MediaLinks.WithSensitiveAsync(storage, item, PreviewLifetime, clock.GetUtcNow(), cancellationToken);
+            preview = links.Playback;
+            thumbnail = links.Thumbnail;
+            expires = links.ExpiresAt;
         }
 
         return new MediaReviewDto(
@@ -187,8 +191,9 @@ public sealed class GetOriginalForReviewQueryHandler(
     {
         caller.RequireAdmin(MediaModule.ManageScope);
         var item = await MediaReview.GetAsync(media, request.MediaId, cancellationToken);
-        if (item.OriginalDeletesAt is { } deletesAt && deletesAt <= clock.GetUtcNow())
+        if (item.OriginalDeletedAt is not null)
         {
+            // Originals are deleted once the post is published (or after 24 hours unused).
             throw new NotFoundException("Original", request.MediaId);
         }
 
@@ -208,6 +213,7 @@ public sealed record ApproveMediaCommand(Guid MediaId) : IRequest<MediaReviewDto
 public sealed class ApproveMediaCommandHandler(
     IMediaRepository media,
     IMediaStorage storage,
+    IMediaJobQueue queue,
     IModerationAuditLog audit,
     ICurrentUser caller,
     TimeProvider clock)
@@ -219,28 +225,52 @@ public sealed class ApproveMediaCommandHandler(
         var item = await MediaReview.GetAsync(media, request.MediaId, cancellationToken);
         MediaReview.EnsureNeedsReview(item);
 
-        var (playbackType, thumbnailType) = item.MediaType == MediaType.Video
-            ? ("video/mp4", "image/jpeg")
-            : ("image/webp", "image/webp");
-
-        // Publish first: if copying fails the media stays in review and approving can be retried.
-        await storage.PublishPrivateAsync(
-            MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision),
-            MediaKeys.Playback(item.UserId, item.Id, item.MediaType, item.Revision),
-            playbackType,
-            cancellationToken);
-        await storage.PublishPrivateAsync(
-            MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision),
-            MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, item.Revision),
-            thumbnailType,
-            cancellationToken);
-
+        var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
         var reviewFiles = (Playback: MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision),
             Thumbnail: MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision));
+        var published = (Playback: MediaKeys.Playback(item.UserId, item.Id, item.MediaType, item.Revision),
+            Thumbnail: MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, item.Revision));
+
+        // Sensitive media (its post is tagged sensitive) is never published: the files go to the sensitive bucket, and
+        // the worker makes the blurred preview. Copy first: if copying fails the media stays in review and approving
+        // can be retried.
+        var sensitive = await media.IsSensitiveAsync(item.Id, cancellationToken);
+        if (sensitive)
+        {
+            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Playback, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Playback), playbackType, cancellationToken);
+            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Thumbnail, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Thumbnail), thumbnailType, cancellationToken);
+        }
+        else
+        {
+            await storage.PublishPrivateAsync(reviewFiles.Playback, published.Playback, playbackType, cancellationToken);
+            await storage.PublishPrivateAsync(reviewFiles.Thumbnail, published.Thumbnail, thumbnailType, cancellationToken);
+        }
+
         item.Approve(caller.UserId(), clock.GetUtcNow());
-        await media.SaveChangesAsync(cancellationToken);
+        if (sensitive)
+        {
+            item.Restrict(previewKey: null, clock.GetUtcNow());
+        }
+
+        // Sensitive: the worker makes the preview; the job is queued in the same transaction as the approval.
+        if (sensitive)
+        {
+            var visibility = MediaProcessingJob.ForVisibility(item);
+            await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(visibility, ct), cancellationToken);
+        }
+        else
+        {
+            await media.SaveChangesAsync(cancellationToken);
+        }
+
         await storage.DeleteOriginalAsync(reviewFiles.Playback, cancellationToken);
         await storage.DeleteOriginalAsync(reviewFiles.Thumbnail, cancellationToken);
+
+        // Tagged while we approved it: move the files now.
+        if (!sensitive && await media.IsSensitiveAsync(item.Id, cancellationToken))
+        {
+            await queue.EnqueueAsync(MediaProcessingJob.ForVisibility(item), cancellationToken);
+        }
 
         await audit.RecordAsync(
             new ModerationAuditEntry(
@@ -303,7 +333,8 @@ public sealed class RejectMediaCommandHandler(
 
 /// <summary>
 /// A moderator adds blur regions for things automatic detection missed, and the media is processed again (automatic
-/// detection plus every manual region). The result always comes back to the review queue. Works on media waiting for
+/// detection plus every manual region) from its current processed file, since the original is deleted once the post is
+/// published. The result always comes back to the review queue. Works on media waiting for
 /// review or already Ready (e.g. after a report); a Ready item's public files are removed straight away.
 /// </summary>
 /// <param name="MediaId">The media.</param>
@@ -355,20 +386,29 @@ public sealed class AddManualRedactionsCommandHandler(
             throw MediaReview.Invalid(nameof(request.Regions), $"Media can have at most {ManualRedaction.MaxPerMedia} blur regions.");
         }
 
-        if (item.OriginalDeletesAt is { } deletesAt && deletesAt <= clock.GetUtcNow())
-        {
-            throw MediaReview.Invalid(nameof(request.MediaId), "The original has been deleted (after 90 days), so it can't be processed again.");
-        }
+        // Re-process from the current processed (already blurred) file, not the original, which is deleted once the
+        // post is published: copy it aside first, then take the published or review files down.
+        var (playbackType, _) = MediaFiles.ContentTypes(item.MediaType);
+        var current = item.Status == MediaStatus.NeedsReview
+            ? (Bucket: MediaBucket.Originals, Key: MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision))
+            : item.IsRestricted
+                ? (Bucket: MediaBucket.Sensitive, Key: MediaKeys.Sensitive(item.PlaybackKey!))
+                : (Bucket: MediaBucket.Public, Key: item.PlaybackKey!);
+        var source = MediaKeys.ReworkSource(item.UserId, item.Id, item.MediaType, item.Revision + 1);
+        await storage.CopyAsync(current.Bucket, current.Key, MediaBucket.Originals, source, playbackType, cancellationToken);
+        var previousSource = item.SourceKey;
 
         // Take down what's there now: public files of Ready media (something unblurred may be showing), or the
         // review copies. Cloudflare may keep serving a cached public file until it's purged.
         if (item.Status == MediaStatus.Ready)
         {
-            var published = new[] { item.PlaybackKey, item.ThumbnailKey }.OfType<string>().ToList();
+            var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.PreviewKey }.OfType<string>().ToList();
             if (published.Count > 0)
             {
                 await storage.DeletePublicAsync(published, cancellationToken);
             }
+
+            await MediaFiles.DeleteSensitiveCopiesAsync(storage, item, cancellationToken);
         }
         else
         {
@@ -376,11 +416,15 @@ public sealed class AddManualRedactionsCommandHandler(
         }
 
         var before = item.Status;
-        item.AddManualRedactions(request.Regions, clock.GetUtcNow());
+        item.AddManualRedactions(request.Regions, clock.GetUtcNow(), source);
 
         // The job is queued in the same transaction as the change back to Processing: both happen, or neither.
         var job = new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);
         await media.SaveChangesWithMessagesAsync(ct => queue.EnqueueAsync(job, ct), cancellationToken);
+        if (previousSource is not null && previousSource != source)
+        {
+            await storage.DeleteOriginalAsync(previousSource, cancellationToken);
+        }
 
         await audit.RecordAsync(
             new ModerationAuditEntry(

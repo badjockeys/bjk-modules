@@ -47,7 +47,7 @@ public sealed class CompleteUploadCommandHandler(
             throw Invalid(item.FailureReason!);
         }
 
-        item.MarkUploaded(file.SizeBytes, clock.GetUtcNow(), options.Value.OriginalRetention);
+        item.MarkUploaded(file.SizeBytes, clock.GetUtcNow(), options.Value.UnusedOriginalRetention);
 
         // The job is queued in the same transaction as the status change: both happen, or neither (and the app can retry).
         var job = new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);

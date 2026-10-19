@@ -295,6 +295,9 @@ public sealed record ModerationReasonRequest(string? Reason);
 
 public sealed record SetSensitiveRequest(bool IsSensitive, string? Reason);
 
+/// <summary>A moderator's decision on an automatic sensitive tag: keep it (<c>Confirm</c> = true) or undo it, and why.</summary>
+public sealed record SensitiveReviewRequest(bool Confirm, string? Reason);
+
 public sealed record ScreeningReviewRequest(ScreeningDecision Decision, string? Reason);
 
 public sealed record DecideAppealRequest(AppealDecision Decision, string? Note);

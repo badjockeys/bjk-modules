@@ -333,6 +333,25 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<double?>("ScreeningScore")
                         .HasColumnType("float");
 
+                    b.Property<string>("SensitiveReview")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset?>("SensitiveReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("SensitiveReviewedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<double?>("SensitiveScore")
+                        .HasColumnType("float");
+
+                    b.Property<string>("SensitiveSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -351,6 +370,8 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasIndex("AuthorId", "CreatedAt");
 
                     b.HasIndex("Latitude", "Longitude");
+
+                    b.HasIndex("SensitiveReview", "CreatedAt");
 
                     b.HasIndex("Status", "CreatedAt");
 

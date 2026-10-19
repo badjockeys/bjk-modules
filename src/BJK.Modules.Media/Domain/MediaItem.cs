@@ -42,8 +42,24 @@ public sealed class MediaItem
 
     public string OriginalKey { get; private set; } = string.Empty;
 
-    /// <summary>When the storage lifecycle rule removes the original (upload time + retention).</summary>
+    /// <summary>
+    /// The latest the original is kept once processing has finished (upload time + <c>Media:UnusedOriginalRetention</c>,
+    /// 24 hours): the API host's sweeper deletes it then if nothing released it sooner (failed media, or Ready media that
+    /// was never posted). Media still processing or waiting for review keeps it.
+    /// </summary>
     public DateTimeOffset? OriginalDeletesAt { get; private set; }
+
+    /// <summary>
+    /// When the uploaded original was deleted: as soon as its post was published (or by the sweeper). Null while it
+    /// exists. Nothing is ever processed from it again: moderators' extra blurs work from the processed file.
+    /// </summary>
+    public DateTimeOffset? OriginalDeletedAt { get; private set; }
+
+    /// <summary>
+    /// While re-processing after a moderator added blur regions: the copy of the processed file to work from (in the
+    /// originals bucket, <see cref="MediaKeys.ReworkSource"/>), instead of the original. Null for a first processing.
+    /// </summary>
+    public string? SourceKey { get; private set; }
 
     public string? PlaybackKey { get; private set; }
 
@@ -93,6 +109,22 @@ public sealed class MediaItem
             ? []
             : JsonSerializer.Deserialize<List<ManualRedaction>>(ManualRedactionsJson, RedactionJson) ?? [];
 
+    /// <summary>
+    /// True while the processed files (<see cref="PlaybackKey"/>, <see cref="ThumbnailKey"/>) are kept only in the
+    /// sensitive bucket, under <see cref="MediaKeys.Sensitive"/>, because the media is in a post tagged sensitive. The
+    /// public bucket then holds only the blurred <see cref="PreviewKey"/>. The keys keep their public names either way.
+    /// </summary>
+    public bool IsRestricted { get; private set; }
+
+    /// <summary>The heavily blurred preview in the public bucket, while the media is sensitive (null until it's made).</summary>
+    public string? PreviewKey { get; private set; }
+
+    /// <summary>
+    /// The highest graphic content score (0 to 1) automatic detection gave it in the latest processing, whether or not
+    /// it crossed the threshold; null if detection was off. Kept to tune the threshold against moderators' decisions.
+    /// </summary>
+    public double? SensitiveScore { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? UploadedAt { get; private set; }
@@ -140,6 +172,9 @@ public sealed class MediaItem
     public bool IsOwnedBy(Guid userId) => UserId == userId;
 
     /// <summary>The file has arrived in storage; processing can start.</summary>
+    /// <param name="sizeBytes">The original's size.</param>
+    /// <param name="now">The time.</param>
+    /// <param name="originalRetention">How long the original may be kept at most once processing is finished.</param>
     public void MarkUploaded(long sizeBytes, DateTimeOffset now, TimeSpan originalRetention)
     {
         EnsureStatus(MediaStatus.Uploading);
@@ -183,6 +218,11 @@ public sealed class MediaItem
         FacesBlurred = faces;
         PlatesBlurred = plates;
     }
+
+    /// <summary>Records the graphic content score of the latest processing (null if detection was off).</summary>
+    /// <param name="score">The highest score of the frames checked.</param>
+    public void RecordSensitiveScore(double? score) =>
+        SensitiveScore = score is null ? null : Math.Round(Math.Clamp(score.Value, 0, 1), 4);
 
     /// <summary>
     /// Processed and blurred, but a moderator must check it first. The blurred files are in the private bucket under
@@ -228,6 +268,38 @@ public sealed class MediaItem
         _statusChanges.Add(new MediaStatusChange(MediaStatus.Ready, null, now));
     }
 
+    /// <summary>
+    /// The processed files are now kept only in the sensitive bucket (the media is in a post tagged sensitive), with the
+    /// blurred preview, if it has been made yet, in the public bucket. Only for Ready media.
+    /// </summary>
+    /// <param name="previewKey">The blurred preview's key in the public bucket, or null if it isn't made yet.</param>
+    /// <param name="now">The time.</param>
+    public void Restrict(string? previewKey, DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Ready);
+        IsRestricted = true;
+        PreviewKey = previewKey;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The processed files are public again (the sensitive tag was removed) and the blurred preview is no longer used.</summary>
+    /// <param name="now">The time.</param>
+    public void Unrestrict(DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Ready);
+        IsRestricted = false;
+        PreviewKey = null;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
+    /// <param name="now">The time.</param>
+    public void MarkOriginalDeleted(DateTimeOffset now)
+    {
+        OriginalDeletedAt ??= now;
+        UpdatedAt = now;
+    }
+
     /// <summary>A moderator rejected it: it becomes <see cref="MediaStatus.Failed"/> with the reason, which the uploader sees.</summary>
     /// <param name="reason">Shown to the uploader.</param>
     /// <param name="moderatorId">The moderator, or null for a machine token.</param>
@@ -249,7 +321,11 @@ public sealed class MediaItem
     /// </summary>
     /// <param name="regions">Regions to add to any already there.</param>
     /// <param name="now">The time.</param>
-    public void AddManualRedactions(IReadOnlyCollection<ManualRedaction> regions, DateTimeOffset now)
+    /// <param name="sourceKey">
+    /// The copy of the current processed file to re-process from (<see cref="MediaKeys.ReworkSource"/>); originals
+    /// aren't kept once a post is published.
+    /// </param>
+    public void AddManualRedactions(IReadOnlyCollection<ManualRedaction> regions, DateTimeOffset now, string? sourceKey = null)
     {
         if (Status is not (MediaStatus.NeedsReview or MediaStatus.Ready))
         {
@@ -264,8 +340,11 @@ public sealed class MediaItem
 
         ManualRedactionsJson = JsonSerializer.Serialize(all, RedactionJson);
         Revision++;
+        SourceKey = sourceKey ?? SourceKey;
         PlaybackKey = null;
         ThumbnailKey = null;
+        IsRestricted = false;
+        PreviewKey = null;
         ReviewReason = null;
         Status = MediaStatus.Processing;
         UpdatedAt = now;

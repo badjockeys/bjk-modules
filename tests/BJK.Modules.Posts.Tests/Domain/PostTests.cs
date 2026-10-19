@@ -109,4 +109,40 @@ public sealed class PostTests
         Assert.Equal(ReportStatus.ContentHidden, report.Status);
         Assert.Throws<InvalidOperationException>(() => report.Resolve(ReportAction.Dismiss, UserId, null, Now));
     }
+
+    [Fact]
+    public void Automatic_tags_wait_for_review_and_repeats_or_undone_tags_change_nothing()
+    {
+        var post = NewPost(UserId);
+
+        Assert.True(post.MarkSensitiveAutomatically(0.4, Now));
+        Assert.Equal((true, PostSensitiveSource.Automatic, SensitiveReviewStatus.Pending), (post.IsSensitive, post.SensitiveSource, post.SensitiveReview));
+        Assert.False(post.MarkSensitiveAutomatically(0.6, Now));
+        Assert.Equal(0.6, post.SensitiveScore);
+        Assert.False(post.AuthorMayRemoveSensitive);
+
+        post.ReviewAutomaticSensitive(confirm: false, OtherUserId, Now);
+        Assert.Equal((false, PostSensitiveSource.None, SensitiveReviewStatus.Undone), (post.IsSensitive, post.SensitiveSource, post.SensitiveReview));
+        Assert.Equal(OtherUserId, post.SensitiveReviewedBy);
+        Assert.False(post.MarkSensitiveAutomatically(0.9, Now));
+        Assert.False(post.IsSensitive);
+        Assert.Throws<InvalidOperationException>(() => post.ReviewAutomaticSensitive(true, OtherUserId, Now));
+    }
+
+    [Fact]
+    public void Authors_tag_their_own_posts_and_can_remove_only_their_own_tag()
+    {
+        var post = Post.Create(UserId, Details(), [Guid.NewGuid()], Now, isSensitive: true);
+
+        Assert.Equal(PostSensitiveSource.Author, post.SensitiveSource);
+        Assert.True(post.AuthorMayRemoveSensitive);
+
+        post.SetSensitive(true, Now, PostSensitiveSource.Moderator);
+        Assert.Equal(PostSensitiveSource.Author, post.SensitiveSource);
+
+        post.SetSensitive(false, Now, PostSensitiveSource.Moderator);
+        post.SetSensitive(true, Now, PostSensitiveSource.Moderator);
+        Assert.Equal(PostSensitiveSource.Moderator, post.SensitiveSource);
+        Assert.False(post.AuthorMayRemoveSensitive);
+    }
 }

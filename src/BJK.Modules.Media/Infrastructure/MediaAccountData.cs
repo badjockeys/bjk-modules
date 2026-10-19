@@ -43,7 +43,10 @@ internal sealed class MediaPersonalDataExporter(MediaDbContext db, IMediaStorage
         var result = new List<object>(items.Count);
         foreach (var m in items)
         {
-            var hasOriginal = m.Status is not (MediaStatus.Deleted or MediaStatus.Uploading) && m.UploadedAt is not null;
+            var hasOriginal = m.Status is not (MediaStatus.Deleted or MediaStatus.Uploading) && m.UploadedAt is not null && m.OriginalDeletedAt is null;
+            var links = m.Status == MediaStatus.Ready
+                ? await MediaLinks.WithSensitiveAsync(storage, m, DownloadLinkLifetime, DateTimeOffset.UtcNow, cancellationToken)
+                : MediaFileLinks.None;
             result.Add(new
             {
                 m.Id,
@@ -64,8 +67,10 @@ internal sealed class MediaPersonalDataExporter(MediaDbContext db, IMediaStorage
                     ? await storage.CreateOriginalDownloadUrlAsync(m.OriginalKey, DownloadLinkLifetime, cancellationToken)
                     : null,
                 OriginalDownloadUrlExpiresIn = hasOriginal ? "24 hours" : null,
-                PlaybackUrl = m.Status == MediaStatus.Ready && m.PlaybackKey is not null ? storage.PublicUrl(m.PlaybackKey) : null,
-                ThumbnailUrl = m.Status == MediaStatus.Ready && m.ThumbnailKey is not null ? storage.PublicUrl(m.ThumbnailKey) : null,
+                m.OriginalDeletedAt,
+                // The user's own files: signed links (24 hours) if they're kept privately because the media is sensitive.
+                PlaybackUrl = links.Playback,
+                ThumbnailUrl = links.Thumbnail,
             });
         }
 

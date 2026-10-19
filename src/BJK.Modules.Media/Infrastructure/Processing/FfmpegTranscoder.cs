@@ -104,6 +104,22 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
         }
     }
 
+    public async Task CreateSensitivePreviewAsync(string inputPath, string previewPath, CancellationToken cancellationToken)
+    {
+        // Longest side down to a few dozen pixels (area averaging), blur, back up to the preview size, blur hard again.
+        var small = _options.SensitivePreviewSourceSize;
+        var large = _options.SensitivePreviewSize;
+        var filter = string.Create(
+            CultureInfo.InvariantCulture,
+            $"scale='if(gte(iw,ih),{small},-2)':'if(gte(iw,ih),-2,{small})':flags=area,gblur=sigma=3,scale='if(gte(iw,ih),{large},-2)':'if(gte(iw,ih),-2,{large})':flags=bicubic,gblur=sigma=12");
+        await RunOrThrowAsync(
+            _options.FfmpegPath,
+            ["-hide_banner", "-nostdin", "-y", "-i", inputPath, "-map_metadata", "-1", "-frames:v", "1", "-vf", filter,
+             "-c:v", "libwebp", "-quality", "60", previewPath],
+            "make the blurred preview",
+            cancellationToken);
+    }
+
     public async Task ConcatenateVideoAsync(
         IReadOnlyList<string> segmentPaths,
         string? audioSourcePath,

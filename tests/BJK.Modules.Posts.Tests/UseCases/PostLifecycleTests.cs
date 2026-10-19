@@ -51,7 +51,7 @@ public sealed class PostLifecycleTests
         typeof(Post).GetProperty(nameof(Post.IsAuthorDeactivated))!.SetValue(post, true);
         _posts.GetAsync(post.Id, Arg.Any<CancellationToken>()).Returns(post);
         _caller.IdentityId.Returns(UserId.ToString());
-        var views = new PostViews(_posts, Substitute.For<IProfileDirectory>(), Substitute.For<IMediaDirectory>());
+        var views = new PostViews(_posts, Substitute.For<IProfileDirectory>(), Substitute.For<IMediaDirectory>(), _caller);
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => new GetPostQueryHandler(_posts, views, Substitute.For<IBlockDirectory>(), _caller).Handle(new GetPostQuery(post.Id), Ct));

@@ -123,13 +123,33 @@ public sealed class AdminPostsController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Set or clear a post's sensitive tag (graphic content, hidden from logged-out viewers). A reason is required.</summary>
+    /// <summary>
+    /// Set or clear a post's sensitive tag (graphic content: its media are shown blurred except to age-verified adults).
+    /// A reason is required. Also settles a pending review of an automatic tag.
+    /// </summary>
     [HttpPut("posts/{id:guid}/sensitive")]
     [ProducesResponseType<PostDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<PostDto> SetSensitive(Guid id, SetSensitiveRequest request, CancellationToken cancellationToken) =>
         await sender.Send(new SetPostSensitiveCommand(id, request.IsSensitive, request.Reason), cancellationToken);
+
+    /// <summary>Posts tagged sensitive by automatic detection, waiting for a moderator to confirm or undo the tag, oldest first.</summary>
+    [HttpGet("posts/sensitive-review")]
+    [ProducesResponseType<PagedResult<SensitiveReviewDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<SensitiveReviewDto>> ListSensitiveReview(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListSensitiveReviewQuery(page, pageSize), cancellationToken);
+
+    /// <summary>Confirm (<c>confirm</c> = true) or undo an automatic sensitive tag. A reason is required.</summary>
+    [HttpPost("posts/{id:guid}/sensitive-review")]
+    [ProducesResponseType<SensitiveReviewDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<SensitiveReviewDto> ReviewSensitiveTag(Guid id, SensitiveReviewRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new ReviewSensitiveTagCommand(id, request.Confirm, request.Reason), cancellationToken);
 
     /// <summary>Delete anyone's post and its photos and videos. A reason is required (<c>?reason=</c>).</summary>
     [HttpDelete("posts/{id:guid}")]

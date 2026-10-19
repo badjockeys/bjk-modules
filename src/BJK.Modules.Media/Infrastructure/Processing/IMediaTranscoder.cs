@@ -29,6 +29,16 @@ public interface IMediaTranscoder
     Task ConvertImageAsync(string inputPath, string imagePath, string thumbnailPath, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Writes the heavily blurred, low-resolution WebP preview shown in place of sensitive media: the picture is shrunk
+    /// to a few dozen pixels (destroying detail), blurred, enlarged and blurred again, without metadata. The input is an
+    /// already blurred thumbnail (JPEG or WebP).
+    /// </summary>
+    /// <param name="inputPath">The thumbnail.</param>
+    /// <param name="previewPath">Where to write the preview.</param>
+    /// <param name="cancellationToken">Stops the job.</param>
+    Task CreateSensitivePreviewAsync(string inputPath, string previewPath, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Joins blurred video segments, in order, into one MP4 without re-encoding (ffmpeg's concat demuxer; every segment
     /// is encoded with identical settings and starts on a keyframe), with fast start and no metadata. If
     /// <paramref name="audioSourcePath"/> is given (audio removal switched off), the original's soundtrack is added.

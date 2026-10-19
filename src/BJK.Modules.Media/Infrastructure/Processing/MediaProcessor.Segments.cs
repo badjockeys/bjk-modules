@@ -108,7 +108,7 @@ internal sealed partial class MediaProcessor
             isLastAttempt,
             async folder =>
             {
-                var original = Path.Combine(folder, "original" + Path.GetExtension(item.OriginalKey));
+                var original = Path.Combine(folder, SourceFileName(item));
                 await DownloadOriginalAsync(item, original, cancellationToken);
 
                 var output = Path.Combine(folder, $"{index:D3}.mp4");
@@ -122,7 +122,7 @@ internal sealed partial class MediaProcessor
                     item.Id,
                     job.Revision,
                     index,
-                    new VideoSegmentResult(result.Frames, result.FacesBlurred, result.PlatesBlurred, result.ReviewReasons, result.Elapsed),
+                    new VideoSegmentResult(result.Frames, result.FacesBlurred, result.PlatesBlurred, result.ReviewReasons, result.Elapsed, result.SensitiveScore),
                     clock.GetUtcNow(),
                     cancellationToken);
                 logger.LogInformation(
@@ -214,7 +214,7 @@ internal sealed partial class MediaProcessor
                 string? audio = null;
                 if (!_redaction.RemoveAudio)
                 {
-                    audio = Path.Combine(folder, "original" + Path.GetExtension(item.OriginalKey));
+                    audio = Path.Combine(folder, SourceFileName(item));
                     await DownloadOriginalAsync(item, audio, cancellationToken);
                 }
 
@@ -225,6 +225,7 @@ internal sealed partial class MediaProcessor
 
                 // Counts are per segment, so a face crossing a join is counted once in each.
                 item.RecordRedaction(segments.Sum(s => s.FacesBlurred ?? 0), segments.Sum(s => s.PlatesBlurred ?? 0));
+                await ApplySensitiveScoreAsync(item, segments.Max(s => s.SensitiveScore), cancellationToken);
                 var reasons = ReviewReasons(segments.SelectMany(s => s.ReviewReasonList), item.ManualRedactions.Count);
                 var outcome = await PublishAsync(
                     item,

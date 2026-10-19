@@ -15,6 +15,7 @@ using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Posts.UseCases.Safety;
+using BJK.Modules.Posts.UseCases.Update;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Moderation;
@@ -74,7 +75,7 @@ public sealed class OnlineSafetyTests
         _screener.ScreenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ScreeningResult.Clean);
         _blocks.GetBlockedIdsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(new List<Guid>());
         _captcha.VerifyAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(CaptchaResult.Passed);
-        _views = new PostViews(_posts, _profiles, _media);
+        _views = new PostViews(_posts, _profiles, _media, _caller);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -82,23 +83,108 @@ public sealed class OnlineSafetyTests
     // Sensitive posts and logged-out viewers
 
     [Fact]
-    public async Task Sensitive_posts_look_missing_to_logged_out_viewers()
+    public async Task Logged_out_viewers_get_sensitive_posts_with_only_blurred_previews()
     {
+        // The media's files are even still public (a move in progress): no real address may be handed out anyway.
         var post = Existing(OtherUserId, sensitive: true);
+        MediaOf(post, restricted: false);
         SignedOut();
-
-        await Assert.ThrowsAsync<NotFoundException>(() => GetHandler().Handle(new GetPostQuery(post.Id), Ct));
-    }
-
-    [Fact]
-    public async Task Signed_in_viewers_see_sensitive_posts_marked_as_such()
-    {
-        var post = Existing(OtherUserId, sensitive: true);
 
         var dto = await GetHandler().Handle(new GetPostQuery(post.Id), Ct);
 
         Assert.True(dto.IsSensitive);
+        Assert.True(dto.RequiresAgeVerification);
+        Assert.True(dto.CommentsRequireSignIn);
+        Assert.Equal(post.Title, dto.Title);
+        var media = Assert.Single(dto.Media);
+        Assert.True(media.IsBlurred);
+        Assert.Null(media.PlaybackUrl);
+        Assert.Null(media.ThumbnailUrl);
+        Assert.Equal("https://media.example.com/preview.webp", media.PreviewUrl!.ToString());
+        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, Ct);
+    }
+
+    [Fact]
+    public async Task Signed_in_viewers_without_the_age_check_get_blurred_previews_too()
+    {
+        var post = Existing(OtherUserId, sensitive: true);
+        MediaOf(post, restricted: true);
+        _caller.AgeVerified.Returns(false);
+
+        var dto = await GetHandler().Handle(new GetPostQuery(post.Id), Ct);
+
+        Assert.True(dto.RequiresAgeVerification);
         Assert.False(dto.CommentsRequireSignIn);
+        Assert.True(Assert.Single(dto.Media).IsBlurred);
+        Assert.Null(dto.Media[0].PlaybackUrl);
+        await _media.DidNotReceiveWithAnyArgs().GetWithSensitiveLinksAsync(default!, Ct);
+    }
+
+    [Fact]
+    public async Task Age_verified_adults_get_signed_links_to_sensitive_media()
+    {
+        var post = Existing(OtherUserId, sensitive: true);
+        MediaOf(post, restricted: true);
+
+        var dto = await GetHandler().Handle(new GetPostQuery(post.Id), Ct);
+
+        Assert.True(dto.IsSensitive);
+        Assert.False(dto.RequiresAgeVerification);
+        var media = Assert.Single(dto.Media);
+        Assert.False(media.IsBlurred);
+        Assert.Equal("https://signed.example.com/720p.mp4?X-Amz-Signature=abc", media.PlaybackUrl!.ToString());
+        Assert.Equal(Now.AddMinutes(10), media.LinksExpireAt);
+    }
+
+    [Fact]
+    public async Task Moderators_get_the_real_media_without_the_age_check()
+    {
+        var post = Existing(OtherUserId, sensitive: true);
+        MediaOf(post, restricted: true);
+        _caller.AgeVerified.Returns(false);
+        CallerIsModerator();
+
+        var dto = await GetHandler().Handle(new GetPostQuery(post.Id, AsModerator: true), Ct);
+
+        Assert.False(dto.RequiresAgeVerification);
+        Assert.NotNull(Assert.Single(dto.Media).PlaybackUrl);
+    }
+
+    [Fact]
+    public async Task Authors_see_their_own_sensitive_media()
+    {
+        var post = Existing(UserId, sensitive: true);
+        MediaOf(post, restricted: true);
+        _caller.AgeVerified.Returns(false);
+
+        var dto = await GetHandler().Handle(new GetPostQuery(post.Id), Ct);
+
+        Assert.False(dto.RequiresAgeVerification);
+        Assert.NotNull(Assert.Single(dto.Media).PlaybackUrl);
+    }
+
+    [Fact]
+    public async Task The_feed_blurs_sensitive_posts_for_logged_out_viewers()
+    {
+        var plain = Existing(OtherUserId);
+        var sensitive = Existing(OtherUserId, sensitive: true);
+        _posts.SearchAsync(Arg.Any<PostSearch>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((new List<Post> { plain, sensitive }, 2));
+        _media.GetAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaSummary>
+        {
+            Summary(plain.Media[0].MediaId, restricted: false),
+            Summary(sensitive.Media[0].MediaId, restricted: false),
+        });
+        SignedOut();
+
+        var page = await FeedHandler().Handle(new ListPostsQuery(), Ct);
+
+        Assert.Equal(2, page.Items.Count);
+        Assert.NotNull(page.Items.Single(p => p.Id == plain.Id).Media[0].PlaybackUrl);
+        Assert.False(page.Items.Single(p => p.Id == plain.Id).RequiresAgeVerification);
+        var blurred = page.Items.Single(p => p.Id == sensitive.Id);
+        Assert.True(blurred.RequiresAgeVerification);
+        Assert.All(blurred.Media, m => Assert.Null(m.PlaybackUrl));
     }
 
     [Fact]
@@ -113,14 +199,9 @@ public sealed class OnlineSafetyTests
     }
 
     [Fact]
-    public async Task The_feed_leaves_out_sensitive_posts_for_logged_out_viewers_only()
+    public async Task The_feed_includes_sensitive_posts_for_everyone()
     {
         SignedOut();
-        await FeedHandler().Handle(new ListPostsQuery(), Ct);
-        await _posts.Received(1).SearchAsync(Arg.Is<PostSearch>(s => s.ExcludeSensitive), 1, 20, Arg.Any<CancellationToken>());
-
-        _posts.ClearReceivedCalls();
-        SignedInAs(UserId);
         await FeedHandler().Handle(new ListPostsQuery(), Ct);
         await _posts.Received(1).SearchAsync(Arg.Is<PostSearch>(s => !s.ExcludeSensitive), 1, 20, Arg.Any<CancellationToken>());
     }
@@ -649,14 +730,116 @@ public sealed class OnlineSafetyTests
     {
         var post = Existing(OtherUserId);
         CallerIsModerator();
-        var handler = new SetPostSensitiveCommandHandler(_posts, _views, _audit, _caller, _clock);
+        var handler = new SetPostSensitiveCommandHandler(_posts, _views, _media, _audit, _caller, _clock);
 
         await handler.Handle(new SetPostSensitiveCommand(post.Id, true, "Serious injury visible"), Ct);
 
         Assert.True(post.IsSensitive);
+        Assert.Equal(PostSensitiveSource.Moderator, post.SensitiveSource);
         await _audit.Received(1).RecordAsync(
             Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.SetPostSensitive && e.Before == "Sensitive=False" && e.After == "Sensitive=True"),
             Arg.Any<CancellationToken>());
+        await _media.Received(1).SetSensitiveAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == post.Media[0].MediaId), true, Arg.Any<CancellationToken>(), true);
+    }
+
+    [Fact]
+    public async Task Tagging_or_untagging_their_post_moves_its_media_and_authors_cant_remove_others_tags()
+    {
+        var post = Existing(UserId);
+        var handler = UpdateHandler();
+
+        await handler.Handle(Update(post, sensitive: true), Ct);
+        Assert.Equal(PostSensitiveSource.Author, post.SensitiveSource);
+        await _media.Received(1).SetSensitiveAsync(Arg.Any<IReadOnlyCollection<Guid>>(), true, Arg.Any<CancellationToken>(), false);
+
+        await handler.Handle(Update(post, sensitive: false), Ct);
+        Assert.False(post.IsSensitive);
+        await _media.Received(1).SetSensitiveAsync(Arg.Any<IReadOnlyCollection<Guid>>(), false, Arg.Any<CancellationToken>(), false);
+
+        post.SetSensitive(true, Now, PostSensitiveSource.Moderator);
+        var refused = await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(Update(post, sensitive: false), Ct));
+        Assert.Contains("moderator", refused.Message);
+        Assert.True(post.IsSensitive);
+    }
+
+    [Fact]
+    public async Task Authors_cant_remove_a_tag_detection_also_flagged()
+    {
+        var post = Existing(UserId, sensitive: true);
+        post.MarkSensitiveAutomatically(0.7, Now);
+
+        await Assert.ThrowsAsync<ValidationException>(() => UpdateHandler().Handle(Update(post, sensitive: false), Ct));
+
+        Assert.True(post.IsSensitive);
+        Assert.Equal(SensitiveReviewStatus.None, post.SensitiveReview);
+    }
+
+    [Fact]
+    public async Task Moderators_confirm_automatic_tags_and_the_outcome_is_kept_with_the_score()
+    {
+        var post = Existing(OtherUserId);
+        post.MarkSensitiveAutomatically(0.42, Now);
+        CallerIsModerator();
+
+        var dto = await ReviewHandler().Handle(new ReviewSensitiveTagCommand(post.Id, true, "Visible injuries"), Ct);
+
+        Assert.Equal(SensitiveReviewStatus.Confirmed, dto.Review);
+        Assert.Equal(0.42, dto.Score);
+        Assert.Equal(UserId, dto.ReviewedBy);
+        Assert.True(post.IsSensitive);
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.ReviewSensitiveTag && e.After!.Contains("Review=Confirmed") && e.Before!.Contains("Score=0.420")),
+            Arg.Any<CancellationToken>());
+        await _media.Received(1).SetSensitiveAsync(Arg.Any<IReadOnlyCollection<Guid>>(), true, Arg.Any<CancellationToken>(), true);
+    }
+
+    [Fact]
+    public async Task Moderators_undo_automatic_tags_which_publishes_the_media_again()
+    {
+        var post = Existing(OtherUserId);
+        post.MarkSensitiveAutomatically(0.36, Now);
+        CallerIsModerator();
+
+        var dto = await ReviewHandler().Handle(new ReviewSensitiveTagCommand(post.Id, false, "A red car, not blood"), Ct);
+
+        Assert.Equal(SensitiveReviewStatus.Undone, dto.Review);
+        Assert.False(post.IsSensitive);
+        Assert.False(dto.Post.IsSensitive);
+        await _media.Received(1).SetSensitiveAsync(Arg.Any<IReadOnlyCollection<Guid>>(), false, Arg.Any<CancellationToken>(), true);
+        await Assert.ThrowsAsync<ValidationException>(() => ReviewHandler().Handle(new ReviewSensitiveTagCommand(post.Id, true, "again"), Ct));
+    }
+
+    [Fact]
+    public async Task Only_moderators_review_automatic_tags_and_see_the_queue()
+    {
+        var post = Existing(OtherUserId);
+        post.MarkSensitiveAutomatically(0.5, Now);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => ReviewHandler().Handle(new ReviewSensitiveTagCommand(post.Id, true, "ok"), Ct));
+        await Assert.ThrowsAsync<ForbiddenException>(() => new ListSensitiveReviewQueryHandler(_posts, _views, _caller).Handle(new ListSensitiveReviewQuery(), Ct));
+
+        CallerIsModerator();
+        _posts.ListForSensitiveReviewAsync(1, 50, Arg.Any<CancellationToken>()).Returns((new List<Post> { post }, 1));
+        var page = await new ListSensitiveReviewQueryHandler(_posts, _views, _caller).Handle(new ListSensitiveReviewQuery(), Ct);
+        var item = Assert.Single(page.Items);
+        Assert.Equal(SensitiveReviewStatus.Pending, item.Review);
+        Assert.Equal(PostSensitiveSource.Automatic, item.Post.SensitiveSource);
+        Assert.False(item.Post.RequiresAgeVerification);
+    }
+
+    [Fact]
+    public async Task A_moderator_setting_the_tag_also_settles_a_pending_review()
+    {
+        var post = Existing(OtherUserId);
+        post.MarkSensitiveAutomatically(0.5, Now);
+        CallerIsModerator();
+
+        await new SetPostSensitiveCommandHandler(_posts, _views, _media, _audit, _caller, _clock)
+            .Handle(new SetPostSensitiveCommand(post.Id, false, "Not graphic"), Ct);
+
+        Assert.Equal(SensitiveReviewStatus.Undone, post.SensitiveReview);
+        Assert.False(post.IsSensitive);
     }
 
     [Fact]
@@ -755,6 +938,45 @@ public sealed class OnlineSafetyTests
     private ReactToCommentCommandHandler CommentReactHandler() =>
         new(_posts, _comments, _commentReactions, _blocks, _caller, _clock);
 
+    private static MediaSummary Summary(Guid id, bool restricted) => new(
+        id,
+        OtherUserId,
+        MediaType.Video,
+        MediaStatus.Ready,
+        restricted ? null : new Uri("https://media.example.com/720p.mp4"),
+        restricted ? null : new Uri("https://media.example.com/thumbnail.jpg"),
+        10m,
+        1280,
+        720,
+        PreviewUrl: new Uri("https://media.example.com/preview.webp"),
+        IsRestricted: restricted);
+
+    /// <summary>The post's video as the Media module returns it, and the signed links it gives allowed callers.</summary>
+    private void MediaOf(Post post, bool restricted)
+    {
+        var id = post.Media[0].MediaId;
+        _media.GetAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaSummary> { Summary(id, restricted) });
+        _media.GetWithSensitiveLinksAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaSummary>
+        {
+            Summary(id, restricted) with
+            {
+                PlaybackUrl = new Uri("https://signed.example.com/720p.mp4?X-Amz-Signature=abc"),
+                ThumbnailUrl = new Uri("https://signed.example.com/thumbnail.jpg?X-Amz-Signature=abc"),
+                LinksExpireAt = Now.AddMinutes(10),
+            },
+        });
+    }
+
+    private UpdatePostCommandHandler UpdateHandler() => new(_posts, _screener, _views, _media, _caller, _clock);
+
+    private ReviewSensitiveTagCommandHandler ReviewHandler() => new(_posts, _views, _media, _audit, _caller, _clock);
+
+    private static UpdatePostCommand Update(Post post, bool? sensitive)
+    {
+        var d = Details();
+        return new UpdatePostCommand(post.Id, d.Title, d.Description, d.Category, d.IncidentAt, d.Latitude, d.Longitude, d.PlaceName, sensitive);
+    }
+
     private Post Existing(Guid authorId, bool sensitive = false)
     {
         var post = Post.Create(authorId, Details(), [Guid.NewGuid()], Now, sensitive);
@@ -786,7 +1008,7 @@ public sealed class OnlineSafetyTests
         _screener,
         Limits(),
         _views,
-        new PostMediaPublisher(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance),
+        new PostMediaPublisher(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance, _audit),
         _caller,
         _clock);
 

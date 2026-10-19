@@ -31,14 +31,30 @@ public sealed record MediaProcessingJob(
     /// <summary>For Segment: which segment (from 0).</summary>
     public int? Segment { get; init; }
 
+    /// <summary>For Visibility: unique per request, so each request is a separate message.</summary>
+    public Guid? RequestId { get; init; }
+
     /// <summary>A message id unique to this step.</summary>
     [JsonIgnore]
     public string MessageId => Step switch
     {
         MediaJobStep.Segment => $"{MediaId:D}/r{Revision}/s{Segment}",
         MediaJobStep.Assemble => $"{MediaId:D}/r{Revision}/assemble",
+        MediaJobStep.Visibility => $"{MediaId:D}/visibility/{RequestId:N}",
         _ => MediaId.ToString("D"),
     };
+
+    /// <summary>
+    /// The job that brings Ready media's files into line with its sensitive mark (see <see cref="MediaJobStep.Visibility"/>).
+    /// </summary>
+    /// <param name="media">The media.</param>
+    public static MediaProcessingJob ForVisibility(MediaItem media) =>
+        new(media.Id, media.UserId, media.MediaType, media.OriginalKey, media.OriginalContentType)
+        {
+            Step = MediaJobStep.Visibility,
+            Revision = media.Revision,
+            RequestId = Guid.NewGuid(),
+        };
 
     /// <summary>The job for one segment of this media.</summary>
     /// <param name="revision">The media revision.</param>
@@ -66,4 +82,11 @@ public enum MediaJobStep
 
     /// <summary>Join the segments into the published video, make the thumbnail, and set Ready or NeedsReview.</summary>
     Assemble,
+
+    /// <summary>
+    /// Ready media was marked or unmarked sensitive (its post was tagged or untagged): make the blurred public preview
+    /// and move the real files to the sensitive bucket, deleting the public copies, or publish them again. Always works
+    /// from the current mark, not the one at the time of queueing, so repeats and out-of-order jobs are harmless.
+    /// </summary>
+    Visibility,
 }

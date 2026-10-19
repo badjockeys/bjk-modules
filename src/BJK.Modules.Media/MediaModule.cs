@@ -46,6 +46,10 @@ public sealed class MediaModule(string connectionStringName) : IModule
     {
         MediaServices.AddStorageAndData(services, configuration, connectionStringName);
         services.AddScoped<IMediaDirectory, MediaDirectory>();
+
+        // Originals are deleted once their post is published; the sweeper catches the rest after 24 hours.
+        services.AddScoped<OriginalsCleanup>();
+        services.AddHostedService<OriginalsSweeper>();
         services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
 
         // media.ready / media.failed: written to media.Outbox by the API and the workers, published from here.

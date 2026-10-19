@@ -46,6 +46,71 @@ public interface IMediaStorage
 
     /// <summary>The address a processed file is served from through Cloudflare.</summary>
     Uri PublicUrl(string key);
+
+    /// <summary>
+    /// Stores a file in a bucket. Public files are cached by browsers and Cloudflare for a year; files in the other
+    /// buckets are private.
+    /// </summary>
+    /// <param name="bucket">Which bucket.</param>
+    /// <param name="key">The file's key.</param>
+    /// <param name="filePath">The local file to upload.</param>
+    /// <param name="contentType">Its type.</param>
+    /// <param name="cancellationToken">Stops the upload.</param>
+    Task UploadAsync(MediaBucket bucket, string key, string filePath, string contentType, CancellationToken cancellationToken);
+
+    /// <summary>Copies a file from a bucket into <paramref name="destination"/>.</summary>
+    /// <param name="bucket">Which bucket.</param>
+    /// <param name="key">The file's key.</param>
+    /// <param name="destination">Where to write it.</param>
+    /// <param name="cancellationToken">Stops the download.</param>
+    Task DownloadAsync(MediaBucket bucket, string key, Stream destination, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Copies a file from one bucket to another (or within one), replacing anything already at the destination, with
+    /// the destination bucket's headers. Safe to repeat.
+    /// </summary>
+    /// <param name="from">The source bucket.</param>
+    /// <param name="fromKey">The source key.</param>
+    /// <param name="to">The destination bucket.</param>
+    /// <param name="toKey">The destination key.</param>
+    /// <param name="contentType">The file's type.</param>
+    /// <param name="cancellationToken">Stops the copy.</param>
+    Task CopyAsync(MediaBucket from, string fromKey, MediaBucket to, string toKey, string contentType, CancellationToken cancellationToken);
+
+    /// <summary>True if a file exists at the key.</summary>
+    /// <param name="bucket">Which bucket.</param>
+    /// <param name="key">The file's key.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    Task<bool> ExistsAsync(MediaBucket bucket, string key, CancellationToken cancellationToken);
+
+    /// <summary>Deletes files; keys with nothing there are ignored.</summary>
+    /// <param name="bucket">Which bucket.</param>
+    /// <param name="keys">The files' keys.</param>
+    /// <param name="cancellationToken">Stops deleting.</param>
+    Task DeleteAsync(MediaBucket bucket, IEnumerable<string> keys, CancellationToken cancellationToken);
+
+    /// <summary>A short-lived signed link to read a file in a private bucket (e.g. sensitive media for an age-verified adult).</summary>
+    /// <param name="bucket">Which bucket.</param>
+    /// <param name="key">The file's key.</param>
+    /// <param name="lifetime">How long the link works.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    Task<Uri> CreateDownloadUrlAsync(MediaBucket bucket, string key, TimeSpan lifetime, CancellationToken cancellationToken);
+}
+
+/// <summary>The buckets media files live in.</summary>
+public enum MediaBucket
+{
+    /// <summary>Private: uploaded originals (deleted after 90 days), plus files waiting for review and video segments.</summary>
+    Originals,
+
+    /// <summary>Public, served through Cloudflare: processed files, and only the blurred preview of sensitive media.</summary>
+    Public,
+
+    /// <summary>
+    /// Private: the real processed files of sensitive media, read only through short-lived signed links.
+    /// <c>Media:Storage:SensitiveBucket</c>, or the originals bucket if that isn't set.
+    /// </summary>
+    Sensitive,
 }
 
 /// <param name="Url">Where to send the file.</param>

@@ -141,7 +141,7 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
     public async Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken)
     {
         var prefix = MediaKeys.UserFolder(userId);
-        foreach (var bucket in new[] { _options.OriginalsBucket!, _options.PublicBucket! })
+        foreach (var bucket in new[] { _options.OriginalsBucket!, _options.PublicBucket!, _options.EffectiveSensitiveBucket }.Distinct(StringComparer.Ordinal))
         {
             string? continuation = null;
             do
@@ -175,6 +175,100 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
 
         return new Uri(url);
     }
+
+    public async Task UploadAsync(MediaBucket bucket, string key, string filePath, string contentType, CancellationToken cancellationToken)
+    {
+        if (bucket == MediaBucket.Public)
+        {
+            await UploadPublicAsync(key, filePath, contentType, cancellationToken);
+            return;
+        }
+
+        var request = new PutObjectRequest
+        {
+            BucketName = BucketName(bucket),
+            Key = key,
+            FilePath = filePath,
+            ContentType = contentType,
+        };
+        if (bucket == MediaBucket.Sensitive)
+        {
+            // Read through signed links only: never kept by shared caches.
+            request.Headers.CacheControl = "private, max-age=600";
+        }
+
+        await s3.PutObjectAsync(request, cancellationToken);
+    }
+
+    public async Task DownloadAsync(MediaBucket bucket, string key, Stream destination, CancellationToken cancellationToken)
+    {
+        using var response = await s3.GetObjectAsync(BucketName(bucket), key, cancellationToken);
+        await response.ResponseStream.CopyToAsync(destination, cancellationToken);
+    }
+
+    public async Task CopyAsync(MediaBucket from, string fromKey, MediaBucket to, string toKey, string contentType, CancellationToken cancellationToken)
+    {
+        // Download and upload rather than a server-side copy, as in PublishPrivateAsync: the destination needs its own headers.
+        var temporary = Path.Combine(Path.GetTempPath(), "bjk-copy-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using (var file = File.Create(temporary))
+            {
+                await DownloadAsync(from, fromKey, file, cancellationToken);
+            }
+
+            await UploadAsync(to, toKey, temporary, contentType, cancellationToken);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
+
+    public async Task<bool> ExistsAsync(MediaBucket bucket, string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await s3.GetObjectMetadataAsync(
+                new GetObjectMetadataRequest { BucketName = BucketName(bucket), Key = key },
+                cancellationToken);
+            return true;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
+    public async Task DeleteAsync(MediaBucket bucket, IEnumerable<string> keys, CancellationToken cancellationToken)
+    {
+        var name = BucketName(bucket);
+        foreach (var key in keys)
+        {
+            await s3.DeleteObjectAsync(name, key, cancellationToken);
+        }
+    }
+
+    public async Task<Uri> CreateDownloadUrlAsync(MediaBucket bucket, string key, TimeSpan lifetime, CancellationToken cancellationToken)
+    {
+        var url = await s3.GetPreSignedURLAsync(new GetPreSignedUrlRequest
+        {
+            BucketName = BucketName(bucket),
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = (clock.GetUtcNow() + lifetime).UtcDateTime,
+            Protocol = _protocol,
+        });
+
+        return new Uri(url);
+    }
+
+    private string BucketName(MediaBucket bucket) => bucket switch
+    {
+        MediaBucket.Public => _options.PublicBucket!,
+        MediaBucket.Sensitive => _options.EffectiveSensitiveBucket,
+        _ => _options.OriginalsBucket!,
+    };
 
     // Tolerates the base address being configured with or without a trailing slash.
     public Uri PublicUrl(string key) => new(new Uri(_options.PublicBaseUrl!.ToString().TrimEnd('/') + "/"), key);

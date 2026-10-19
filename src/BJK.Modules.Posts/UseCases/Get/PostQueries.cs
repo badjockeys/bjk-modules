@@ -9,8 +9,8 @@ using MediatR;
 namespace BJK.Modules.Posts.UseCases.Get;
 
 /// <summary>
-/// One post. Open to anonymous callers, except that sensitive posts look missing (404) to logged-out viewers.
-/// Hidden and held posts are only shown to their author, or to moderators through the admin endpoint
+/// One post. Open to anonymous callers. Sensitive posts are returned to everyone, with their media blurred unless the
+/// caller is an age-verified adult, the author or a moderator (see <see cref="PostDto"/>). Hidden and held posts are only shown to their author, or to moderators through the admin endpoint
 /// (<c>AsModerator</c>). Posts by someone the viewer has blocked look missing too.
 /// </summary>
 public sealed record GetPostQuery(Guid PostId, bool AsModerator = false) : IRequest<PostDto>;
@@ -31,7 +31,8 @@ public sealed class GetPostQueryHandler(IPostRepository posts, PostViews views, 
 }
 
 /// <summary>
-/// The public feed, newest first. Open to anonymous callers, who never get sensitive posts. Signed-in viewers don't
+/// The public feed, newest first. Open to anonymous callers. Sensitive posts are included for everyone, their media
+/// blurred unless the caller may see them (see <see cref="PostDto"/>). Signed-in viewers don't
 /// get posts by people they've blocked. Optional filters: category, author's @handle, and an area (a point plus a
 /// radius in km).
 /// </summary>
@@ -98,7 +99,6 @@ public sealed class ListPostsQueryHandler(
                 request.Category,
                 area,
                 IncludeHidden: false,
-                ExcludeSensitive: viewerId is null,
                 ExcludeAuthorIds: blocked),
             request.Page,
             request.PageSize,

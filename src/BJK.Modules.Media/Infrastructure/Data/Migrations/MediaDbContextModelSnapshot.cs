@@ -48,6 +48,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<int?>("Height")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsRestricted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("ManualRedactionsJson")
                         .HasColumnType("nvarchar(max)");
 
@@ -60,6 +63,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("OriginalDeletedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("OriginalDeletesAt")
                         .HasColumnType("datetimeoffset");
@@ -87,6 +93,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<long?>("PlaybackSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PreviewKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -112,10 +122,17 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<double?>("SensitiveScore")
+                        .HasColumnType("float");
+
                     b.Property<string>("Sha256")
                         .HasMaxLength(64)
                         .HasColumnType("nchar(64)")
                         .IsFixedLength();
+
+                    b.Property<string>("SourceKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -145,6 +162,27 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("Media", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.SensitiveMediaMark", b =>
+                {
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("MarkedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<double?>("Score")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("MediaId");
+
+                    b.ToTable("SensitiveMedia", "media");
                 });
 
             modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>
@@ -217,6 +255,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<double?>("SensitiveScore")
+                        .HasColumnType("float");
+
                     b.Property<int>("StartFrame")
                         .HasColumnType("int");
 
@@ -262,6 +303,15 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.HasIndex("PublishedAt", "OccurredAt");
 
                     b.ToTable("Outbox", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.SensitiveMediaMark", b =>
+                {
+                    b.HasOne("BJK.Modules.Media.Domain.MediaItem", null)
+                        .WithMany()
+                        .HasForeignKey("MediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>

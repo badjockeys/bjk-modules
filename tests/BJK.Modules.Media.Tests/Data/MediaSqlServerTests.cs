@@ -88,6 +88,97 @@ public sealed class MediaSqlServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sensitive_marks_are_made_once_kept_when_automatic_and_cleared_only_as_allowed()
+    {
+        var item = await SavedProcessingVideo();
+
+        await using (var db = Context())
+        {
+            var media = new MediaRepository(db);
+            Assert.True(await media.SetSensitiveAsync(item.Id, true, Now, Ct));
+            Assert.False(await media.SetSensitiveAsync(item.Id, true, Now, Ct));
+            Assert.True(await media.IsSensitiveAsync(item.Id, Ct));
+
+            // Automatic detection upgrades a post mark, so the author can no longer clear it.
+            Assert.False(await media.SetSensitiveAsync(item.Id, true, Now, Ct, SensitiveMarkSource.Automatic, 0.7));
+            var mark = (await media.GetSensitiveMarksAsync([item.Id], Ct))[item.Id];
+            Assert.Equal((SensitiveMarkSource.Automatic, 0.7), (mark.Source, mark.Score));
+
+            Assert.False(await media.SetSensitiveAsync(item.Id, false, Now, Ct));
+            Assert.True(await media.IsSensitiveAsync(item.Id, Ct));
+            Assert.True(await media.SetSensitiveAsync(item.Id, false, Now, Ct, clearAutomatic: true));
+            Assert.False(await media.IsSensitiveAsync(item.Id, Ct));
+        }
+
+        // Two marks at once: one inserts, the other does nothing.
+        var results = await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
+        {
+            await using var db = Context();
+            return await new MediaRepository(db).SetSensitiveAsync(item.Id, true, Now, Ct);
+        }));
+        Assert.Equal(1, results.Count(r => r));
+    }
+
+    [Fact]
+    public async Task Originals_are_swept_only_when_finished_and_past_their_deadline()
+    {
+        await using (var db = Context())
+        {
+            MediaItem Uploaded(string name, DateTimeOffset at)
+            {
+                var m = MediaItem.Create(UserId, name, "video/mp4", at);
+                m.MarkUploaded(10, at, TimeSpan.FromHours(24));
+                db.Media.Add(m);
+                return m;
+            }
+
+            var failedOld = Uploaded("failed-old.mp4", Now.AddHours(-25));
+            failedOld.MarkFailed("Processing failed.", Now.AddHours(-25));
+            var failedNew = Uploaded("failed-new.mp4", Now.AddHours(-2));
+            failedNew.MarkFailed("Processing failed.", Now.AddHours(-2));
+            var readyOld = Uploaded("ready-old.mp4", Now.AddHours(-30));
+            readyOld.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-30));
+            var released = Uploaded("released.mp4", Now.AddHours(-30));
+            released.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-30));
+            released.MarkOriginalDeleted(Now.AddHours(-29));
+            Uploaded("stuck-processing.mp4", Now.AddDays(-3));
+            var abandoned = MediaItem.Create(UserId, "abandoned.mp4", "video/mp4", Now.AddHours(-26));
+            db.Media.Add(abandoned);
+            db.Media.Add(MediaItem.Create(UserId, "uploading.mp4", "video/mp4", Now.AddHours(-1)));
+            await db.SaveChangesAsync(Ct);
+
+            var due = await new MediaRepository(db).ListOriginalsToDeleteAsync(Now, Now.AddHours(-24), 50, Ct);
+
+            Assert.Equal(
+                new[] { readyOld.Id, abandoned.Id, failedOld.Id }.Order(),
+                due.Select(m => m.Id).Order());
+        }
+    }
+
+    [Fact]
+    public async Task Restricted_state_and_scores_are_saved()
+    {
+        var saved = await SavedProcessingVideo();
+
+        await using (var db = Context())
+        {
+            var item = await db.Media.SingleAsync(m => m.Id == saved.Id, Ct);
+            item.RecordSensitiveScore(0.41234);
+            item.MarkReady(10, 10m, 1280, 720, null, Now);
+            item.Restrict(MediaKeys.Preview(UserId, item.Id), Now);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var item = (await new MediaRepository(db).GetUntrackedAsync([saved.Id], Ct)).Single();
+            Assert.True(item.IsRestricted);
+            Assert.EndsWith("/preview.webp", item.PreviewKey);
+            Assert.Equal(0.4123, item.SensitiveScore);
+        }
+    }
+
+    [Fact]
     public async Task Segment_progress_is_created_once_completed_once_and_assembly_claimed_once()
     {
         var item = await SavedProcessingVideo();

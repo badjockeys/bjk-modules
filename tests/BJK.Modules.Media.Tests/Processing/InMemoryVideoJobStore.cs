@@ -35,7 +35,7 @@ internal sealed class InMemoryVideoJobStore : IVideoJobStore
         DateTimeOffset now,
         CancellationToken cancellationToken) =>
         Task.FromResult(_jobs[(mediaId, revision)].Segments.Single(s => s.Index == index)
-            .MarkDone(result.Frames, result.FacesBlurred, result.PlatesBlurred, result.ReviewReasons, result.Elapsed, now));
+            .MarkDone(result.Frames, result.FacesBlurred, result.PlatesBlurred, result.ReviewReasons, result.Elapsed, now, result.SensitiveScore));
 
     public Task<bool> AllDoneAsync(Guid mediaId, int revision, CancellationToken cancellationToken) =>
         Task.FromResult(_jobs.TryGetValue((mediaId, revision), out var job) && job.Segments.All(s => s.IsDone));

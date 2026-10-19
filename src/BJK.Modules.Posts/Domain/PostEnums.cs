@@ -57,6 +57,38 @@ public enum PostMediaState
     Failed,
 }
 
+/// <summary>Who set a post's sensitive tag. Stored by name.</summary>
+public enum PostSensitiveSource
+{
+    /// <summary>Not tagged.</summary>
+    None,
+
+    /// <summary>The author ticked "sensitive".</summary>
+    Author,
+
+    /// <summary>A moderator tagged it.</summary>
+    Moderator,
+
+    /// <summary>Automatic graphic content detection in the media worker tagged it; a moderator confirms or undoes it.</summary>
+    Automatic,
+}
+
+/// <summary>Where an automatic sensitive tag is in moderator review. Stored by name.</summary>
+public enum SensitiveReviewStatus
+{
+    /// <summary>No automatic tag to review.</summary>
+    None,
+
+    /// <summary>Tagged automatically; waiting in the moderators' sensitive-review queue.</summary>
+    Pending,
+
+    /// <summary>A moderator agreed the post is sensitive.</summary>
+    Confirmed,
+
+    /// <summary>A moderator removed the automatic tag. Detection won't tag the post again.</summary>
+    Undone,
+}
+
 public enum ReactionType
 {
     Like,

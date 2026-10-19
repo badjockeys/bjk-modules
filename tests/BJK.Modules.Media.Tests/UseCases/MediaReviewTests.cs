@@ -78,7 +78,7 @@ public sealed class MediaReviewTests
     public async Task Approving_publishes_the_blurred_files_and_makes_it_ready()
     {
         var item = InReview();
-        var handler = new ApproveMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
+        var handler = new ApproveMediaCommandHandler(_media, _storage, _queue, _audit, _caller, _clock);
 
         var dto = await handler.Handle(new ApproveMediaCommand(item.Id), Ct);
 
@@ -99,11 +99,48 @@ public sealed class MediaReviewTests
     }
 
     [Fact]
+    public async Task Approving_sensitive_media_keeps_its_files_private_and_queues_the_preview()
+    {
+        var item = InReview();
+        _media.IsSensitiveAsync(item.Id, Arg.Any<CancellationToken>()).Returns(true);
+        var handler = new ApproveMediaCommandHandler(_media, _storage, _queue, _audit, _caller, _clock);
+
+        await handler.Handle(new ApproveMediaCommand(item.Id), Ct);
+
+        Assert.Equal(MediaStatus.Ready, item.Status);
+        Assert.True(item.IsRestricted);
+        await _storage.DidNotReceiveWithAnyArgs().PublishPrivateAsync(default!, default!, default!, Ct);
+        await _storage.DidNotReceiveWithAnyArgs().UploadPublicAsync(default!, default!, default!, Ct);
+        await _storage.Received(1).CopyAsync(
+            MediaBucket.Originals, $"{UserId:D}/{item.Id:D}/review/720p.mp4",
+            MediaBucket.Sensitive, $"{UserId:D}/{item.Id:D}/sensitive/720p.mp4", "video/mp4", Arg.Any<CancellationToken>());
+        await _storage.Received(1).CopyAsync(
+            MediaBucket.Originals, $"{UserId:D}/{item.Id:D}/review/thumbnail.jpg",
+            MediaBucket.Sensitive, $"{UserId:D}/{item.Id:D}/sensitive/thumbnail.jpg", "image/jpeg", Arg.Any<CancellationToken>());
+        await _queue.Received(1).EnqueueAsync(Arg.Is<MediaProcessingJob>(j => j.Step == MediaJobStep.Visibility && j.MediaId == item.Id), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Moderators_get_signed_links_to_restricted_media()
+    {
+        var item = InReview();
+        _media.IsSensitiveAsync(item.Id, Arg.Any<CancellationToken>()).Returns(true);
+        _storage.CreateDownloadUrlAsync(MediaBucket.Sensitive, Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new Uri("https://sensitive.example.com/" + ci.ArgAt<string>(1) + "?X-Amz-Signature=abc"));
+        await new ApproveMediaCommandHandler(_media, _storage, _queue, _audit, _caller, _clock).Handle(new ApproveMediaCommand(item.Id), Ct);
+
+        var dto = await new GetMediaForReviewQueryHandler(_media, _storage, _caller, _clock).Handle(new GetMediaForReviewQuery(item.Id), Ct);
+
+        Assert.Equal($"https://sensitive.example.com/{UserId:D}/{item.Id:D}/sensitive/720p.mp4?X-Amz-Signature=abc", dto.PreviewUrl!.ToString());
+        Assert.NotNull(dto.PreviewExpiresAt);
+    }
+
+    [Fact]
     public async Task Only_media_waiting_for_review_can_be_approved()
     {
         var item = MediaItem.Create(UserId, "clip", "video/mp4", Now);
         _media.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        var handler = new ApproveMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
+        var handler = new ApproveMediaCommandHandler(_media, _storage, _queue, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(new ApproveMediaCommand(item.Id), Ct));
         await _storage.DidNotReceiveWithAnyArgs().PublishPrivateAsync(default!, default!, default!, Ct);

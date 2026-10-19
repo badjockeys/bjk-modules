@@ -126,7 +126,7 @@ public sealed class MediaHandlerTests
     public async Task Get_hides_unprocessed_media_from_other_users()
     {
         var item = Existing(OtherUserId);
-        var handler = new GetMediaQueryHandler(_media, _storage, _caller);
+        var handler = new GetMediaQueryHandler(_media, _storage, _caller, Options(), _clock);
 
         await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(new GetMediaQuery(item.Id), Ct));
     }
@@ -137,11 +137,65 @@ public sealed class MediaHandlerTests
         var item = Existing(OtherUserId);
         item.MarkUploaded(1, Now, TimeSpan.FromDays(90));
         item.MarkReady(10, 30m, 1280, 720, null, Now);
-        var handler = new GetMediaQueryHandler(_media, _storage, _caller);
+        var handler = new GetMediaQueryHandler(_media, _storage, _caller, Options(), _clock);
 
         var dto = await handler.Handle(new GetMediaQuery(item.Id), Ct);
 
         Assert.Equal($"https://media.example.com/{OtherUserId:D}/{item.Id:D}/720p.mp4", dto.PlaybackUrl!.ToString());
+    }
+
+    [Fact]
+    public async Task Get_blurs_sensitive_media_for_callers_who_are_not_age_verified()
+    {
+        var item = SensitiveReady(OtherUserId);
+        var handler = new GetMediaQueryHandler(_media, _storage, _caller, Options(), _clock);
+
+        var dto = await handler.Handle(new GetMediaQuery(item.Id), Ct);
+
+        Assert.True(dto.IsSensitive);
+        Assert.True(dto.IsBlurred);
+        Assert.Null(dto.PlaybackUrl);
+        Assert.Null(dto.ThumbnailUrl);
+        Assert.Equal($"https://media.example.com/{OtherUserId:D}/{item.Id:D}/preview.webp", dto.PreviewUrl!.ToString());
+        await _storage.DidNotReceiveWithAnyArgs().CreateDownloadUrlAsync(default, default!, default, Ct);
+    }
+
+    [Fact]
+    public async Task Get_gives_age_verified_adults_signed_links_to_sensitive_media()
+    {
+        var item = SensitiveReady(OtherUserId);
+        _caller.AgeVerified.Returns(true);
+        var handler = new GetMediaQueryHandler(_media, _storage, _caller, Options(), _clock);
+
+        var dto = await handler.Handle(new GetMediaQuery(item.Id), Ct);
+
+        Assert.False(dto.IsBlurred);
+        Assert.Contains("/sensitive/720p.mp4", dto.PlaybackUrl!.ToString());
+        Assert.Equal(Now.AddMinutes(10), dto.LinksExpireAt);
+    }
+
+    [Fact]
+    public async Task Get_gives_the_uploader_their_own_sensitive_media()
+    {
+        var item = SensitiveReady(UserId);
+        var handler = new GetMediaQueryHandler(_media, _storage, _caller, Options(), _clock);
+
+        var dto = await handler.Handle(new GetMediaQuery(item.Id), Ct);
+
+        Assert.False(dto.IsBlurred);
+        Assert.Contains("/sensitive/720p.mp4", dto.PlaybackUrl!.ToString());
+    }
+
+    private MediaItem SensitiveReady(Guid owner)
+    {
+        var item = Existing(owner);
+        item.MarkUploaded(1, Now, TimeSpan.FromDays(90));
+        item.MarkReady(10, 30m, 1280, 720, null, Now);
+        item.Restrict(MediaKeys.Preview(owner, item.Id), Now);
+        _media.IsSensitiveAsync(item.Id, Arg.Any<CancellationToken>()).Returns(true);
+        _storage.CreateDownloadUrlAsync(MediaBucket.Sensitive, Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new Uri("https://sensitive.example.com/" + ci.ArgAt<string>(1) + "?X-Amz-Signature=abc"));
+        return item;
     }
 
     [Fact]

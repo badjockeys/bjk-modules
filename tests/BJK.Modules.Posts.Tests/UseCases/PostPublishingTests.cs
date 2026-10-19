@@ -13,6 +13,7 @@ using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
@@ -36,6 +37,7 @@ public sealed class PostPublishingTests
     private readonly IContentScreener _screener = Substitute.For<IContentScreener>();
     private readonly IEmailSender _email = Substitute.For<IEmailSender>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
+    private readonly IModerationAuditLog _audit = Substitute.For<IModerationAuditLog>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
     private readonly Dictionary<Guid, MediaSummary> _mediaState = [];
     private readonly List<EmailMessage> _sent = [];
@@ -66,7 +68,7 @@ public sealed class PostPublishingTests
                 _sent.Add(ci.Arg<EmailMessage>());
                 return Task.CompletedTask;
             });
-        _views = new PostViews(_posts, _profiles, _media);
+        _views = new PostViews(_posts, _profiles, _media, _caller);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -94,10 +96,17 @@ public sealed class PostPublishingTests
             failure);
     }
 
+    /// <summary>Ready media that automatic graphic content detection marked sensitive.</summary>
+    private void SetAutoSensitive(Guid id, double score)
+    {
+        Set(id, MediaType.Video, MediaStatus.Ready);
+        _mediaState[id] = _mediaState[id] with { IsAutoSensitive = true, SensitiveScore = score, IsRestricted = true, PlaybackUrl = null, ThumbnailUrl = null };
+    }
+
     private ModerationNotifications Notifications() =>
         new(_email, Options.Create(new EmailOptions()), _clock, NullLogger<ModerationNotifications>.Instance);
 
-    private PostMediaPublisher Publisher() => new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance);
+    private PostMediaPublisher Publisher() => new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance, _audit);
 
     private CreatePostCommandHandler CreateHandler() => new(
         _posts,
@@ -177,6 +186,101 @@ public sealed class PostPublishingTests
         var dto = await _views.BuildAsync(_saved, UserId, Ct);
         Assert.Single(dto.Media);
         Assert.False(dto.IsProcessing);
+    }
+
+    [Fact]
+    public async Task Originals_are_released_once_the_post_is_published_and_not_before()
+    {
+        var ready = Media(MediaType.Image, MediaStatus.Ready);
+        await CreateHandler().Handle(Command(ready), Ct);
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == ready), Arg.Any<CancellationToken>());
+
+        _media.ClearReceivedCalls();
+        var video = Media(MediaType.Video, MediaStatus.NeedsReview);
+        await CreateHandler().Handle(Command(video), Ct);
+        await _media.DidNotReceiveWithAnyArgs().ReleaseOriginalsAsync(default!, Ct);
+
+        // A moderator approves the video: it becomes Ready, the post is published and its original released.
+        Set(video, MediaType.Video, MediaStatus.Ready);
+        await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == video), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Media_flagged_by_detection_tags_the_post_sensitive_before_it_is_published()
+    {
+        var video = Media(MediaType.Video, MediaStatus.Processing);
+        await CreateHandler().Handle(Command(video), Ct);
+        _posts.ClearReceivedCalls();
+
+        SetAutoSensitive(video, 0.82);
+        await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
+
+        Assert.True(_saved!.IsPublic);
+        Assert.True(_saved.IsSensitive);
+        Assert.Equal(PostSensitiveSource.Automatic, _saved.SensitiveSource);
+        Assert.Equal(SensitiveReviewStatus.Pending, _saved.SensitiveReview);
+        Assert.Equal(0.82, _saved.SensitiveScore);
+        // Tagged and published in one save: it's never public untagged.
+        await _posts.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.AutoTagSensitive && e.SystemActor == ModerationActor.AutomaticRole && e.TargetId == _saved.Id.ToString()),
+            Arg.Any<CancellationToken>());
+        await _media.Received(1).SetSensitiveAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(video)), true, Arg.Any<CancellationToken>(), Arg.Any<bool>());
+
+        // Others see it blurred.
+        _caller.IdentityId.Returns(OtherUserId.ToString());
+        var seen = await new GetPostQueryHandler(_posts, _views, _blocks, _caller).Handle(new GetPostQuery(_saved.Id), Ct);
+        Assert.True(seen.RequiresAgeVerification);
+        Assert.True(Assert.Single(seen.Media).IsBlurred);
+        Assert.Equal(PostSensitiveSource.Automatic, seen.SensitiveSource);
+    }
+
+    [Fact]
+    public async Task Posting_media_already_flagged_by_detection_tags_the_post_whatever_the_author_ticked()
+    {
+        var video = Media(MediaType.Video, MediaStatus.Ready);
+        SetAutoSensitive(video, 0.5);
+        var markedBeforeTheSave = false;
+        _media.When(m => m.SetSensitiveAsync(Arg.Any<IReadOnlyCollection<Guid>>(), true, Arg.Any<CancellationToken>(), Arg.Any<bool>()))
+            .Do(_ => markedBeforeTheSave |= _saved is null);
+
+        var dto = await CreateHandler().Handle(Command(video), Ct);
+
+        Assert.True(dto.IsSensitive);
+        Assert.Equal(PostSensitiveSource.Automatic, dto.SensitiveSource);
+        Assert.Equal(SensitiveReviewStatus.Pending, _saved!.SensitiveReview);
+        Assert.True(markedBeforeTheSave);
+        await _audit.Received(1).RecordAsync(Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.AutoTagSensitive), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_published_post_is_tagged_if_its_media_is_flagged_when_processed_again()
+    {
+        var video = Media(MediaType.Video, MediaStatus.Ready);
+        await CreateHandler().Handle(Command(video), Ct);
+        Assert.False(_saved!.IsSensitive);
+
+        SetAutoSensitive(video, 0.9);
+        await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
+
+        Assert.True(_saved.IsSensitive);
+        Assert.Equal(SensitiveReviewStatus.Pending, _saved.SensitiveReview);
+    }
+
+    [Fact]
+    public async Task Detection_does_not_tag_a_post_again_after_a_moderator_undid_it()
+    {
+        var video = Media(MediaType.Video, MediaStatus.Ready);
+        SetAutoSensitive(video, 0.5);
+        await CreateHandler().Handle(Command(video), Ct);
+        _saved!.ReviewAutomaticSensitive(confirm: false, Guid.NewGuid(), Now);
+
+        await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
+
+        Assert.False(_saved.IsSensitive);
+        Assert.Equal(SensitiveReviewStatus.Undone, _saved.SensitiveReview);
     }
 
     [Fact]
