@@ -64,6 +64,13 @@ public sealed class UserAccount
     /// <summary>When the most recent result was recorded.</summary>
     public DateTimeOffset? AgeCheckRecordedAt { get; private set; }
 
+    /// <summary>
+    /// A short reference for the most recent attempt, e.g. <c>AGE-7KQ2MX</c>, shown to the user (with a "Contact
+    /// support" link) when the check fails or can't verify them, so support can find the attempt. New for each
+    /// attempt; holds nothing about the person.
+    /// </summary>
+    public string? AgeCheckReference { get; private set; }
+
     /// <summary>Attempts made since <see cref="AgeCheckAttemptsSince"/>, for the daily limit.</summary>
     public int AgeCheckAttempts { get; private set; }
 
@@ -176,6 +183,7 @@ public sealed class UserAccount
         AgeCheckResult = result;
         AgeCheckProvider = provider.Length > ProviderMaxLength ? provider[..ProviderMaxLength] : provider;
         AgeCheckRecordedAt = now;
+        AgeCheckReference = Domain.AgeCheckReference.New();
         UpdatedAt = now;
     }
 
@@ -188,6 +196,7 @@ public sealed class UserAccount
         AgeCheckResult = null;
         AgeCheckProvider = null;
         AgeCheckRecordedAt = null;
+        AgeCheckReference = null;
         AgeCheckAttempts = 0;
         AgeCheckAttemptsSince = null;
         UpdatedAt = now;
