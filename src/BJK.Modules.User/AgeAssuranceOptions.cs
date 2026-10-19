@@ -1,7 +1,8 @@
 namespace BJK.Modules.User;
 
 /// <summary>
-/// Age check settings, section <c>AgeAssurance</c>. Each <c>Provider</c> picks an implementation by name.
+/// Settings for the on-demand age check for sensitive posts (the <see cref="Liveness"/> check against spoofing, then
+/// the <see cref="Estimator"/>, with <see cref="Document"/> as the fallback), section <c>AgeAssurance</c>. Each <c>Provider</c> picks an implementation by name.
 /// <c>Development</c> providers don't check anything real and the app refuses to start with them outside the
 /// Development environment.
 /// </summary>

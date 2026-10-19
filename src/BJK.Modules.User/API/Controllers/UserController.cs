@@ -24,14 +24,17 @@ namespace BJK.Modules.User.API.Controllers;
 [Authorize(AuthenticationSchemes = ModuleAuthentication.Scheme)]
 public sealed class UserController(ISender sender) : ControllerBase
 {
-    /// <summary>Registers a new user (sign-in account). The app then creates their profile in bjk-core.</summary>
+    /// <summary>
+    /// Registers a new user (sign-in account) aged 13 or over, by declared date of birth. The app then creates their
+    /// profile in bjk-core.
+    /// </summary>
     [HttpPost]
     [AllowAnonymous]
     [ProducesResponseType<CreatedUserResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Add(AddUserRequest request, CancellationToken cancellationToken)
     {
-        var id = await sender.Send(new AddUserCommand(request.Email, request.Password), cancellationToken);
+        var id = await sender.Send(new AddUserCommand(request.Email, request.Password, request.DateOfBirth), cancellationToken);
         return Created((string?)null, new CreatedUserResponse(id));
     }
 
@@ -66,15 +69,19 @@ public sealed class UserController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>My age check: status, attempts left, and whether the selfie or photo-ID route is available.</summary>
+    /// <summary>
+    /// My age check (18+, to view sensitive posts): status, attempts left, and whether the selfie or photo-ID route is
+    /// available. Under 18 by date of birth, neither is (<c>underAgeByDateOfBirth</c>).
+    /// </summary>
     [HttpGet("me/age-check")]
     [ProducesResponseType<AgeCheckDto>(StatusCodes.Status200OK)]
     public async Task<AgeCheckDto> GetAgeCheck(CancellationToken cancellationToken) =>
         await sender.Send(new GetMyAgeCheckQuery(), cancellationToken);
 
     /// <summary>
-    /// Check my age with a 3–5 second head-turn selfie video (multipart field <c>video</c>). The video is checked in
-    /// memory and wiped straight away; only the outcome is kept. Once passed, new tokens carry age_verified=true.
+    /// Verify my age to view sensitive posts, with a 3–5 second head-turn selfie video (multipart field <c>video</c>).
+    /// The video is checked in memory and wiped straight away; only the outcome is kept. Once passed, new tokens carry
+    /// age_verified=true. Refused (400) when the date of birth says I'm under 18.
     /// </summary>
     [HttpPost("me/age-check/face")]
     [RequestSizeLimit(AgeCheckUploads.MaxRequestBytes)]

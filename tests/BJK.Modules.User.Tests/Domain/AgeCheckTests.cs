@@ -158,5 +158,5 @@ public sealed class AgeCheckTests
         Assert.Equal(UserAccount.ProviderMaxLength, account.AgeCheckProvider!.Length);
     }
 
-    private static UserAccount NewAccount() => UserAccount.Create("00000000-0000-4000-8000-000000000001", Now.AddDays(-1));
+    private static UserAccount NewAccount() => UserAccount.Create("00000000-0000-4000-8000-000000000001", TestDates.Adult, Now.AddDays(-1));
 }

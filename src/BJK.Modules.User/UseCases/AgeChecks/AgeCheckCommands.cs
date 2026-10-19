@@ -29,9 +29,11 @@ public sealed class GetMyAgeCheckQueryHandler(
 }
 
 /// <summary>
-/// "Check your age" with a head-turn selfie video. The liveness check runs first; if it passes, the age estimator
-/// decides: 25 or over passes, 18 to 24 (or a pass the estimator can't call) leads to photo ID, clearly under 18
-/// fails. The video is only held in memory for this request and is wiped afterwards; only the outcome is saved.
+/// "Verify your age to view sensitive posts" with a head-turn selfie video: the highly effective age check, taken
+/// on demand (not at sign-up). The liveness check runs first; if it passes, the age estimator decides: 25 or over
+/// passes, 18 to 24 (or a pass the estimator can't call) leads to photo ID, clearly under 18 fails. Not offered at
+/// all when the declared date of birth says the user is under 18. The video is only held in memory for this request
+/// and is wiped afterwards; only the outcome is saved.
 /// </summary>
 /// <param name="Video">The recorded video. Wiped (zeroed) once the check is done.</param>
 /// <param name="ContentType">video/webm, video/mp4 or video/quicktime.</param>
@@ -75,6 +77,7 @@ public sealed class SubmitFaceAgeCheckCommandHandler(
             var settings = options.Value;
             var account = await UserAccess.GetMineAsync(users, caller, cancellationToken);
             AgeCheckGuards.EnsureNotPassed(account);
+            AgeCheckGuards.EnsureAdultByDateOfBirth(account, AgeRules.Today(clock));
             if (!account.CanUseFaceCheck)
             {
                 throw AgeCheckGuards.Invalid("Please use photo ID to finish checking your age.");
@@ -112,7 +115,7 @@ public sealed class SubmitFaceAgeCheckCommandHandler(
 }
 
 /// <summary>
-/// Photo-ID route: after the selfie said 18 to 24, couldn't tell, or the user chose it instead. 18 or over passes;
+/// Photo-ID route of the age check: after the selfie said 18 to 24, couldn't tell, or the user chose it instead. 18 or over passes;
 /// under 18 fails for good (until an admin resets it). The image is wiped afterwards; only the outcome is saved.
 /// </summary>
 /// <param name="Image">The ID photo. Wiped (zeroed) once the check is done.</param>
@@ -155,6 +158,7 @@ public sealed class SubmitDocumentAgeCheckCommandHandler(
             var settings = options.Value;
             var account = await UserAccess.GetMineAsync(users, caller, cancellationToken);
             AgeCheckGuards.EnsureNotPassed(account);
+            AgeCheckGuards.EnsureAdultByDateOfBirth(account, AgeRules.Today(clock));
             if (!account.CanUseDocumentCheck)
             {
                 throw AgeCheckGuards.Invalid(
@@ -218,6 +222,20 @@ internal static class AgeCheckGuards
         if (account.IsAgeVerified)
         {
             throw Invalid("You've already confirmed your age.");
+        }
+    }
+
+    /// <summary>Under 18 by the declared date of birth: sensitive posts aren't for them, so there's nothing to check.</summary>
+    public static void EnsureAdultByDateOfBirth(UserAccount account, DateOnly today)
+    {
+        if (account.DateOfBirth is null)
+        {
+            throw Invalid(AgeCheckMessages.NoDateOfBirth);
+        }
+
+        if (account.IsMinorOn(today))
+        {
+            throw Invalid(AgeCheckMessages.UnderAgeByDateOfBirth);
         }
     }
 

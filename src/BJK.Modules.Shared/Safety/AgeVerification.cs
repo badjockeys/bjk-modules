@@ -5,8 +5,8 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Shared.Safety;
 
 /// <summary>
-/// Marks a command that needs an age-verified user when <see cref="SafetyOptions.RequireAgeVerification"/> is on:
-/// creating or editing a post, commenting, reacting and reporting as a signed-in user.
+/// Marks a command that needs an age-verified user when <see cref="SafetyOptions.RequireAgeVerification"/> is on
+/// (it's off by default): creating or editing a post, commenting, reacting and reporting as a signed-in user.
 /// </summary>
 public interface IRequiresAgeVerification
 {
@@ -42,7 +42,7 @@ public sealed class AgeVerificationBehaviour<TRequest, TResponse>(ICurrentUser c
 
 /// <summary>The user hasn't passed the age check yet. Returned as 403 with <c>code</c> = <see cref="Code"/>.</summary>
 public sealed class AgeVerificationRequiredException()
-    : Exception("Complete the age check before you post, comment, react or report. Bad Jockeys is for adults aged 18 and over.")
+    : Exception("Please verify your age (18 or over) before you post, comment, react or report.")
 {
     public const string Code = "age_verification_required";
 

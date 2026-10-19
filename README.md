@@ -18,20 +18,21 @@ src/
     API/Controllers/             UserController
     API/Contracts/               Request/response records
     UseCases/
-      Add/                       Register: sign-in account + account record
+      Add/                       Register (13+, date of birth): sign-in account + account record
+      SignUp/                    Date of birth rules; asking older accounts for theirs
       Deactivate/  Reactivate/   Deactivate (self with password, or admin); reactivate within the grace period
       Delete/                    Admin "delete now"; the retention job that deletes expired accounts
       Reset/                     Forgot password: request token, confirm with new password
       Get/  List/                Read side (CQRS queries)
-      AgeChecks/                 Age check (18+): selfie or photo ID, status, admin reset
+      AgeChecks/                 Age check (18+, on demand, for sensitive posts): selfie or photo ID, status, admin reset
       AccountLifecycle.cs        Deactivate / reactivate / delete, each with an outbox event
     Infrastructure/Services/     IUserRepository, IIdentityService (implemented by the host)
     Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; HTTP estimator adapter;
                                  Development stand-ins; settings checked at startup
-    Contracts/                   IAgeVerificationLookup and the age_verified claim, for the identity server's tokens
+    Contracts/                   IAccountAgeLookup and the age_verified and minor claims, for the identity server's tokens
     Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
     Infrastructure/              AccountRetentionService (hourly), account data export
-    Domain/                      UserAccount
+    Domain/                      UserAccount, AgeRules (13+, under-18s), AgeCheckRules
     UserModule.cs                Module entry point
   BJK.Modules.Media/             Hosted by bjk-core
     API/Controllers/             MediaController (/api/media)
@@ -120,10 +121,10 @@ app.MapControllers();
 | `Messaging:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server sets `Messaging:ConnectionStringName` and `Messaging:CreateTables=false`. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
-| `AgeAssurance:*` | Identity server only. The age check: see [Age check](#age-check). |
+| `AgeAssurance:*` | Identity server only. The age check for sensitive posts: see [Age policy](#age-policy-13-and-the-age-check-for-sensitive-posts). |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
-| `Safety:RequireAgeVerification` | Default `true`: posting, editing posts, commenting, reacting and reporting need the `age_verified` claim. `false` only for local development and tests. |
+| `Safety:RequireAgeVerification` | Default **`false`** (since 19 Oct 2026): posting, commenting and reacting no longer need the age check. `true` makes posting, editing posts, commenting, reacting and reporting need the `age_verified` claim again; kept for future use. |
 | `Safety:NewAccounts:Period`, `:MaxPosts`, `:MaxComments` | New-account limits. Defaults `1.00:00:00`, 3, 20. bjk-core only. |
 | `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
 | `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
@@ -147,21 +148,31 @@ Nothing is stored twice. The **email and password** are in the sign-in account o
 
 | Endpoint (identity server) | Access |
 |---|---|
-| `POST /api/users` | Anonymous + CAPTCHA: register (email, password) |
-| `GET /api/users/me` | Signed-in user: email, status, dates |
+| `POST /api/users` | Anonymous + CAPTCHA: register (`email`, `password`, `dateOfBirth` e.g. `"2010-05-31"`). Under 13: 400 with error code `too_young`, nothing created or kept. |
+| `GET /api/users/me` | Signed-in user: email, status, dates, date of birth, age check |
 | `POST /api/users/me/deactivate` | Signed-in user, confirming with their password |
 | `POST /api/users/reactivate` | Anonymous + CAPTCHA: email and password of a deactivated account |
 | `POST /api/users/password-reset`, `.../confirm` | Anonymous (+ CAPTCHA for the request) |
-| `GET /api/users/me/age-check` | Signed-in user: age check status, attempts left, which routes are open |
-| `POST /api/users/me/age-check/face` | Signed-in user: multipart `video` (3–5 s head-turn selfie) |
-| `POST /api/users/me/age-check/document` | Signed-in user: multipart `image` (photo of an ID) |
+| `GET /api/users/me/age-check` | Signed-in user: age check status, attempts left, which routes are open (none when `underAgeByDateOfBirth`) |
+| `POST /api/users/me/age-check/face` | Signed-in adult (by date of birth): multipart `video` (3–5 s head-turn selfie) |
+| `POST /api/users/me/age-check/document` | Signed-in adult (by date of birth): multipart `image` (photo of an ID) |
 | `POST /api/admin/users/{id}/age-check/reset` | Admin: clear the age check so the user takes it again |
 | `GET /api/users?status=`, `GET /api/users/{id}` | Admin (or yourself for `{id}`) |
 | `POST /api/users/{id}/deactivate`, `POST /api/users/{id}/reactivate`, `DELETE /api/users/{id}` | Admin. `DELETE` deletes permanently now. |
 
-## Age check
+## Age policy: 13+, and the age check for sensitive posts
 
-Minimum age 18. Checked once, at account creation, in the identity server ("Check your age" page, or the endpoints above). An account can sign in before passing, but its tokens only carry **`age_verified` = `"true"`** once it has passed (`IAgeVerificationLookup`, used by the identity server's profile service). Modules that need it check that claim.
+Decided 19 Oct 2026 (replaces "18+ with an age check at sign-up").
+
+**Minimum age 13, by declared date of birth.** Every sign-up route asks for the date of birth: `POST /api/users`, the identity server's sign-up page and a first Google, Apple or Facebook sign-in (`AddUserCommand`, `AddExternalUserCommand`, both validated by `DateOfBirthValidation`). Under 13 is refused with a kind message (error code `too_young`); no account is created and that date of birth isn't kept or logged. The date of birth is stored on `users.Accounts.DateOfBirth` (a `date`), shown to the user and moderators on the account, included in "Download my data", and deleted with the account. Accounts created before this change have none; the identity server asks for it at their next sign-in (`SetMyDateOfBirthCommand`, once only; after that only support can change it). Ages use the UTC date; a 29 February birthday counts from 1 March in other years (`AgeRules`).
+
+**Under-18s.** Tokens carry **`minor` = `"true"`** while the declared date of birth says the user is under 18. The identity server works it out each time it issues a token (`IAccountAgeLookup`), so it disappears on the 18th birthday. Modules read it with `ClaimsPrincipal.IsMinor()` (Shared) to apply the high-privacy defaults of the ICO Children's Code.
+
+**Sign-up is the date of birth, Cloudflare Turnstile and email confirmation.** There's no selfie or liveness check at sign-up (decided 19 Oct 2026). The identity server refuses tokens (`IsActive` = false) only to an older account with no date of birth on record, until it gives one (`IAccountAgeLookup` / `AccountAgeFacts.IsSignUpComplete`).
+
+## Age check (18+, on demand, for sensitive posts)
+
+The "highly effective" age check is no longer part of sign-up. A signed-in user takes it when they first want to view a sensitive post ("Verify your age to view sensitive posts", `/Account/CheckAge` on the identity server). This is the only place the liveness check is used: against spoofing, before the face age estimate. Their tokens carry **`age_verified` = `"true"`** once they've passed. If the declared date of birth says they're under 18, the check isn't offered at all (`underAgeByDateOfBirth`; the commands refuse with a kind message explaining sensitive posts are for adults). Posting, commenting and reacting don't need it (`Safety:RequireAgeVerification` is off by default).
 
 1. **Head-turn selfie.** The browser records a 3–5 second video while the user turns their head left, then right.
    - `ILivenessChecker` (open source, on our servers) checks it shows one live person turning their head. The identity server registers `YuNet` (OpenCV Zoo YuNet face detection through ONNX Runtime).
@@ -179,7 +190,7 @@ Minimum age 18. Checked once, at account creation, in the identity server ("Chec
 **Where it shows up.**
 - Admins and moderators see the status (never the video) as `ageCheck` on `GET /api/admin/users/{id}`.
 - Admins can reset it.
-- "Download my data" includes it.
+- "Download my data" includes it, with the date of birth.
 - Deleting the account deletes it, because it lives on the account row.
 
 | Setting | Default | Notes |
@@ -221,7 +232,7 @@ The identity server and bjk-core have separate databases, so the identity server
 
 | Host | Sections |
 |---|---|
-| Identity server | `account`: id, email, status, dates, age check outcome |
+| Identity server | `account`: id, email, status, dates, date of birth, age check outcome |
 | bjk-core | `profile`; `posts` (posts, comments, reactions, reports made); `media` (every upload, with a 24-hour download link for each original still kept, and the processed files) |
 
 The apps call both endpoints and offer the two files (or one zip) as "Download my data". A deactivated user can't sign in, so they reactivate, download, then deactivate again if they want.
@@ -543,7 +554,7 @@ Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
 - **No comments for logged-out viewers.** The comment and reply lists need a signed-in token. Post responses to logged-out callers carry `commentsRequireSignIn: true`; the comment count is still included (it shows activity without revealing anything), so the apps can show "Sign in to see 12 comments".
 - **UK only at launch.** The pin as given, before rounding, must be inside an allowed region (`Posts:AllowedRegions`, default the UK), or the post is refused with a 400 on `Location`: "Bad Jockeys only accepts incidents in the UK for now." The outlines are simplified polygons embedded in code (`ServiceRegions`), drawn at roughly 5 to 15 km accuracy: mainland Great Britain; Northern Ireland following the land border with Ireland; and the islands (Isle of Wight, Anglesey, Scilly, Arran, the Inner and Outer Hebrides, Orkney, Fair Isle, Shetland and Rathlin). They're generous at sea and tight on the Irish border and the Dover Strait, so Ireland, France and the Netherlands are refused. The Isle of Man and the Channel Islands are outside the UK, so they're refused unless added (`IM`, `JE`, `GG`). Points within a kilometre or two of the Irish border can fall either way (for example, Belcoo and Blacklion face each other across a stream).
 - **Location rounding.** Map pins are rounded to about 500 m when saved (`PinRounding`): latitude to a grid of 0.0045° (500 m north–south), then longitude to 0.0045° / cos(latitude) (about 500 m east–west). The API returns only the rounded pin and the place name. The OnlineSafety migration rounds existing rows the same way (an update; nothing is deleted).
-- **Age check.** Writes (create and edit posts, comment, reply, react, report as a signed-in user) need the token's `age_verified` claim (`"true"`), issued by the identity server once the account has passed the age check, while `Safety:RequireAgeVerification` is on (the default). Without it the API returns 403 with `code: "age_verification_required"` (type `https://badjockeys.com/problems/age-verification-required`), so the apps can send the user to the age check.
+- **Age check.** Writes (create and edit posts, comment, reply, react, report as a signed-in user) need the token's `age_verified` claim (`"true"`), issued by the identity server once the account has passed the age check, but only while `Safety:RequireAgeVerification` is on. It's **off by default** since the age policy changed on 19 Oct 2026 (13+ can post, comment and react; the age check is for viewing sensitive posts), and kept for future use. When it's on and the claim is missing the API returns 403 with `code: "age_verification_required"` (type `https://badjockeys.com/problems/age-verification-required`), so the apps can send the user to the age check.
 - **New-account limits.** While a profile is younger than `Safety:NewAccounts:Period` (24 hours) it can create at most `MaxPosts` (3) posts and `MaxComments` (20) comments and replies in any rolling 24 hours, counting deleted ones. Over the limit: 429 with `code: "new_account_limit"`.
 - **Reports.** In the app: posts, comments, replies and profiles. The public form `POST /api/reports/public` ("Report content / I'm in this clip") needs no account: the post id or link (plus an optional comment id), a reason (InThisClip, PersonalInformation, IllegalContent, Threat, HarassmentOrHate, Copyright, Other), details, the reporter's name and email, consent, and a Cloudflare Turnstile token in `X-Captcha-Token` (`ICaptchaVerifier`; a failed token is a 400, an unreachable Turnstile a 503). It returns a reference (`R-1A2B3C4D`), the priority and when a decision is due. **Priority**: `Urgent` for IllegalContent and Threat, with a 4-hour target; `Normal` otherwise, 48 hours. The queue lists urgent reports first, then by due time. **Emails** (Email module, sent straight away): an acknowledgement when the report is made and the outcome when it's resolved, to the public form's address or, for signed-in reporters, the `email` claim in their token if it has one. A failed email is logged and recorded (`acknowledgedAt` / `outcomeNotifiedAt` stay empty); it never undoes the report or decision.
 - **Appeals.** An author can appeal a moderator's decision to hide their post or comment, once (`posts.Appeals`). Appeals have a 48-hour target and their own queue; overturning shows the content again. The author is emailed when the appeal is received and decided (if their token carries an email).

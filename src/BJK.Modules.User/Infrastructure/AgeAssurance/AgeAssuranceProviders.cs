@@ -44,9 +44,9 @@ internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment,
         var estimators = services.GetServices<IAgeEstimator>().ToList();
         var documents = services.GetServices<IDocumentAgeCheck>().ToList();
 
-        if (options.ChallengeAge < Domain.AgeCheckRules.MinimumAge)
+        if (options.ChallengeAge < Domain.AgeCheckRules.AdultAge)
         {
-            failures.Add($"AgeAssurance:ChallengeAge must be at least {Domain.AgeCheckRules.MinimumAge}.");
+            failures.Add($"AgeAssurance:ChallengeAge must be at least {Domain.AgeCheckRules.AdultAge}.");
         }
 
         if (options.MaxAttemptsPerDay < 1)
