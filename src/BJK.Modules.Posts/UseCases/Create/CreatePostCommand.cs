@@ -20,8 +20,10 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// <see cref="PostMediaState.Pending"/>, seen only by its author (in "my posts") and moderators, and is published
 /// automatically once they're all Ready, or marked Failed (and the author emailed) if one fails. If they're all Ready
 /// already, it's visible to everyone straight away. Either way content screening can hold it for review. The author
-/// needs a confirmed email, a profile and a passed age check. <c>IsSensitive</c> marks graphic content (hidden from
-/// logged-out viewers).
+/// needs a confirmed email and a profile (and a passed age check if <c>Safety:RequireAgeVerification</c> is on).
+/// <c>IsSensitive</c> marks graphic content: the post shows to everyone, its media blurred except for age-verified
+/// adults, and the media are kept privately. If automatic detection already flagged any of the media, the post is
+/// tagged sensitive automatically (and queued for a moderator) whatever <c>IsSensitive</c> says.
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -124,8 +126,21 @@ public sealed class CreatePostCommandHandler(
             mediaPending: pending,
             notifyEmail: pending ? caller.Email : null);
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
+        var autoTagged = publisher.TagIfDetected(post, request.MediaIds.Select(id => found[id]));
+
+        // Mark the media before saving the post, so media still processing is kept private when it's ready. Only ever
+        // marks: clearing could undo an automatic mark the worker is making at this moment.
+        if (post.IsSensitive)
+        {
+            await media.SetSensitiveAsync(request.MediaIds, isSensitive: true, cancellationToken);
+        }
+
         posts.Add(post);
         await posts.SaveChangesAsync(cancellationToken);
+        if (autoTagged)
+        {
+            await publisher.RecordAutomaticTagAsync(post, cancellationToken);
+        }
 
         if (pending)
         {

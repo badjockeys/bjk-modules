@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,6 +16,11 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// <param name="FramesAnalysed">Frames the detectors ran on.</param>
 /// <param name="Elapsed">Time taken.</param>
 /// <param name="DetectionTime">Part of <paramref name="Elapsed"/> spent running the detection models.</param>
+/// <param name="SensitiveScore">
+/// The highest graphic content score (0 to 1) of the frames scored, or null if detection is off or nothing was scored.
+/// </param>
+/// <param name="FramesClassified">Frames the graphic content classifier scored.</param>
+/// <param name="ClassificationTime">Part of <paramref name="Elapsed"/> spent scoring graphic content.</param>
 public sealed record RedactionResult(
     int FacesBlurred,
     int PlatesBlurred,
@@ -22,7 +28,10 @@ public sealed record RedactionResult(
     int Frames,
     int FramesAnalysed,
     TimeSpan Elapsed,
-    TimeSpan DetectionTime = default)
+    TimeSpan DetectionTime = default,
+    double? SensitiveScore = null,
+    int FramesClassified = 0,
+    TimeSpan ClassificationTime = default)
 {
     public bool NeedsReview => ReviewReasons.Count > 0;
 }
@@ -109,12 +118,19 @@ internal sealed class MediaRedactor(
     IEnumerable<IRedactionDetector> detectors,
     IOptions<MediaRedactionOptions> redactionOptions,
     IOptions<MediaProcessingOptions> processingOptions,
-    ILogger<MediaRedactor> logger)
+    ILogger<MediaRedactor> logger,
+    ISensitiveContentClassifier? classifier = null,
+    IOptions<SensitiveDetectionOptions>? detectionOptions = null)
     : IMediaRedactor
 {
     private readonly MediaRedactionOptions _options = redactionOptions.Value;
     private readonly MediaProcessingOptions _processing = processingOptions.Value;
     private readonly IReadOnlyList<IRedactionDetector> _detectors = detectors.ToList();
+
+    // Graphic content scoring runs inside the same pass, on the same (scaled-down) frames: nothing is decoded twice.
+    private readonly ISensitiveContentClassifier? _classifier = detectionOptions?.Value.Enabled == true ? classifier : null;
+    private readonly bool _detectSensitive = detectionOptions?.Value.Enabled == true;
+    private readonly int _sampleEvery = Math.Max(1, detectionOptions?.Value.SampleEvery ?? 1);
 
     public async Task<RedactionResult> RedactImageAsync(
         string inputPath,
@@ -139,8 +155,8 @@ internal sealed class MediaRedactor(
         }
 
         // Photos are analysed at full size (they're few, and small plates matter in parking photos).
-        var pass = new DetectionPass(_detectors, _options, logger, maxSize: 0);
-        var found = pass.Detect(frame);
+        var pass = NewPass(maxSize: 0);
+        var found = pass.Detect(frame, classify: true);
         foreach (var box in found)
         {
             Blur(frame, box);
@@ -269,7 +285,7 @@ internal sealed class MediaRedactor(
         var interval = _options.DetectEveryNthFrame;
         var lookahead = (_options.MaxMissedDetections + 1) * interval;
 
-        var pass = new DetectionPass(_detectors, _options, logger, _options.DetectionMaxSize);
+        var pass = NewPass(_options.DetectionMaxSize);
         var tracker = new RedactionTracker(_options.MaxMissedDetections);
         var pending = new Queue<(int Index, RgbFrame Frame)>();
         var decoded = 0;
@@ -287,7 +303,8 @@ internal sealed class MediaRedactor(
                 var index = range.First + decoded++;
                 if (index % interval == 0)
                 {
-                    tracker.Add(index, pass.Detect(frame));
+                    // Graphic content is scored on every SampleEvery-th analysed frame, counted from the start of the video.
+                    tracker.Add(index, pass.Detect(frame, classify: (index / interval) % _sampleEvery == 0));
                     analysed++;
                     lastAnalysed = index;
                 }
@@ -475,8 +492,12 @@ internal sealed class MediaRedactor(
             reasons.Add("Every upload is set to be reviewed (Media:Redaction:ReviewEverything).");
         }
 
-        return new RedactionResult(faces, plates, reasons, frames, analysed, elapsed, pass.Elapsed);
+        return new RedactionResult(
+            faces, plates, reasons, frames, analysed, elapsed, pass.Elapsed, pass.SensitiveScore, pass.FramesClassified, pass.ClassificationTime);
     }
+
+    private DetectionPass NewPass(int maxSize) =>
+        new(_detectors, _options, logger, maxSize, _detectSensitive, _classifier);
 
     /// <summary>
     /// Runs the available detectors on frames for one job. A detector that's unavailable, or fails on any frame, is
@@ -487,15 +508,40 @@ internal sealed class MediaRedactor(
         private readonly List<IRedactionDetector> _active = [];
         private readonly List<string> _problems = [];
         private readonly Stopwatch _timer = new();
+        private readonly Stopwatch _classifyTimer = new();
         private readonly MediaRedactionOptions _options;
         private readonly ILogger _logger;
         private readonly int _maxSize;
+        private ISensitiveContentClassifier? _classifier;
 
-        public DetectionPass(IReadOnlyList<IRedactionDetector> detectors, MediaRedactionOptions options, ILogger logger, int maxSize)
+        public DetectionPass(
+            IReadOnlyList<IRedactionDetector> detectors,
+            MediaRedactionOptions options,
+            ILogger logger,
+            int maxSize,
+            bool detectSensitive = false,
+            ISensitiveContentClassifier? classifier = null)
         {
             _options = options;
             _logger = logger;
             _maxSize = maxSize;
+            if (detectSensitive)
+            {
+                // Fail safe: with detection on, a missing or unavailable classifier sends the media to review.
+                if (classifier is null)
+                {
+                    _problems.Add("No graphic content classifier is registered.");
+                }
+                else if (!classifier.IsAvailable)
+                {
+                    _problems.Add(classifier.UnavailableReason ?? "The graphic content classifier is unavailable.");
+                }
+                else
+                {
+                    _classifier = classifier;
+                }
+            }
+
             foreach (var target in Enum.GetValues<RedactionTarget>())
             {
                 var detector = detectors.FirstOrDefault(d => d.Target == target);
@@ -518,7 +564,16 @@ internal sealed class MediaRedactor(
 
         public TimeSpan Elapsed => _timer.Elapsed;
 
-        public List<DetectionBox> Detect(RgbFrame frame)
+        /// <summary>The highest graphic content score so far, or null if nothing was scored.</summary>
+        public double? SensitiveScore { get; private set; }
+
+        public int FramesClassified { get; private set; }
+
+        public TimeSpan ClassificationTime => _classifyTimer.Elapsed;
+
+        /// <param name="frame">The full frame (blurring is applied to it by the caller).</param>
+        /// <param name="classify">Also score this frame for graphic content (when detection is on).</param>
+        public List<DetectionBox> Detect(RgbFrame frame, bool classify = false)
         {
             _timer.Start();
             try
@@ -527,6 +582,7 @@ internal sealed class MediaRedactor(
                 var scale = DetectionScale(frame.Width, frame.Height, _maxSize);
                 if (scale >= 1)
                 {
+                    Classify(frame, classify);
                     return DetectAll(frame);
                 }
 
@@ -534,6 +590,7 @@ internal sealed class MediaRedactor(
                     frame,
                     Math.Max(1, (int)MathF.Round(frame.Width * scale)),
                     Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+                Classify(small, classify);
                 var (sx, sy) = (frame.Width / (float)small.Width, frame.Height / (float)small.Height);
                 return DetectAll(small)
                     .Select(b => b with { X = b.X * sx, Y = b.Y * sy, Width = b.Width * sx, Height = b.Height * sy })
@@ -542,6 +599,36 @@ internal sealed class MediaRedactor(
             finally
             {
                 _timer.Stop();
+            }
+        }
+
+        /// <summary>
+        /// Scores the frame (already scaled down for detection) for graphic content. A failure is a problem (the media
+        /// goes to review) and the classifier isn't used again for this job.
+        /// </summary>
+        private void Classify(RgbFrame frame, bool classify)
+        {
+            if (!classify || _classifier is null)
+            {
+                return;
+            }
+
+            _classifyTimer.Start();
+            try
+            {
+                var score = _classifier.Score(frame);
+                SensitiveScore = Math.Max(SensitiveScore ?? 0, score);
+                FramesClassified++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "The graphic content classifier failed; the media will go to review.");
+                _problems.Add("The graphic content check failed.");
+                _classifier = null;
+            }
+            finally
+            {
+                _classifyTimer.Stop();
             }
         }
 

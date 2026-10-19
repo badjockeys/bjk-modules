@@ -61,7 +61,7 @@ public sealed class PostHandlerTests
             .Returns(new Dictionary<Guid, PostStats>());
         _screener.ScreenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ScreeningResult.Clean);
         _blocks.GetBlockedIdsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(new List<Guid>());
-        _views = new PostViews(_posts, _profiles, _media);
+        _views = new PostViews(_posts, _profiles, _media, _caller);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -314,7 +314,7 @@ public sealed class PostHandlerTests
         new(_posts, _profiles, _media, _screener, Limits(), _views, Publisher(), _caller, _clock);
 
     private PostMediaPublisher Publisher() =>
-        new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance);
+        new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance, _audit);
 
     private DeletePostCommandHandler DeleteHandler() =>
         new(_posts, _media, _audit, _caller, _clock, NullLogger<DeletePostCommandHandler>.Instance);

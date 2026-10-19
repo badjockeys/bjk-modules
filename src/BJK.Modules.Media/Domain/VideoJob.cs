@@ -159,6 +159,9 @@ public sealed class VideoSegment
     /// <summary>How long the worker took, in milliseconds.</summary>
     public long? ElapsedMilliseconds { get; private set; }
 
+    /// <summary>The highest graphic content score of the frames it checked; null if detection was off.</summary>
+    public double? SensitiveScore { get; private set; }
+
     public DateTimeOffset? CompletedAt { get; private set; }
 
     public bool IsDone => Status == VideoSegmentStatus.Done;
@@ -176,7 +179,8 @@ public sealed class VideoSegment
     /// <param name="reviewReasons">Why it should be checked; empty if none.</param>
     /// <param name="elapsed">Time taken.</param>
     /// <param name="now">The time.</param>
-    public bool MarkDone(int frames, int faces, int plates, IEnumerable<string> reviewReasons, TimeSpan elapsed, DateTimeOffset now)
+    /// <param name="sensitiveScore">The highest graphic content score, or null.</param>
+    public bool MarkDone(int frames, int faces, int plates, IEnumerable<string> reviewReasons, TimeSpan elapsed, DateTimeOffset now, double? sensitiveScore = null)
     {
         if (IsDone)
         {
@@ -189,6 +193,7 @@ public sealed class VideoSegment
         PlatesBlurred = plates;
         ReviewReasons = JoinReasons(reviewReasons);
         ElapsedMilliseconds = (long)elapsed.TotalMilliseconds;
+        SensitiveScore = sensitiveScore;
         CompletedAt = now;
         return true;
     }

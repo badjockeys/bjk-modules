@@ -7,6 +7,8 @@ namespace BJK.Modules.Shared.Moderation;
 /// One moderation action, for the audit log. Who did it (actor id and role) and when are added by the log from the
 /// current request. <see cref="Before"/> and <see cref="After"/> are short summaries of what changed, such as
 /// "Status=Published" → "Status=Hidden"; never the content itself or anyone's personal details.
+/// <see cref="SystemActor"/> is set for actions taken by the system itself, such as
+/// <see cref="ModerationActor.AutomaticRole"/> for automatic sensitive tagging: the entry then has no actor id and that role.
 /// </summary>
 public sealed record ModerationAuditEntry(
     string Module,
@@ -15,7 +17,8 @@ public sealed record ModerationAuditEntry(
     string TargetId,
     string Reason,
     string? Before = null,
-    string? After = null);
+    string? After = null,
+    string? SystemActor = null);
 
 /// <summary>
 /// The moderation audit log: every moderator or admin action in Posts, Profiles and Media is recorded with the
@@ -37,6 +40,12 @@ public static class ModerationActions
     public const string DeletePost = "DeletePost";
     public const string ApprovePost = "ApprovePost";
     public const string SetPostSensitive = "SetPostSensitive";
+
+    /// <summary>Automatic graphic content detection tagged a post sensitive (actor <see cref="ModerationActor.AutomaticRole"/>).</summary>
+    public const string AutoTagSensitive = "AutoTagSensitive";
+
+    /// <summary>A moderator confirmed or undid an automatic sensitive tag.</summary>
+    public const string ReviewSensitiveTag = "ReviewSensitiveTag";
     public const string HideComment = "HideComment";
     public const string DeleteComment = "DeleteComment";
     public const string ApproveComment = "ApproveComment";
@@ -57,6 +66,9 @@ public static class ModerationActor
 
     /// <summary>A machine token issued to a trusted client, with no user.</summary>
     public const string ServiceRole = "Service";
+
+    /// <summary>The system itself, e.g. automatic graphic content detection.</summary>
+    public const string AutomaticRole = "Automatic";
 
     public static string RoleOf(ICurrentUser caller) =>
         caller.IdentityId is null ? ServiceRole

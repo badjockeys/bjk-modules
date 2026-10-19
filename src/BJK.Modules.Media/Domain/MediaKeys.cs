@@ -41,6 +41,38 @@ public static class MediaKeys
     public static string ReviewThumbnail(Guid userId, Guid mediaId, MediaType type, int revision = 0) =>
         $"{Folder(userId, mediaId)}/{ReviewFolder}/{Revised(type == MediaType.Video ? VideoThumbnailFile : ImageThumbnailFile, revision)}";
 
+    /// <summary>
+    /// Sub-folder, in the sensitive bucket, for the real processed files of media in a post tagged sensitive. They're
+    /// never public: age-verified adults, the uploader and moderators get short-lived signed links to them.
+    /// </summary>
+    public const string SensitiveFolder = "sensitive";
+
+    /// <summary>File name of the heavily blurred preview published for sensitive media (before any revision suffix).</summary>
+    public const string PreviewFile = "preview.webp";
+
+    /// <summary>
+    /// Where a processed file of sensitive media is kept, in the sensitive bucket: its published key with
+    /// <see cref="SensitiveFolder"/> added before the file name, e.g. <c>{userId}/{mediaId}/sensitive/720p.mp4</c>.
+    /// </summary>
+    /// <param name="publishedKey">The file's key in the public bucket (<see cref="Playback"/> or <see cref="Thumbnail"/>).</param>
+    public static string Sensitive(string publishedKey)
+    {
+        var slash = publishedKey.LastIndexOf('/');
+        return slash < 0
+            ? $"{SensitiveFolder}/{publishedKey}"
+            : $"{publishedKey[..slash]}/{SensitiveFolder}/{publishedKey[(slash + 1)..]}";
+    }
+
+    /// <summary>
+    /// The heavily blurred, low-resolution preview of sensitive media, in the public bucket: the only file of sensitive
+    /// media that's ever public. Named per revision, like the other published files.
+    /// </summary>
+    /// <param name="userId">The uploader.</param>
+    /// <param name="mediaId">The media.</param>
+    /// <param name="revision">The media revision.</param>
+    public static string Preview(Guid userId, Guid mediaId, int revision = 0) =>
+        $"{Folder(userId, mediaId)}/{Revised(PreviewFile, revision)}";
+
     /// <summary>Sub-folder, in the private originals bucket, for blurred video segments waiting to be joined.</summary>
     public const string SegmentsFolder = "segments";
 

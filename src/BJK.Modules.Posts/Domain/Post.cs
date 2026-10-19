@@ -63,10 +63,33 @@ public sealed class Post
     public bool IsAuthorDeactivated { get; private set; }
 
     /// <summary>
-    /// Graphic content (injuries, serious crashes), set by the author or a moderator. Sensitive posts are never shown
-    /// to logged-out viewers.
+    /// Graphic content (injuries, serious crashes), set by the author, a moderator or automatic detection
+    /// (<see cref="SensitiveSource"/>). Sensitive posts are shown to everyone, but their photos and video only blurred,
+    /// except to age-verified adults, the author and moderators.
     /// </summary>
     public bool IsSensitive { get; private set; }
+
+    /// <summary>Who set the sensitive tag (None when it isn't tagged).</summary>
+    public PostSensitiveSource SensitiveSource { get; private set; }
+
+    /// <summary>The highest graphic content score automatic detection gave its media, when it tagged the post (or tried to).</summary>
+    public double? SensitiveScore { get; private set; }
+
+    /// <summary>Moderator review of an automatic tag. Kept with the score as a record of the outcome, to tune detection.</summary>
+    public SensitiveReviewStatus SensitiveReview { get; private set; }
+
+    /// <summary>When a moderator confirmed or undid the automatic tag.</summary>
+    public DateTimeOffset? SensitiveReviewedAt { get; private set; }
+
+    /// <summary>Who confirmed or undid the automatic tag (null for a machine token).</summary>
+    public Guid? SensitiveReviewedBy { get; private set; }
+
+    /// <summary>
+    /// The author may remove the tag only if they set it (not a moderator's, nor an automatic one) and automatic
+    /// detection hasn't also flagged the media (<see cref="SensitiveScore"/>).
+    /// </summary>
+    public bool AuthorMayRemoveSensitive =>
+        SensitiveSource is PostSensitiveSource.None or PostSensitiveSource.Author && SensitiveScore is null;
 
     /// <summary>Content screening flagged the text for a moderator to look at. Cleared when a moderator approves it.</summary>
     public bool IsFlagged { get; private set; }
@@ -145,6 +168,7 @@ public sealed class Post
             Status = PostStatus.Published,
             CreatedAt = now,
             IsSensitive = isSensitive,
+            SensitiveSource = isSensitive ? PostSensitiveSource.Author : PostSensitiveSource.None,
             MediaState = mediaPending ? PostMediaState.Pending : PostMediaState.Ready,
             NotifyEmail = mediaPending && !string.IsNullOrWhiteSpace(notifyEmail) && notifyEmail.Trim().Length <= NotifyEmailMaxLength
                 ? notifyEmail.Trim()
@@ -218,17 +242,93 @@ public sealed class Post
         UpdatedAt = now;
     }
 
-    /// <summary>Marks the post as sensitive (graphic) or not.</summary>
-    public void SetSensitive(bool isSensitive, DateTimeOffset now)
+    /// <summary>
+    /// Marks the post as sensitive (graphic) or not. A moderator doing so also settles any pending review of an
+    /// automatic tag (Confirmed if they keep it, Undone if they remove it).
+    /// </summary>
+    /// <param name="isSensitive">Tagged or not.</param>
+    /// <param name="now">The time.</param>
+    /// <param name="source">Who: the author (the default) or a moderator.</param>
+    /// <param name="moderatorId">For a moderator: who, or null for a machine token.</param>
+    public void SetSensitive(bool isSensitive, DateTimeOffset now, PostSensitiveSource source = PostSensitiveSource.Author, Guid? moderatorId = null)
     {
         EnsureNotDeleted();
+        if (source == PostSensitiveSource.Moderator && SensitiveReview == SensitiveReviewStatus.Pending)
+        {
+            RecordReview(isSensitive, moderatorId, now);
+        }
+
         if (IsSensitive == isSensitive)
         {
             return;
         }
 
         IsSensitive = isSensitive;
+        SensitiveSource = isSensitive ? source : PostSensitiveSource.None;
         UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Automatic detection found graphic content in the post's media: it's tagged sensitive (source Automatic) and
+    /// waits for a moderator to confirm or undo it. Returns true if the post was tagged now. Does nothing if it's
+    /// already tagged (the score is still recorded) or a moderator already undid an automatic tag on it. Safe to repeat.
+    /// </summary>
+    /// <param name="score">The highest score of its media.</param>
+    /// <param name="now">The time.</param>
+    public bool MarkSensitiveAutomatically(double? score, DateTimeOffset now)
+    {
+        EnsureNotDeleted();
+        if (score is { } value)
+        {
+            SensitiveScore = Math.Max(SensitiveScore ?? 0, Math.Round(value, 4));
+        }
+
+        if (IsSensitive || SensitiveReview == SensitiveReviewStatus.Undone)
+        {
+            return false;
+        }
+
+        IsSensitive = true;
+        SensitiveSource = PostSensitiveSource.Automatic;
+        SensitiveReview = SensitiveReviewStatus.Pending;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>
+    /// A moderator confirms an automatic sensitive tag, or undoes it (the post is then not sensitive, and detection
+    /// won't tag it again). Only while the review is pending.
+    /// </summary>
+    /// <param name="confirm">True to keep the tag.</param>
+    /// <param name="moderatorId">The moderator, or null for a machine token.</param>
+    /// <param name="now">The time.</param>
+    public void ReviewAutomaticSensitive(bool confirm, Guid? moderatorId, DateTimeOffset now)
+    {
+        EnsureNotDeleted();
+        if (SensitiveReview != SensitiveReviewStatus.Pending)
+        {
+            throw new InvalidOperationException("The post has no automatic sensitive tag waiting for review.");
+        }
+
+        RecordReview(confirm, moderatorId, now);
+        if (!confirm)
+        {
+            IsSensitive = false;
+            SensitiveSource = PostSensitiveSource.None;
+        }
+        else
+        {
+            SensitiveSource = PostSensitiveSource.Automatic;
+        }
+
+        UpdatedAt = now;
+    }
+
+    private void RecordReview(bool confirmed, Guid? moderatorId, DateTimeOffset now)
+    {
+        SensitiveReview = confirmed ? SensitiveReviewStatus.Confirmed : SensitiveReviewStatus.Undone;
+        SensitiveReviewedAt = now;
+        SensitiveReviewedBy = moderatorId;
     }
 
     /// <summary>

@@ -73,6 +73,12 @@ public sealed class MediaOptions
 
     public TimeSpan UploadUrlLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// How long the signed links to sensitive media work (for age-verified adults, the uploader and moderators). Short,
+    /// so a copied link soon stops working; the apps fetch the post again for fresh links.
+    /// </summary>
+    public TimeSpan SensitiveLinkLifetime { get; set; } = TimeSpan.FromMinutes(10);
+
     /// <summary>How long originals are kept. Must match the lifecycle rule on the originals bucket.</summary>
     public TimeSpan OriginalRetention { get; set; } = TimeSpan.FromDays(90);
 
@@ -107,6 +113,17 @@ public sealed class MediaStorageOptions
     /// <summary>Address the public bucket is served from through Cloudflare, e.g. https://media.badjockeys.com/</summary>
     [Required]
     public Uri? PublicBaseUrl { get; set; }
+
+    /// <summary>
+    /// Private bucket for the real processed files of sensitive media (posts tagged sensitive), served only through
+    /// short-lived signed links. Optional: if not set, they go in <see cref="OriginalsBucket"/> under a
+    /// <c>sensitive/</c> folder. Set it wherever the originals bucket has the 90-day deletion rule, or sensitive posts
+    /// would lose their media after 90 days. It needs no lifecycle rule, CORS or public access.
+    /// </summary>
+    public string? SensitiveBucket { get; set; }
+
+    /// <summary>The bucket sensitive files go in: <see cref="SensitiveBucket"/>, or the originals bucket.</summary>
+    public string EffectiveSensitiveBucket => string.IsNullOrWhiteSpace(SensitiveBucket) ? OriginalsBucket! : SensitiveBucket.Trim();
 }
 
 /// <summary>The processing queue. Section <c>Media:Queue</c>. The RabbitMQ connection itself is <c>Messaging:ConnectionUri</c>.</summary>
@@ -184,6 +201,17 @@ public sealed class MediaProcessingOptions
     /// <summary>Longest side of thumbnails, in pixels.</summary>
     [Range(64, 1920)]
     public int ThumbnailMaxSize { get; set; } = 640;
+
+    /// <summary>
+    /// Sensitive media's public preview: the thumbnail is shrunk so its longest side is this many pixels, which
+    /// destroys detail, then blurred, enlarged to <see cref="SensitivePreviewSize"/> and blurred again.
+    /// </summary>
+    [Range(8, 256)]
+    public int SensitivePreviewSourceSize { get; set; } = 64;
+
+    /// <summary>Longest side of sensitive media's blurred public preview (WebP), in pixels.</summary>
+    [Range(64, 1280)]
+    public int SensitivePreviewSize { get; set; } = 480;
 
     /// <summary>Gives up on one ffmpeg run after this long.</summary>
     public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromMinutes(15);
@@ -305,4 +333,128 @@ public enum RedactionExecutionProvider
     /// <c>Microsoft.ML.OnnxRuntime.Gpu</c> package (same API) and CUDA libraries in the image.
     /// </summary>
     Cuda,
+}
+
+/// <summary>
+/// Automatic detection of graphic content (blood, injuries, the aftermath of serious crashes). Section
+/// <c>Media:SensitiveDetection</c>; only the worker host reads it. When enabled, the media worker scores frames already
+/// decoded (and scaled down) for blurring with an image classifier; a photo or video scoring at least
+/// <see cref="Threshold"/> is marked sensitive automatically before it's published, so it's never public unblurred,
+/// and its post goes to the moderators' sensitive-review queue. If the classifier is missing or fails, the media goes
+/// to review instead of being published unchecked.
+/// </summary>
+public sealed class SensitiveDetectionOptions
+{
+    public const string SectionName = "Media:SensitiveDetection";
+
+    /// <summary>
+    /// Turns detection on. Off by default until a model has been chosen and tested: once on, a missing or broken model
+    /// sends every upload to review (fail safe).
+    /// </summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// <see cref="SensitiveClassifierProvider.Onnx"/> (a model file, <see cref="ModelPath"/>) or
+    /// <see cref="SensitiveClassifierProvider.Development"/> (a stand-in that flags strongly red pictures, for local
+    /// testing only; refused outside the Development environment).
+    /// </summary>
+    public SensitiveClassifierProvider Provider { get; set; } = SensitiveClassifierProvider.Onnx;
+
+    /// <summary>The image classification model (ONNX), e.g. <c>/opt/bjk/models/graphic-content.onnx</c>.</summary>
+    public string? ModelPath { get; set; }
+
+    /// <summary>
+    /// Score (0 to 1) at or above which media is marked sensitive. Deliberately low, to over-flag: a moderator confirms
+    /// or undoes every automatic tag, and a missed one is far worse than an extra one. Tune with the recorded outcomes.
+    /// </summary>
+    [Range(0.01, 1.0)]
+    public double Threshold { get; set; } = 0.35;
+
+    /// <summary>
+    /// Score every Nth frame the blurring pass analyses (it analyses every <c>Media:Redaction:DetectEveryNthFrame</c>th
+    /// frame, 5 by default): 3 means about two frames a second at 30 fps. Photos are always scored. Lower is safer and slower.
+    /// </summary>
+    [Range(1, 100)]
+    public int SampleEvery { get; set; } = 3;
+
+    /// <summary>The model's input width in pixels (frames are resized to it, ignoring aspect ratio).</summary>
+    [Range(16, 2048)]
+    public int InputWidth { get; set; } = 224;
+
+    /// <summary>The model's input height in pixels.</summary>
+    [Range(16, 2048)]
+    public int InputHeight { get; set; } = 224;
+
+    /// <summary>
+    /// Per-channel mean (R,G,B), comma-separated, subtracted after pixels are scaled to 0 to 1. ImageNet's by default,
+    /// which most classifiers fine-tuned from ImageNet expect.
+    /// </summary>
+    public string Mean { get; set; } = "0.485,0.456,0.406";
+
+    /// <summary>Per-channel standard deviation (R,G,B), comma-separated, divided by after the mean is subtracted.</summary>
+    public string Std { get; set; } = "0.229,0.224,0.225";
+
+    /// <summary>How to read the model's output (its first output, shape [1, classes]).</summary>
+    public SensitiveModelOutput Output { get; set; } = SensitiveModelOutput.Softmax;
+
+    /// <summary>
+    /// Which output classes mean graphic content, comma-separated indices (e.g. "1" for a [safe, graphic] model). With
+    /// Softmax or Probabilities their probabilities are added; with Sigmoid the highest is taken.
+    /// </summary>
+    public string SensitiveClasses { get; set; } = "1";
+
+    /// <summary>The parsed <see cref="Mean"/>.</summary>
+    public float[] MeanValues => ParseFloats(Mean, nameof(Mean));
+
+    /// <summary>The parsed <see cref="Std"/>.</summary>
+    public float[] StdValues => ParseFloats(Std, nameof(Std));
+
+    /// <summary>The parsed <see cref="SensitiveClasses"/>.</summary>
+    public int[] SensitiveClassIndices =>
+        SensitiveClasses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(v => int.Parse(v, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+
+    /// <summary>True if the comma-separated settings parse and make sense.</summary>
+    public bool IsValid()
+    {
+        try
+        {
+            return MeanValues.Length == 3 && StdValues.Length == 3 && StdValues.All(v => v > 0)
+                && SensitiveClassIndices.Length > 0 && SensitiveClassIndices.All(i => i >= 0);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static float[] ParseFloats(string value, string name) =>
+        (value ?? throw new FormatException($"{name} is empty."))
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(v => float.Parse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+}
+
+/// <summary>Which graphic content classifier the worker uses (<c>Media:SensitiveDetection:Provider</c>).</summary>
+public enum SensitiveClassifierProvider
+{
+    /// <summary>An ONNX image classification model from <c>Media:SensitiveDetection:ModelPath</c>.</summary>
+    Onnx,
+
+    /// <summary>A stand-in for local development that scores the share of strongly red pixels. Development only.</summary>
+    Development,
+}
+
+/// <summary>How the classifier model's output is turned into a score (<c>Media:SensitiveDetection:Output</c>).</summary>
+public enum SensitiveModelOutput
+{
+    /// <summary>Logits: softmax over all classes, then the sensitive classes' probabilities added.</summary>
+    Softmax,
+
+    /// <summary>Independent logits: sigmoid of each sensitive class, the highest taken (multi-label models).</summary>
+    Sigmoid,
+
+    /// <summary>Already probabilities (the model ends in softmax): the sensitive classes' values added.</summary>
+    Probabilities,
 }

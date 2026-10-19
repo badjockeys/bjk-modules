@@ -93,6 +93,22 @@ public sealed class MediaItem
             ? []
             : JsonSerializer.Deserialize<List<ManualRedaction>>(ManualRedactionsJson, RedactionJson) ?? [];
 
+    /// <summary>
+    /// True while the processed files (<see cref="PlaybackKey"/>, <see cref="ThumbnailKey"/>) are kept only in the
+    /// sensitive bucket, under <see cref="MediaKeys.Sensitive"/>, because the media is in a post tagged sensitive. The
+    /// public bucket then holds only the blurred <see cref="PreviewKey"/>. The keys keep their public names either way.
+    /// </summary>
+    public bool IsRestricted { get; private set; }
+
+    /// <summary>The heavily blurred preview in the public bucket, while the media is sensitive (null until it's made).</summary>
+    public string? PreviewKey { get; private set; }
+
+    /// <summary>
+    /// The highest graphic content score (0 to 1) automatic detection gave it in the latest processing, whether or not
+    /// it crossed the threshold; null if detection was off. Kept to tune the threshold against moderators' decisions.
+    /// </summary>
+    public double? SensitiveScore { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? UploadedAt { get; private set; }
@@ -184,6 +200,11 @@ public sealed class MediaItem
         PlatesBlurred = plates;
     }
 
+    /// <summary>Records the graphic content score of the latest processing (null if detection was off).</summary>
+    /// <param name="score">The highest score of the frames checked.</param>
+    public void RecordSensitiveScore(double? score) =>
+        SensitiveScore = score is null ? null : Math.Round(Math.Clamp(score.Value, 0, 1), 4);
+
     /// <summary>
     /// Processed and blurred, but a moderator must check it first. The blurred files are in the private bucket under
     /// <see cref="MediaKeys.ReviewPlayback"/>; nothing is public, so the public keys stay empty.
@@ -228,6 +249,30 @@ public sealed class MediaItem
         _statusChanges.Add(new MediaStatusChange(MediaStatus.Ready, null, now));
     }
 
+    /// <summary>
+    /// The processed files are now kept only in the sensitive bucket (the media is in a post tagged sensitive), with the
+    /// blurred preview, if it has been made yet, in the public bucket. Only for Ready media.
+    /// </summary>
+    /// <param name="previewKey">The blurred preview's key in the public bucket, or null if it isn't made yet.</param>
+    /// <param name="now">The time.</param>
+    public void Restrict(string? previewKey, DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Ready);
+        IsRestricted = true;
+        PreviewKey = previewKey;
+        UpdatedAt = now;
+    }
+
+    /// <summary>The processed files are public again (the sensitive tag was removed) and the blurred preview is no longer used.</summary>
+    /// <param name="now">The time.</param>
+    public void Unrestrict(DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Ready);
+        IsRestricted = false;
+        PreviewKey = null;
+        UpdatedAt = now;
+    }
+
     /// <summary>A moderator rejected it: it becomes <see cref="MediaStatus.Failed"/> with the reason, which the uploader sees.</summary>
     /// <param name="reason">Shown to the uploader.</param>
     /// <param name="moderatorId">The moderator, or null for a machine token.</param>
@@ -266,6 +311,8 @@ public sealed class MediaItem
         Revision++;
         PlaybackKey = null;
         ThumbnailKey = null;
+        IsRestricted = false;
+        PreviewKey = null;
         ReviewReason = null;
         Status = MediaStatus.Processing;
         UpdatedAt = now;

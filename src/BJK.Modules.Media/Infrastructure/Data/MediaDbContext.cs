@@ -19,6 +19,9 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
 
     public DbSet<VideoJob> VideoJobs => Set<VideoJob>();
 
+    /// <summary>Media in posts tagged sensitive (<c>media.SensitiveMedia</c>).</summary>
+    public DbSet<SensitiveMediaMark> SensitiveMedia => Set<SensitiveMediaMark>();
+
     public DbSet<VideoSegment> VideoSegments => Set<VideoSegment>();
 
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
@@ -78,6 +81,7 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
         builder.Property(m => m.OriginalKey).HasMaxLength(MediaItem.KeyMaxLength).IsRequired();
         builder.Property(m => m.PlaybackKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.ThumbnailKey).HasMaxLength(MediaItem.KeyMaxLength);
+        builder.Property(m => m.PreviewKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.DurationSeconds).HasPrecision(9, 3);
         builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
         builder.Property(m => m.FailureReason).HasMaxLength(MediaItem.FailureReasonMaxLength);
@@ -91,6 +95,20 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
 
         // Clean-up jobs, e.g. uploads abandoned in the Uploading state.
         builder.HasIndex(m => new { m.Status, m.CreatedAt });
+    }
+}
+
+internal sealed class SensitiveMediaMarkConfiguration : IEntityTypeConfiguration<SensitiveMediaMark>
+{
+    public void Configure(EntityTypeBuilder<SensitiveMediaMark> builder)
+    {
+        builder.ToTable("SensitiveMedia");
+        builder.HasKey(m => m.MediaId);
+        builder.Property(m => m.MediaId).ValueGeneratedNever();
+        builder.Property(m => m.Source).HasConversion<string>().HasMaxLength(20);
+
+        // Removed with the media row (e.g. when an account is permanently deleted).
+        builder.HasOne<MediaItem>().WithMany().HasForeignKey(m => m.MediaId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

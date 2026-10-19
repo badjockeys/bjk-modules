@@ -3,6 +3,7 @@ using BJK.Modules.Media.Domain;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Profiles.Contracts;
+using BJK.Modules.Shared.Security;
 
 namespace BJK.Modules.Posts.UseCases;
 
@@ -18,18 +19,31 @@ public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri?
 /// <summary>Where it happened: the map pin, rounded to about 500 m when the post was saved, and the place name.</summary>
 public sealed record LocationDto(decimal Latitude, decimal Longitude, string? PlaceName);
 
-/// <summary>A photo or video in a post. Media that isn't Ready (or was deleted) is left out.</summary>
+/// <summary>
+/// A photo or video in a post. Media that isn't Ready (or was deleted) is left out. In a sensitive post seen by someone
+/// who may not see it (logged out, or not age-verified), <c>IsBlurred</c> is true, <c>PlaybackUrl</c> and
+/// <c>ThumbnailUrl</c> are null and <c>PreviewUrl</c> is a heavily blurred, low-resolution picture (null for the few
+/// seconds until it's made: show a placeholder). Otherwise the real files: public addresses, or for sensitive media
+/// short-lived signed links valid until <c>LinksExpireAt</c> (fetch the post again for fresh ones).
+/// </summary>
 public sealed record PostMediaDto(
     Guid MediaId,
     MediaType MediaType,
-    Uri PlaybackUrl,
+    Uri? PlaybackUrl,
     Uri? ThumbnailUrl,
     decimal? DurationSeconds,
     int? Width,
-    int? Height);
+    int? Height,
+    Uri? PreviewUrl = null,
+    bool IsBlurred = false,
+    DateTimeOffset? LinksExpireAt = null);
 
 /// <summary>
-/// A post. <c>IsSensitive</c> posts are never sent to logged-out viewers. <c>CommentsRequireSignIn</c> is true for
+/// A post. <c>IsSensitive</c> posts (graphic injuries, serious crashes) go to everyone, but unless the viewer is an
+/// age-verified adult (token claim <c>age_verified</c> = "true"), the author or a moderator, their media come blurred
+/// and <c>RequiresAgeVerification</c> is true: show a "Sensitive" label over the blurred previews and offer the age
+/// check (or sign-in first, for logged-out viewers). <c>SensitiveSource</c> says who tagged it (Author, Moderator or
+/// Automatic detection). <c>CommentsRequireSignIn</c> is true for
 /// logged-out viewers: comments aren't shown to them (the count still is), so the app shows "Sign in to see comments".
 /// <c>Status</c> is HeldForReview or Hidden only for the author (and moderators). <c>MediaState</c> is Pending while
 /// the photos or video are still processing (show a "processing" badge; <c>Media</c> lists only the ready ones) and
@@ -54,7 +68,9 @@ public sealed record PostDto(
     bool IsSensitive = false,
     bool CommentsRequireSignIn = false,
     PostMediaState MediaState = PostMediaState.Ready,
-    string? MediaFailureReason = null)
+    string? MediaFailureReason = null,
+    bool RequiresAgeVerification = false,
+    PostSensitiveSource SensitiveSource = PostSensitiveSource.None)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -162,14 +178,26 @@ public sealed record AuditEntryDto(
 /// <summary>A post in a content screening queue, with its score and labels.</summary>
 public sealed record ScreenedPostDto(PostDto Post, bool IsFlagged, double? ScreeningScore, string? ScreeningLabels);
 
+/// <summary>
+/// A post in the sensitive-review queue: tagged sensitive automatically, waiting for a moderator to confirm or undo it.
+/// <c>Score</c> is the highest graphic content score of its media. <c>Post</c> carries the real media (moderators see it).
+/// </summary>
+public sealed record SensitiveReviewDto(
+    PostDto Post,
+    double? Score,
+    SensitiveReviewStatus Review,
+    DateTimeOffset? ReviewedAt,
+    Guid? ReviewedBy);
+
 /// <summary>A comment in a content screening queue, with its score and labels.</summary>
 public sealed record ScreenedCommentDto(CommentDto Comment, bool IsFlagged, double? ScreeningScore, string? ScreeningLabels);
 
 /// <summary>
 /// Turns posts into <see cref="PostDto"/>s by gathering their authors (Profiles module), media (Media module)
-/// and counts in a few batched calls, rather than one per post.
+/// and counts in a few batched calls, rather than one per post. Media of sensitive posts is blurred unless the caller
+/// may see it: an age-verified adult, the author, or a moderator.
 /// </summary>
-public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles, IMediaDirectory media)
+public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles, IMediaDirectory media, ICurrentUser caller)
 {
     public async Task<PostDto> BuildAsync(Post post, Guid? viewerId, CancellationToken cancellationToken) =>
         (await BuildAsync([post], viewerId, cancellationToken))[0];
@@ -191,6 +219,23 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 items.SelectMany(p => p.Media).Select(m => m.MediaId).ToList(),
                 cancellationToken))
             .ToDictionary(m => m.Id);
+
+        // Real files of restricted (sensitive) media only for posts this caller may see unblurred: signed links.
+        var blurred = items.Where(p => p.IsSensitive && !PostAccess.MayViewSensitiveMedia(p, caller, viewerId)).Select(p => p.Id).ToHashSet();
+        var toSign = items
+            .Where(p => !blurred.Contains(p.Id))
+            .SelectMany(p => p.Media)
+            .Select(m => m.MediaId)
+            .Where(id => mediaById.TryGetValue(id, out var m) && m.IsRestricted)
+            .ToList();
+        if (toSign.Count > 0)
+        {
+            foreach (var signed in await media.GetWithSensitiveLinksAsync(toSign, cancellationToken))
+            {
+                mediaById[signed.Id] = signed;
+            }
+        }
+
         var stats = await posts.GetStatsAsync(items.Select(p => p.Id).ToList(), viewerId, cancellationToken);
 
         return items.Select(p =>
@@ -206,7 +251,7 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 new LocationDto(p.Latitude, p.Longitude, p.PlaceName),
                 p.Status,
                 p.HiddenReason,
-                MediaFor(p, mediaById),
+                MediaFor(p, mediaById, blurred.Contains(p.Id)),
                 s.Reactions,
                 s.MyReaction,
                 s.CommentCount,
@@ -215,16 +260,24 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 p.IsSensitive,
                 CommentsRequireSignIn: viewerId is null,
                 MediaState: p.MediaState,
-                MediaFailureReason: p.MediaFailureReason);
+                MediaFailureReason: p.MediaFailureReason,
+                RequiresAgeVerification: blurred.Contains(p.Id),
+                SensitiveSource: p.SensitiveSource);
         }).ToList();
     }
 
-    private static List<PostMediaDto> MediaFor(Post post, Dictionary<Guid, MediaSummary> mediaById) =>
+    /// <summary>
+    /// The post's ready media, in order. Blurred: only the blurred preview, never a real address, whatever the Media
+    /// module returned (its files may still be public for a few seconds after tagging).
+    /// </summary>
+    private static List<PostMediaDto> MediaFor(Post post, Dictionary<Guid, MediaSummary> mediaById, bool blurred) =>
         post.Media
             .OrderBy(m => m.Position)
             .Select(m => mediaById.GetValueOrDefault(m.MediaId))
             .OfType<MediaSummary>()
-            .Where(m => m.IsReady && m.PlaybackUrl is not null)
-            .Select(m => new PostMediaDto(m.Id, m.MediaType, m.PlaybackUrl!, m.ThumbnailUrl, m.DurationSeconds, m.Width, m.Height))
+            .Where(m => m.IsReady && (blurred || m.PlaybackUrl is not null))
+            .Select(m => blurred
+                ? new PostMediaDto(m.Id, m.MediaType, null, null, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: true)
+                : new PostMediaDto(m.Id, m.MediaType, m.PlaybackUrl, m.ThumbnailUrl, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: false, m.LinksExpireAt))
             .ToList();
 }

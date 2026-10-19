@@ -8,7 +8,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="Category">Only this kind of incident.</param>
 /// <param name="Area">Only incidents inside this box.</param>
 /// <param name="IncludeHidden">Include hidden and held posts, and ones still waiting for their media (for an author's own list).</param>
-/// <param name="ExcludeSensitive">Leave out sensitive posts (for logged-out viewers).</param>
+/// <param name="ExcludeSensitive">Leave out sensitive posts. (The public feed no longer does: they show blurred.)</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
 public sealed record PostSearch(
     Guid? AuthorId,
@@ -65,6 +65,12 @@ public interface IPostRepository
     /// <summary>Posts in a content screening queue, oldest first.</summary>
     Task<(IReadOnlyList<Post> Items, int TotalCount)> ListForScreeningAsync(
         ScreeningQueue queue,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>Posts tagged sensitive automatically and waiting for a moderator to confirm or undo it, oldest first.</summary>
+    Task<(IReadOnlyList<Post> Items, int TotalCount)> ListForSensitiveReviewAsync(
         int page,
         int pageSize,
         CancellationToken cancellationToken);
@@ -171,6 +177,25 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
         var query = queue == ScreeningQueue.Held
             ? db.Posts.AsNoTracking().Where(p => p.Status == PostStatus.HeldForReview)
             : db.Posts.AsNoTracking().Where(p => p.IsFlagged && p.Status == PostStatus.Published);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(p => p.CreatedAt)
+            .ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(p => p.Media)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public async Task<(IReadOnlyList<Post> Items, int TotalCount)> ListForSensitiveReviewAsync(
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = db.Posts.AsNoTracking()
+            .Where(p => p.SensitiveReview == SensitiveReviewStatus.Pending && p.Status != PostStatus.Deleted);
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(p => p.CreatedAt)

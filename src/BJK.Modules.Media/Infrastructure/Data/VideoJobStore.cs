@@ -10,7 +10,8 @@ namespace BJK.Modules.Media.Infrastructure.Data;
 /// <param name="PlatesBlurred">Plates followed through the segment's own part.</param>
 /// <param name="ReviewReasons">Why a moderator should check it; empty if none.</param>
 /// <param name="Elapsed">Time taken.</param>
-public sealed record VideoSegmentResult(int Frames, int FacesBlurred, int PlatesBlurred, IReadOnlyList<string> ReviewReasons, TimeSpan Elapsed);
+/// <param name="SensitiveScore">The highest graphic content score of the frames checked; null if detection was off.</param>
+public sealed record VideoSegmentResult(int Frames, int FacesBlurred, int PlatesBlurred, IReadOnlyList<string> ReviewReasons, TimeSpan Elapsed, double? SensitiveScore = null);
 
 /// <summary>
 /// Progress of videos processed in segments (<c>media.VideoJobs</c>, <c>media.VideoSegments</c>). Every change that
@@ -99,6 +100,7 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
                     .SetProperty(s => s.PlatesBlurred, result.PlatesBlurred)
                     .SetProperty(s => s.ReviewReasons, reasons)
                     .SetProperty(s => s.ElapsedMilliseconds, elapsed)
+                    .SetProperty(s => s.SensitiveScore, result.SensitiveScore)
                     .SetProperty(s => s.CompletedAt, now),
                 cancellationToken);
         return updated == 1;

@@ -3,6 +3,7 @@ using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared.Messaging;
 using Microsoft.EntityFrameworkCore;
@@ -48,6 +49,15 @@ public static class MediaServices
         services.AddSingleton<IMediaTranscoder, FfmpegTranscoder>();
         services.AddSingleton<IRedactionDetector, YuNetFaceDetector>();
         services.AddSingleton<IRedactionDetector, LpdYuNetPlateDetector>();
+        services.AddOptions<SensitiveDetectionOptions>()
+            .Bind(configuration.GetSection(SensitiveDetectionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.IsValid(), "Media:SensitiveDetection: Mean and Std need three comma-separated numbers (Std above 0) and SensitiveClasses at least one class index.")
+            .ValidateOnStart();
+        services.TryAddSingleton<ISensitiveContentClassifier>(sp =>
+            sp.GetRequiredService<IOptions<SensitiveDetectionOptions>>().Value.Provider == SensitiveClassifierProvider.Development
+                ? ActivatorUtilities.CreateInstance<DevelopmentSensitiveContentClassifier>(sp)
+                : ActivatorUtilities.CreateInstance<OnnxSensitiveContentClassifier>(sp));
         services.AddSingleton<IMediaRedactor, MediaRedactor>();
         services.AddScoped<MediaProcessor>();
         services.AddHostedService<MediaProcessingWorker>();
@@ -71,6 +81,9 @@ public static class MediaServices
         services.AddOptions<MediaOptions>()
             .Bind(configuration.GetSection(MediaOptions.SectionName))
             .ValidateDataAnnotations()
+            .Validate(
+                o => o.SensitiveLinkLifetime >= TimeSpan.FromMinutes(1) && o.SensitiveLinkLifetime <= TimeSpan.FromHours(1),
+                "Media:SensitiveLinkLifetime must be between 1 minute and 1 hour.")
             .ValidateOnStart();
         services.AddOptions<MediaStorageOptions>()
             .Bind(configuration.GetSection(MediaStorageOptions.SectionName))
@@ -86,5 +99,8 @@ public static class MediaServices
         services.TryAddSingleton<IAmazonS3>(sp =>
             S3MediaStorage.CreateClient(sp.GetRequiredService<IOptions<MediaStorageOptions>>().Value));
         services.TryAddSingleton<IMediaStorage, S3MediaStorage>();
+
+        // Logs which public files need purging from Cloudflare's cache; a host can register a real purger first.
+        services.TryAddSingleton<IMediaCachePurger, LoggingMediaCachePurger>();
     }
 }

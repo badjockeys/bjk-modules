@@ -1,3 +1,4 @@
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases.Comments;
@@ -189,7 +190,11 @@ public sealed class ReviewScreenedCommentCommandHandler(
     }
 }
 
-/// <summary>A moderator sets or clears a post's sensitive tag. A reason is required (audited).</summary>
+/// <summary>
+/// A moderator sets or clears a post's sensitive tag. A reason is required (audited). The post's media are moved to
+/// private storage (with blurred public previews) or published again by the media worker within seconds. If the post
+/// was tagged automatically and waiting for review, this also settles the review.
+/// </summary>
 public sealed record SetPostSensitiveCommand(Guid PostId, bool IsSensitive, string? Reason) : IRequest<PostDto>;
 
 public sealed class SetPostSensitiveCommandValidator : AbstractValidator<SetPostSensitiveCommand>
@@ -203,6 +208,7 @@ public sealed class SetPostSensitiveCommandValidator : AbstractValidator<SetPost
 public sealed class SetPostSensitiveCommandHandler(
     IPostRepository posts,
     PostViews views,
+    IMediaDirectory media,
     IModerationAuditLog audit,
     ICurrentUser caller,
     TimeProvider clock)
@@ -215,14 +221,104 @@ public sealed class SetPostSensitiveCommandHandler(
             ?? throw new NotFoundException("Post", request.PostId);
 
         var before = post.IsSensitive;
-        post.SetSensitive(request.IsSensitive, clock.GetUtcNow());
+        post.SetSensitive(request.IsSensitive, clock.GetUtcNow(), PostSensitiveSource.Moderator, caller.UserId());
         await audit.RecordAsync(
             PostsAudit.Entry(ModerationActions.SetPostSensitive, "Post", post.Id, request.Reason, $"Sensitive={before}", $"Sensitive={post.IsSensitive}"),
             cancellationToken);
         await posts.SaveChangesAsync(cancellationToken);
 
+        // After saving, and every time (safe to repeat): if moving the files fails, sending the command again retries it.
+        await media.SetSensitiveAsync(post.Media.Select(m => m.MediaId).ToList(), post.IsSensitive, cancellationToken, clearAutomatic: true);
         return await views.BuildAsync(post, caller.UserId(), cancellationToken);
     }
+}
+
+/// <summary>
+/// The sensitive-review queue: posts tagged sensitive by automatic graphic content detection, waiting for a moderator
+/// to confirm or undo the tag, oldest first. Moderators and admins. Their media are shown unblurred to moderators.
+/// </summary>
+public sealed record ListSensitiveReviewQuery(int Page = 1, int PageSize = 50) : IRequest<PagedResult<SensitiveReviewDto>>;
+
+public sealed class ListSensitiveReviewQueryValidator : AbstractValidator<ListSensitiveReviewQuery>
+{
+    public ListSensitiveReviewQueryValidator()
+    {
+        RuleFor(q => q.Page).GreaterThanOrEqualTo(1);
+        RuleFor(q => q.PageSize).InclusiveBetween(1, 100);
+    }
+}
+
+public sealed class ListSensitiveReviewQueryHandler(IPostRepository posts, PostViews views, ICurrentUser caller)
+    : IRequestHandler<ListSensitiveReviewQuery, PagedResult<SensitiveReviewDto>>
+{
+    public async Task<PagedResult<SensitiveReviewDto>> Handle(ListSensitiveReviewQuery request, CancellationToken cancellationToken)
+    {
+        caller.RequireModerator(PostsModule.ManageScope);
+        var (items, total) = await posts.ListForSensitiveReviewAsync(request.Page, request.PageSize, cancellationToken);
+        var dtos = await views.BuildAsync(items, caller.UserId(), cancellationToken);
+        return new PagedResult<SensitiveReviewDto>(
+            items.Zip(dtos, SensitiveReviewViews.ToDto).ToList(),
+            request.Page,
+            request.PageSize,
+            total);
+    }
+}
+
+/// <summary>
+/// A moderator confirms an automatic sensitive tag (<c>Confirm</c> = true; the post stays blurred) or undoes it (the
+/// post's media are published again and detection won't tag the post again). The outcome is kept on the post with the
+/// detection score, to tune the threshold, and recorded in the audit log. A reason is required.
+/// </summary>
+public sealed record ReviewSensitiveTagCommand(Guid PostId, bool Confirm, string? Reason) : IRequest<SensitiveReviewDto>;
+
+public sealed class ReviewSensitiveTagCommandValidator : AbstractValidator<ReviewSensitiveTagCommand>
+{
+    public ReviewSensitiveTagCommandValidator()
+    {
+        RuleFor(c => c.Reason).ModerationReason();
+    }
+}
+
+public sealed class ReviewSensitiveTagCommandHandler(
+    IPostRepository posts,
+    PostViews views,
+    IMediaDirectory media,
+    IModerationAuditLog audit,
+    ICurrentUser caller,
+    TimeProvider clock)
+    : IRequestHandler<ReviewSensitiveTagCommand, SensitiveReviewDto>
+{
+    public async Task<SensitiveReviewDto> Handle(ReviewSensitiveTagCommand request, CancellationToken cancellationToken)
+    {
+        caller.RequireModerator(PostsModule.ManageScope);
+        var post = await posts.GetAsync(request.PostId, cancellationToken)
+            ?? throw new NotFoundException("Post", request.PostId);
+        if (post.SensitiveReview != SensitiveReviewStatus.Pending)
+        {
+            throw PostAccess.Invalid(nameof(Post.SensitiveReview), $"This post has no automatic sensitive tag waiting for review ({post.SensitiveReview}).");
+        }
+
+        post.ReviewAutomaticSensitive(request.Confirm, caller.UserId(), clock.GetUtcNow());
+        await audit.RecordAsync(
+            PostsAudit.Entry(
+                ModerationActions.ReviewSensitiveTag,
+                "Post",
+                post.Id,
+                request.Reason,
+                $"Sensitive=True; Source=Automatic; Score={post.SensitiveScore?.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) ?? "none"}",
+                $"Sensitive={post.IsSensitive}; Review={post.SensitiveReview}"),
+            cancellationToken);
+        await posts.SaveChangesAsync(cancellationToken);
+
+        await media.SetSensitiveAsync(post.Media.Select(m => m.MediaId).ToList(), post.IsSensitive, cancellationToken, clearAutomatic: true);
+        return SensitiveReviewViews.ToDto(post, await views.BuildAsync(post, caller.UserId(), cancellationToken));
+    }
+}
+
+internal static class SensitiveReviewViews
+{
+    public static SensitiveReviewDto ToDto(Post post, PostDto dto) =>
+        new(dto, post.SensitiveScore, post.SensitiveReview, post.SensitiveReviewedAt, post.SensitiveReviewedBy);
 }
 
 /// <summary>

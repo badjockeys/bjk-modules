@@ -1,4 +1,5 @@
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
@@ -83,8 +84,11 @@ public static class MediaReview
         }
         else if (item.Status == MediaStatus.Ready)
         {
-            preview = item.PlaybackKey is null ? null : storage.PublicUrl(item.PlaybackKey);
-            thumbnail = item.ThumbnailKey is null ? null : storage.PublicUrl(item.ThumbnailKey);
+            // Moderators always see the real (blurred-for-privacy) files, signed links if they're private (sensitive).
+            var links = await MediaLinks.WithSensitiveAsync(storage, item, PreviewLifetime, clock.GetUtcNow(), cancellationToken);
+            preview = links.Playback;
+            thumbnail = links.Thumbnail;
+            expires = links.ExpiresAt;
         }
 
         return new MediaReviewDto(
@@ -208,6 +212,7 @@ public sealed record ApproveMediaCommand(Guid MediaId) : IRequest<MediaReviewDto
 public sealed class ApproveMediaCommandHandler(
     IMediaRepository media,
     IMediaStorage storage,
+    IMediaJobQueue queue,
     IModerationAuditLog audit,
     ICurrentUser caller,
     TimeProvider clock)
@@ -219,28 +224,42 @@ public sealed class ApproveMediaCommandHandler(
         var item = await MediaReview.GetAsync(media, request.MediaId, cancellationToken);
         MediaReview.EnsureNeedsReview(item);
 
-        var (playbackType, thumbnailType) = item.MediaType == MediaType.Video
-            ? ("video/mp4", "image/jpeg")
-            : ("image/webp", "image/webp");
-
-        // Publish first: if copying fails the media stays in review and approving can be retried.
-        await storage.PublishPrivateAsync(
-            MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision),
-            MediaKeys.Playback(item.UserId, item.Id, item.MediaType, item.Revision),
-            playbackType,
-            cancellationToken);
-        await storage.PublishPrivateAsync(
-            MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision),
-            MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, item.Revision),
-            thumbnailType,
-            cancellationToken);
-
+        var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
         var reviewFiles = (Playback: MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision),
             Thumbnail: MediaKeys.ReviewThumbnail(item.UserId, item.Id, item.MediaType, item.Revision));
+        var published = (Playback: MediaKeys.Playback(item.UserId, item.Id, item.MediaType, item.Revision),
+            Thumbnail: MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, item.Revision));
+
+        // Sensitive media (its post is tagged sensitive) is never published: the files go to the sensitive bucket, and
+        // the worker makes the blurred preview. Copy first: if copying fails the media stays in review and approving
+        // can be retried.
+        var sensitive = await media.IsSensitiveAsync(item.Id, cancellationToken);
+        if (sensitive)
+        {
+            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Playback, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Playback), playbackType, cancellationToken);
+            await storage.CopyAsync(MediaBucket.Originals, reviewFiles.Thumbnail, MediaBucket.Sensitive, MediaKeys.Sensitive(published.Thumbnail), thumbnailType, cancellationToken);
+        }
+        else
+        {
+            await storage.PublishPrivateAsync(reviewFiles.Playback, published.Playback, playbackType, cancellationToken);
+            await storage.PublishPrivateAsync(reviewFiles.Thumbnail, published.Thumbnail, thumbnailType, cancellationToken);
+        }
+
         item.Approve(caller.UserId(), clock.GetUtcNow());
+        if (sensitive)
+        {
+            item.Restrict(previewKey: null, clock.GetUtcNow());
+        }
+
         await media.SaveChangesAsync(cancellationToken);
         await storage.DeleteOriginalAsync(reviewFiles.Playback, cancellationToken);
         await storage.DeleteOriginalAsync(reviewFiles.Thumbnail, cancellationToken);
+
+        // The preview is made by the worker; a job also moves the files if the post was tagged or untagged meanwhile.
+        if (sensitive || await media.IsSensitiveAsync(item.Id, cancellationToken))
+        {
+            await queue.EnqueueAsync(MediaProcessingJob.ForVisibility(item), cancellationToken);
+        }
 
         await audit.RecordAsync(
             new ModerationAuditEntry(
@@ -364,11 +383,13 @@ public sealed class AddManualRedactionsCommandHandler(
         // review copies. Cloudflare may keep serving a cached public file until it's purged.
         if (item.Status == MediaStatus.Ready)
         {
-            var published = new[] { item.PlaybackKey, item.ThumbnailKey }.OfType<string>().ToList();
+            var published = new[] { item.PlaybackKey, item.ThumbnailKey, item.PreviewKey }.OfType<string>().ToList();
             if (published.Count > 0)
             {
                 await storage.DeletePublicAsync(published, cancellationToken);
             }
+
+            await MediaFiles.DeleteSensitiveCopiesAsync(storage, item, cancellationToken);
         }
         else
         {

@@ -50,8 +50,11 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.MediaState).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.MediaFailureReason).HasMaxLength(Post.MediaFailureReasonMaxLength);
         builder.Property(p => p.NotifyEmail).HasMaxLength(Post.NotifyEmailMaxLength);
+        builder.Property(p => p.SensitiveSource).HasConversion<string>().HasMaxLength(20);
+        builder.Property(p => p.SensitiveReview).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.RowVersion).IsRowVersion();
         builder.Ignore(p => p.IsMediaPending);
+        builder.Ignore(p => p.AuthorMayRemoveSensitive);
 
         builder.HasMany(p => p.Media)
             .WithOne()
@@ -67,6 +70,9 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
 
         // The content screening queues (held, flagged).
         builder.HasIndex(p => new { p.IsFlagged, p.Status, p.CreatedAt });
+
+        // The sensitive-review queue (automatic tags waiting for a moderator).
+        builder.HasIndex(p => new { p.SensitiveReview, p.CreatedAt });
     }
 }
 

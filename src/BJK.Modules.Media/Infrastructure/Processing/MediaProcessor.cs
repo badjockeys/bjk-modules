@@ -3,6 +3,7 @@ using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -27,7 +28,10 @@ public enum ProcessingOutcome
 /// Turns one uploaded original into the published files: downloads it, checks it, blurs faces and number plates
 /// (<see cref="IMediaRedactor"/>), converts it with ffmpeg (stripping metadata such as GPS, and the soundtrack), then
 /// either publishes the results and marks the media Ready, or, if detection failed or wasn't sure, keeps them in the
-/// private bucket and marks it NeedsReview for a moderator. Thumbnails are always made from the blurred files.
+/// private bucket and marks it NeedsReview for a moderator. Thumbnails are always made from the blurred files. Media
+/// marked sensitive (in a post tagged sensitive) is Ready with its files in the sensitive bucket instead, and only a
+/// heavily blurred preview in the public bucket; <see cref="MediaJobStep.Visibility"/> jobs move the files when the
+/// mark changes later.
 /// </summary>
 /// <remarks>
 /// Videos longer than <see cref="MediaProcessingOptions.SegmentSeconds"/> are split: the first job plans the segments
@@ -47,7 +51,9 @@ internal sealed partial class MediaProcessor(
     IOptions<MediaProcessingOptions> processingOptions,
     IOptions<MediaRedactionOptions> redactionOptions,
     TimeProvider clock,
-    ILogger<MediaProcessor> logger)
+    ILogger<MediaProcessor> logger,
+    IMediaCachePurger? cachePurger = null,
+    IOptions<SensitiveDetectionOptions>? detectionOptions = null)
 {
     private const string UnreadableReason = "We couldn't read this file. Try exporting it from your dashcam app again.";
     private const string GaveUpReason = "Processing failed. Try uploading the file again.";
@@ -55,6 +61,9 @@ internal sealed partial class MediaProcessor(
     private readonly MediaOptions _limits = mediaOptions.Value;
     private readonly MediaProcessingOptions _options = processingOptions.Value;
     private readonly MediaRedactionOptions _redaction = redactionOptions.Value;
+    private readonly SensitiveDetectionOptions _detection = detectionOptions?.Value ?? new SensitiveDetectionOptions();
+    private readonly IMediaCachePurger _purger = cachePurger ?? new LoggingMediaCachePurger(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<LoggingMediaCachePurger>.Instance);
 
     /// <param name="job">The queue message.</param>
     /// <param name="isLastAttempt">If true, a temporary failure marks the media Failed instead of retrying.</param>
@@ -69,6 +78,7 @@ internal sealed partial class MediaProcessor(
         {
             MediaJobStep.Segment => ProcessSegmentAsync(job, isLastAttempt, isRedelivery, cancellationToken),
             MediaJobStep.Assemble => AssembleAsync(job, isLastAttempt, cancellationToken),
+            MediaJobStep.Visibility => ReconcileVisibilityAsync(job, cancellationToken),
             _ => ProcessMediaAsync(job, isLastAttempt, cancellationToken),
         };
 
@@ -139,6 +149,7 @@ internal sealed partial class MediaProcessor(
 
         var duration = item.MediaType == MediaType.Video ? probe.DurationSeconds : null;
         item.RecordRedaction(redaction.FacesBlurred, redaction.PlatesBlurred);
+        await ApplySensitiveScoreAsync(item, redaction.SensitiveScore, cancellationToken);
         var outcome = await PublishAsync(
             item,
             playback,
@@ -149,14 +160,38 @@ internal sealed partial class MediaProcessor(
             cancellationToken);
 
         logger.LogInformation(
-            "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames).",
+            "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames); {Classified} frames scored for graphic content in {ClassificationTime}.",
             item.Id,
             item.Status,
             redaction.FacesBlurred,
             redaction.PlatesBlurred,
             redaction.Elapsed,
-            redaction.Frames);
+            redaction.Frames,
+            redaction.FramesClassified,
+            redaction.ClassificationTime);
         return outcome;
+    }
+
+    /// <summary>
+    /// Records the graphic content score and, at or above <see cref="SensitiveDetectionOptions.Threshold"/>, marks the
+    /// media sensitive automatically. Called before publishing, which reads the mark, so flagged media is never public.
+    /// </summary>
+    private async Task ApplySensitiveScoreAsync(MediaItem item, double? score, CancellationToken cancellationToken)
+    {
+        item.RecordSensitiveScore(score);
+        if (score is not { } value || !_detection.Enabled || value < _detection.Threshold)
+        {
+            return;
+        }
+
+        var marked = await media.SetSensitiveAsync(
+            item.Id, isSensitive: true, clock.GetUtcNow(), cancellationToken, SensitiveMarkSource.Automatic, Math.Round(value, 4));
+        logger.LogInformation(
+            "Media {MediaId} scored {Score:0.000} for graphic content (threshold {Threshold}); {Action}.",
+            item.Id,
+            value,
+            _detection.Threshold,
+            marked ? "marked sensitive automatically" : "it was already marked sensitive");
     }
 
     /// <summary>Why the media must be reviewed: the redactor's reasons plus any manual regions, without repeats.</summary>
@@ -185,12 +220,14 @@ internal sealed partial class MediaProcessor(
         Action? beforeSave,
         CancellationToken cancellationToken)
     {
-        var (playbackType, thumbnailType) = item.MediaType == MediaType.Video
-            ? ("video/mp4", "image/jpeg")
-            : ("image/webp", "image/webp");
+        var (playbackType, thumbnailType) = MediaFiles.ContentTypes(item.MediaType);
         var revision = item.Revision;
         string playbackKey;
         string thumbnailKey;
+        string? previewKey = null;
+
+        // Media in a post tagged sensitive is never published: real files to the sensitive bucket, a blurred preview to the public one.
+        var sensitive = reasons.Count == 0 && await media.IsSensitiveAsync(item.Id, cancellationToken);
         if (reasons.Count > 0)
         {
             // Not public until a moderator approves: the blurred files wait in the private bucket.
@@ -199,6 +236,17 @@ internal sealed partial class MediaProcessor(
             await storage.UploadPrivateAsync(playbackKey, playback, playbackType, cancellationToken);
             await storage.UploadPrivateAsync(thumbnailKey, thumbnail, thumbnailType, cancellationToken);
             item.MarkNeedsReview(string.Join(" ", reasons), new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
+        }
+        else if (sensitive)
+        {
+            playbackKey = MediaKeys.Sensitive(MediaKeys.Playback(item.UserId, item.Id, item.MediaType, revision));
+            thumbnailKey = MediaKeys.Sensitive(MediaKeys.Thumbnail(item.UserId, item.Id, item.MediaType, revision));
+            await storage.UploadAsync(MediaBucket.Sensitive, playbackKey, playback, playbackType, cancellationToken);
+            await storage.UploadAsync(MediaBucket.Sensitive, thumbnailKey, thumbnail, thumbnailType, cancellationToken);
+            previewKey = MediaKeys.Preview(item.UserId, item.Id, revision);
+            await UploadPreviewAsync(thumbnail, previewKey, cancellationToken);
+            item.MarkReady(new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
+            item.Restrict(previewKey, clock.GetUtcNow());
         }
         else
         {
@@ -231,13 +279,34 @@ internal sealed partial class MediaProcessor(
                 await storage.DeleteOriginalAsync(playbackKey, CancellationToken.None);
                 await storage.DeleteOriginalAsync(thumbnailKey, CancellationToken.None);
             }
+            else if (sensitive)
+            {
+                await storage.DeleteAsync(MediaBucket.Sensitive, [playbackKey, thumbnailKey], CancellationToken.None);
+                await storage.DeleteAsync(MediaBucket.Public, [previewKey!], CancellationToken.None);
+            }
             else
             {
                 await storage.DeletePublicAsync([playbackKey, thumbnailKey], CancellationToken.None);
             }
+
+            return ProcessingOutcome.Completed;
+        }
+
+        if (reasons.Count == 0)
+        {
+            // The post may have been tagged or untagged while we worked: if the mark changed, move the files now.
+            await CatchUpVisibilityAsync(item, sensitive, cancellationToken);
         }
 
         return ProcessingOutcome.Completed;
+    }
+
+    /// <summary>Makes sensitive media's blurred preview from its (already blurred) thumbnail and publishes it.</summary>
+    private async Task UploadPreviewAsync(string thumbnailPath, string previewKey, CancellationToken cancellationToken)
+    {
+        var preview = Path.Combine(Path.GetDirectoryName(thumbnailPath) ?? Path.GetTempPath(), MediaKeys.PreviewFile);
+        await transcoder.CreateSensitivePreviewAsync(thumbnailPath, preview, cancellationToken);
+        await storage.UploadAsync(MediaBucket.Public, previewKey, preview, "image/webp", cancellationToken);
     }
 
     /// <summary>

@@ -16,15 +16,25 @@ internal static class PostAccess
     public static bool IsAuthor(Post post, ICurrentUser caller) =>
         caller.UserId() is { } userId && post.IsOwnedBy(userId);
 
-    /// <summary>Logged-out viewers (and machine tokens): no comments, no sensitive posts.</summary>
+    /// <summary>Logged-out viewers (and machine tokens): no comments, and sensitive posts' media only blurred.</summary>
     public static bool IsSignedOut(ICurrentUser caller) => caller.UserId() is null;
 
     /// <summary>
-    /// Anyone sees public posts, except that logged-out viewers never see sensitive ones; authors also see their own
-    /// hidden and held ones.
+    /// Anyone sees public posts, sensitive ones included (their media blurred, see <see cref="MayViewSensitiveMedia"/>);
+    /// authors also see their own hidden and held ones.
     /// </summary>
-    public static bool CanSee(Post post, ICurrentUser caller) =>
-        (post.IsPublic && !(post.IsSensitive && IsSignedOut(caller))) || IsAuthor(post, caller);
+    public static bool CanSee(Post post, ICurrentUser caller) => post.IsPublic || IsAuthor(post, caller);
+
+    /// <summary>
+    /// Whether the caller gets the real photos and video of a sensitive post: a signed-in, age-verified adult (token
+    /// claim <c>age_verified</c> = "true"), the post's author, or a moderator (with or without the claim). Everyone
+    /// else gets the blurred previews.
+    /// </summary>
+    /// <param name="post">The post.</param>
+    /// <param name="caller">The caller.</param>
+    /// <param name="viewerId">The caller's user id, if signed in.</param>
+    public static bool MayViewSensitiveMedia(Post post, ICurrentUser caller, Guid? viewerId) =>
+        IsModerator(caller) || (viewerId is { } id && (post.AuthorId == id || caller.AgeVerified));
 
     /// <summary>A 404 if the viewer has blocked the post's author: blocked users' posts are hidden from them.</summary>
     public static async Task EnsureAuthorNotBlockedByViewerAsync(

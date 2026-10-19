@@ -16,9 +16,10 @@ internal sealed class PostsModerationAuditLog(IModerationAuditRepository records
     public async Task RecordAsync(ModerationAuditEntry entry, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        var system = !string.IsNullOrWhiteSpace(entry.SystemActor);
         records.Add(ModerationAuditRecord.Create(
-            caller.UserId(),
-            ModerationActor.RoleOf(caller),
+            system ? null : caller.UserId(),
+            system ? entry.SystemActor! : ModerationActor.RoleOf(caller),
             entry.Module,
             entry.Action,
             entry.TargetType,
