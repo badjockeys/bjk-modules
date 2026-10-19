@@ -42,7 +42,7 @@ public sealed class CompleteUploadCommandHandler(
         if (file.SizeBytes > limit)
         {
             await storage.DeleteOriginalAsync(item.OriginalKey, cancellationToken);
-            item.MarkFailed($"The file is {file.SizeBytes / (1024 * 1024)} MB; the limit is {limit / (1024 * 1024)} MB.", clock.GetUtcNow());
+            item.MarkFailed(options.Value.TooBigMessage(item.MediaType, file.SizeBytes), clock.GetUtcNow());
             await media.SaveChangesAsync(cancellationToken);
             throw Invalid(item.FailureReason!);
         }

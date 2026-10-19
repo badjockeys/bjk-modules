@@ -1,19 +1,63 @@
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Shared.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace BJK.Modules.Media.Infrastructure.Data;
 
-/// <summary>The Media module's tables, in the <see cref="MediaModule.Schema"/> schema of the app database.</summary>
+/// <summary>
+/// The Media module's tables, in the <see cref="MediaModule.Schema"/> schema of the app database. When it saves, every
+/// media status change other modules should hear about (<see cref="MediaItem.TakeStatusChanges"/>) becomes a
+/// <c>media.ready</c> or <c>media.failed</c> message in <c>media.Outbox</c>, in the same transaction, which the API host
+/// then publishes to the <see cref="MediaEvents.Exchange"/> exchange.
+/// </summary>
 public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : DbContext(options)
 {
     public DbSet<MediaItem> Media => Set<MediaItem>();
+
+    public DbSet<VideoJob> VideoJobs => Set<VideoJob>();
+
+    public DbSet<VideoSegment> VideoSegments => Set<VideoSegment>();
+
+    public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AddStatusEventsToOutbox();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AddStatusEventsToOutbox();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(MediaModule.Schema);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MediaDbContext).Assembly);
+        modelBuilder.AddOutbox();
+    }
+
+    private void AddStatusEventsToOutbox()
+    {
+        foreach (var item in ChangeTracker.Entries<MediaItem>().Select(e => e.Entity).ToList())
+        {
+            foreach (var change in item.TakeStatusChanges())
+            {
+                var mediaEvent = new MediaEvent(
+                    Guid.CreateVersion7(change.At),
+                    item.Id,
+                    item.UserId,
+                    change.Status == MediaStatus.Ready ? MediaEventType.Ready : MediaEventType.Failed,
+                    change.Reason,
+                    change.At);
+                Outbox.Add(OutboxMessage.For(mediaEvent.EventId, mediaEvent.MessageType, mediaEvent, change.At));
+            }
+        }
     }
 }
 
@@ -47,6 +91,39 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
 
         // Clean-up jobs, e.g. uploads abandoned in the Uploading state.
         builder.HasIndex(m => new { m.Status, m.CreatedAt });
+    }
+}
+
+internal sealed class VideoJobConfiguration : IEntityTypeConfiguration<VideoJob>
+{
+    public void Configure(EntityTypeBuilder<VideoJob> builder)
+    {
+        builder.ToTable("VideoJobs");
+        builder.HasKey(j => new { j.MediaId, j.Revision });
+        builder.Ignore(j => j.Plan);
+        builder.Ignore(j => j.SegmentCount);
+
+        // Removed with the media row (e.g. when an account is permanently deleted).
+        builder.HasOne<MediaItem>().WithMany().HasForeignKey(j => j.MediaId).OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(j => j.Segments)
+            .WithOne()
+            .HasForeignKey(s => new { s.MediaId, s.Revision })
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(j => j.Segments).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class VideoSegmentConfiguration : IEntityTypeConfiguration<VideoSegment>
+{
+    public void Configure(EntityTypeBuilder<VideoSegment> builder)
+    {
+        builder.ToTable("VideoSegments");
+        builder.HasKey(s => new { s.MediaId, s.Revision, s.Index });
+        builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(s => s.ReviewReasons).HasMaxLength(VideoSegment.ReviewReasonsMaxLength);
+        builder.Ignore(s => s.IsDone);
+        builder.Ignore(s => s.ReviewReasonList);
     }
 }
 

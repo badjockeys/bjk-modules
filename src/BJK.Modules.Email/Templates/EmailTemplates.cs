@@ -107,6 +107,20 @@ public static class EmailTemplates
                 : "We've looked again and the original decision stands. Your content will stay hidden.")
             .Note("This was your one appeal for this decision. Our rules are in the Bad Jockeys terms of use."));
 
+    /// <summary>
+    /// Sent when a post made while its photos or video were still processing can't be published, because one of them
+    /// failed processing, was rejected by a moderator or was deleted.
+    /// </summary>
+    /// <param name="postTitle">The post's title, so the author knows which one.</param>
+    /// <param name="reason">Why, as shown on the post (e.g. "Videos can be up to 30 seconds long...").</param>
+    public static EmailTemplate PostNotPublished(string postTitle, string reason) => new(
+        "Your Bad Jockeys post couldn't be published",
+        BrandedEmail.Create("Your post couldn't be published")
+            .Paragraph($"We couldn't publish your post \u201c{postTitle}\u201d because one of its photos or videos couldn't be used:")
+            .Paragraph(reason)
+            .Paragraph("Nobody else can see the post. You can delete it from My posts, then upload the photos or video again and post it once more.")
+            .Note("You're getting this email because you posted on Bad Jockeys before your photos or video had finished processing."));
+
     private const string ReportFooter = "You're getting this email because you reported content on Bad Jockeys.";
 
     private static string Hours(TimeSpan duration)

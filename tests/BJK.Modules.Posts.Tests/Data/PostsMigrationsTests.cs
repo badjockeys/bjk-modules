@@ -65,4 +65,19 @@ public sealed class PostsMigrationsTests
 
         Assert.Equal("[ReporterId] IS NOT NULL", unique.GetFilter());
     }
+
+    [Fact]
+    public void Existing_posts_count_as_having_ready_media()
+    {
+        using var db = new PostsDbContextDesignTimeFactory().CreateDbContext([]);
+        var migrationsAssembly = db.GetService<IMigrationsAssembly>();
+
+        var addMediaState = migrationsAssembly.Migrations
+            .Select(m => migrationsAssembly.CreateMigration(m.Value, db.Database.ProviderName!))
+            .SelectMany(m => m.UpOperations)
+            .OfType<AddColumnOperation>()
+            .Single(op => op.Table == "Posts" && op.Name == nameof(Post.MediaState));
+
+        Assert.Equal(nameof(PostMediaState.Ready), addMediaState.DefaultValue);
+    }
 }

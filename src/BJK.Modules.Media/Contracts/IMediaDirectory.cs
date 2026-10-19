@@ -16,6 +16,16 @@ public interface IMediaDirectory
 }
 
 /// <summary>A piece of media as other modules see it. The URLs are only set once it's Ready.</summary>
+/// <param name="Id">Media id.</param>
+/// <param name="UserId">The uploader.</param>
+/// <param name="MediaType">Video or Image.</param>
+/// <param name="Status">Where it is in processing.</param>
+/// <param name="PlaybackUrl">The published file, once Ready.</param>
+/// <param name="ThumbnailUrl">Its thumbnail, once Ready.</param>
+/// <param name="DurationSeconds">Video length.</param>
+/// <param name="Width">Width as seen.</param>
+/// <param name="Height">Height as seen.</param>
+/// <param name="FailureReason">Why it failed (shown to the uploader), when Failed.</param>
 public sealed record MediaSummary(
     Guid Id,
     Guid UserId,
@@ -25,7 +35,11 @@ public sealed record MediaSummary(
     Uri? ThumbnailUrl,
     decimal? DurationSeconds,
     int? Width,
-    int? Height)
+    int? Height,
+    string? FailureReason = null)
 {
     public bool IsReady => Status == MediaStatus.Ready;
+
+    /// <summary>Still being processed or waiting for a moderator: it may yet become Ready.</summary>
+    public bool IsPending => Status is MediaStatus.Processing or MediaStatus.NeedsReview;
 }

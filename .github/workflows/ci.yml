@@ -16,6 +16,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # For the SQL Server tests (migrations apply; outbox and segment progress updates under concurrency).
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Ci-Passw0rd-2026
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Ci-Passw0rd-2026 -C -Q 'SELECT 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@v5
 
@@ -47,6 +59,7 @@ jobs:
       - name: Test
         env:
           BJK_REDACTION_MODELS: ${{ runner.temp }}/models
+          BJK_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Ci-Passw0rd-2026;TrustServerCertificate=True;Encrypt=False"
         run: |
           set -o pipefail
           if ! dotnet test --solution BJK.Modules.slnx --configuration Release --no-build 2>&1 | tee test-output.txt; then
@@ -54,13 +67,15 @@ jobs:
             grep -iE "error|fail|exception" test-output.txt | head -40 | sed 's/^/::error::/'
             exit 1
           fi
+          # The test totals (passed, skipped), as notices on the PR.
+          grep -E "Test run summary|total:|succeeded:|skipped:" test-output.txt | tail -9 | sed 's/^ */::notice::/' || true
 
       # The Media tests again, alone, with the timed runs of the real models switched on, so nothing else competes
       # for the CPU. Timings are written to the job summary and shown as notices.
       - name: Redaction timing
         env:
           BJK_REDACTION_MODELS: ${{ runner.temp }}/models
-          BJK_REDACTION_PERF_SECONDS: "60"
+          BJK_REDACTION_PERF_SECONDS: "30"
           BJK_REDACTION_TIMING_FILE: ${{ runner.temp }}/redaction-timing.txt
         run: |
           dotnet test --project tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj --configuration Release --no-build > timing-output.txt 2>&1 || { tail -40 timing-output.txt; exit 1; }

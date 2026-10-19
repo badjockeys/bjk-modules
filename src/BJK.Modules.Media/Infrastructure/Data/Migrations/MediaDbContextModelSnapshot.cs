@@ -38,12 +38,12 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasPrecision(9, 3)
                         .HasColumnType("decimal(9,3)");
 
+                    b.Property<int?>("FacesBlurred")
+                        .HasColumnType("int");
+
                     b.Property<string>("FailureReason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
-
-                    b.Property<int?>("FacesBlurred")
-                        .HasColumnType("int");
 
                     b.Property<int?>("Height")
                         .HasColumnType("int");
@@ -77,15 +77,15 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<long?>("OriginalSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("PlatesBlurred")
+                        .HasColumnType("int");
+
                     b.Property<string>("PlaybackKey")
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
                     b.Property<long?>("PlaybackSizeBytes")
                         .HasColumnType("bigint");
-
-                    b.Property<int?>("PlatesBlurred")
-                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("ProcessedAt")
                         .HasColumnType("datetimeoffset");
@@ -145,6 +145,146 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("Media", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>
+                {
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("AssembleQueuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("AssembledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("FirstFrame")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("FrameRate")
+                        .HasColumnType("float");
+
+                    b.Property<int>("FramesPerSegment")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OverlapFrames")
+                        .HasColumnType("int");
+
+                    b.HasKey("MediaId", "Revision");
+
+                    b.ToTable("VideoJobs", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.VideoSegment", b =>
+                {
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("ElapsedMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("EndFrame")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FacesBlurred")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Frames")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PlatesBlurred")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewReasons")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("StartFrame")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("MediaId", "Revision", "Index");
+
+                    b.ToTable("VideoSegments", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Shared.Messaging.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublishedAt", "OccurredAt");
+
+                    b.ToTable("Outbox", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>
+                {
+                    b.HasOne("BJK.Modules.Media.Domain.MediaItem", null)
+                        .WithMany()
+                        .HasForeignKey("MediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.VideoSegment", b =>
+                {
+                    b.HasOne("BJK.Modules.Media.Domain.VideoJob", null)
+                        .WithMany("Segments")
+                        .HasForeignKey("MediaId", "Revision")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>
+                {
+                    b.Navigation("Segments");
                 });
 #pragma warning restore 612, 618
         }

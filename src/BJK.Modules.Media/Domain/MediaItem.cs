@@ -16,6 +16,9 @@ public sealed class MediaItem
 
     private static readonly JsonSerializerOptions RedactionJson = new(JsonSerializerDefaults.Web);
 
+    // Status changes other modules hear about (media.ready / media.failed); turned into outbox rows when saved.
+    private readonly List<MediaStatusChange> _statusChanges = [];
+
     // For EF Core.
     private MediaItem()
     {
@@ -169,6 +172,7 @@ public sealed class MediaItem
         ThumbnailKey = MediaKeys.Thumbnail(UserId, Id, MediaType, Revision);
         ReviewReason = null;
         Status = MediaStatus.Ready;
+        _statusChanges.Add(new MediaStatusChange(MediaStatus.Ready, null, now));
     }
 
     /// <summary>Records how many faces and plates the worker blurred. Called before <see cref="MarkReady"/> or <see cref="MarkNeedsReview"/>.</summary>
@@ -221,6 +225,7 @@ public sealed class MediaItem
         ReviewedAt = now;
         Status = MediaStatus.Ready;
         UpdatedAt = now;
+        _statusChanges.Add(new MediaStatusChange(MediaStatus.Ready, null, now));
     }
 
     /// <summary>A moderator rejected it: it becomes <see cref="MediaStatus.Failed"/> with the reason, which the uploader sees.</summary>
@@ -285,9 +290,14 @@ public sealed class MediaItem
             return;
         }
 
+        var wasFailed = Status == MediaStatus.Failed;
         FailureReason = reason.Length <= FailureReasonMaxLength ? reason : reason[..FailureReasonMaxLength];
         Status = MediaStatus.Failed;
         UpdatedAt = now;
+        if (!wasFailed)
+        {
+            _statusChanges.Add(new MediaStatusChange(MediaStatus.Failed, FailureReason, now));
+        }
     }
 
     public void Delete(DateTimeOffset now)
@@ -297,8 +307,47 @@ public sealed class MediaItem
             return;
         }
 
+        // Deleted before it was ready: anything waiting for it (a post) will never get it.
+        var wasPending = Status is MediaStatus.Uploading or MediaStatus.Processing or MediaStatus.NeedsReview;
         Status = MediaStatus.Deleted;
         DeletedAt = now;
+        UpdatedAt = now;
+        if (wasPending)
+        {
+            _statusChanges.Add(new MediaStatusChange(MediaStatus.Deleted, DeletedReason, now));
+        }
+    }
+
+    /// <summary>The reason given to waiting posts when media is deleted before it was ready.</summary>
+    public const string DeletedReason = "The photo or video was deleted before it finished processing.";
+
+    /// <summary>
+    /// Status changes since the last call that other modules should hear about (Ready, Failed, or deleted before it
+    /// was ready), oldest first. The database context turns them into outbox messages when it saves.
+    /// </summary>
+    public IReadOnlyList<MediaStatusChange> TakeStatusChanges()
+    {
+        var changes = _statusChanges.ToList();
+        _statusChanges.Clear();
+        return changes;
+    }
+
+    /// <summary>
+    /// Records what ffprobe and the download found, before the video is split into segments, so the final step has
+    /// them. The status doesn't change.
+    /// </summary>
+    /// <param name="durationSeconds">Video length.</param>
+    /// <param name="width">Width as seen.</param>
+    /// <param name="height">Height as seen.</param>
+    /// <param name="sha256">SHA-256 of the original.</param>
+    /// <param name="now">The time.</param>
+    public void RecordProbe(decimal? durationSeconds, int? width, int? height, string? sha256, DateTimeOffset now)
+    {
+        EnsureStatus(MediaStatus.Processing);
+        DurationSeconds = durationSeconds;
+        Width = width;
+        Height = height;
+        Sha256 = sha256;
         UpdatedAt = now;
     }
 
@@ -316,3 +365,9 @@ public sealed class MediaItem
         return name.Length <= OriginalFileNameMaxLength ? name : name[..OriginalFileNameMaxLength];
     }
 }
+
+/// <summary>A status change other modules should hear about.</summary>
+/// <param name="Status">Ready, Failed or Deleted.</param>
+/// <param name="Reason">Why it failed or was removed, for the uploader.</param>
+/// <param name="At">When.</param>
+public sealed record MediaStatusChange(MediaStatus Status, string? Reason, DateTimeOffset At);

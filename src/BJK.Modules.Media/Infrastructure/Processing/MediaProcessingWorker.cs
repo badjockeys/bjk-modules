@@ -12,7 +12,8 @@ namespace BJK.Modules.Media.Infrastructure.Processing;
 
 /// <summary>
 /// Reads processing jobs from the <c>media.process</c> queue and runs each through <see cref="MediaProcessor"/>.
-/// Several workers can run side by side; RabbitMQ gives each job to one of them. A job that keeps failing is tried
+/// Several workers can run side by side; RabbitMQ gives each job to one of them, so the segments of one longer video
+/// are processed by several replicas at once. A job that keeps failing is tried
 /// <see cref="MediaQueueTopology.MaxDeliveries"/> times; the last attempt marks the media Failed, so nothing is left
 /// stuck at Processing.
 /// </summary>
@@ -96,7 +97,7 @@ internal sealed class MediaProcessingWorker(
         {
             await using var scope = scopes.CreateAsyncScope();
             var processor = scope.ServiceProvider.GetRequiredService<MediaProcessor>();
-            outcome = await processor.ProcessAsync(job, isLastAttempt, stoppingToken);
+            outcome = await processor.ProcessAsync(job, isLastAttempt, stoppingToken, isRedelivery: delivery.Redelivered || attempt > 1);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -106,7 +107,7 @@ internal sealed class MediaProcessingWorker(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Media job {MediaId} failed unexpectedly (attempt {Attempt}).", job.MediaId, attempt);
+            logger.LogError(ex, "Media job {MediaId} ({Step}) failed unexpectedly (attempt {Attempt}).", job.MediaId, job.Step, attempt);
             outcome = ProcessingOutcome.Retry;
         }
 

@@ -41,6 +41,16 @@ public static class MediaKeys
     public static string ReviewThumbnail(Guid userId, Guid mediaId, MediaType type, int revision = 0) =>
         $"{Folder(userId, mediaId)}/{ReviewFolder}/{Revised(type == MediaType.Video ? VideoThumbnailFile : ImageThumbnailFile, revision)}";
 
+    /// <summary>Sub-folder, in the private originals bucket, for blurred video segments waiting to be joined.</summary>
+    public const string SegmentsFolder = "segments";
+
+    /// <summary>
+    /// One blurred segment of a video being processed in parts, in the private originals bucket, e.g.
+    /// <c>{userId}/{mediaId}/segments/r0/002.mp4</c>. Removed once the segments are joined (and by the 90-day rule).
+    /// </summary>
+    public static string Segment(Guid userId, Guid mediaId, int revision, int index) =>
+        $"{Folder(userId, mediaId)}/{SegmentsFolder}/r{revision}/{index:D3}.mp4";
+
     /// <summary><c>720p.mp4</c> for revision 0, <c>720p-r2.mp4</c> for revision 2.</summary>
     private static string Revised(string fileName, int revision) =>
         revision <= 0 ? fileName : $"{Path.GetFileNameWithoutExtension(fileName)}-r{revision}{Path.GetExtension(fileName)}";

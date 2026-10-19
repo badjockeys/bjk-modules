@@ -4,9 +4,10 @@ using Microsoft.ML.OnnxRuntime;
 namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 
 /// <summary>
-/// Shared plumbing for detectors that run an ONNX model with ONNX Runtime on the CPU. The model is loaded on first
-/// use; if the path isn't set, the file is missing or it won't load, the detector reports itself unavailable (and the
-/// media goes to review) rather than failing the job.
+/// Shared plumbing for detectors that run an ONNX model with ONNX Runtime, on the CPU by default
+/// (<see cref="MediaRedactionOptions.ExecutionProvider"/>). The model is loaded on first use; if the path isn't set,
+/// the file is missing or it won't load (including a GPU provider the installed ONNX Runtime package doesn't have), the
+/// detector reports itself unavailable (and the media goes to review) rather than failing the job.
 /// </summary>
 internal abstract class OnnxDetector : IRedactionDetector, IDisposable
 {
@@ -17,13 +18,15 @@ internal abstract class OnnxDetector : IRedactionDetector, IDisposable
 
     /// <param name="modelPath">The .onnx file, or null if not configured.</param>
     /// <param name="settingName">Configuration key, named in the reason when it's missing.</param>
-    /// <param name="threads">ONNX Runtime threads; 0 lets it decide.</param>
+    /// <param name="options">Threads and execution provider.</param>
     /// <param name="logger">For load failures.</param>
-    protected OnnxDetector(string? modelPath, string settingName, int threads, ILogger logger)
+    protected OnnxDetector(string? modelPath, string settingName, MediaRedactionOptions options, ILogger logger)
     {
         _modelPath = modelPath;
         _logger = logger;
-        _session = new Lazy<InferenceSession?>(() => Load(settingName, threads), LazyThreadSafetyMode.ExecutionAndPublication);
+        _session = new Lazy<InferenceSession?>(
+            () => Load(settingName, options.EffectiveInferenceThreads, options.ExecutionProvider, options.CudaDeviceId),
+            LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public abstract RedactionTarget Target { get; }
@@ -74,7 +77,7 @@ internal abstract class OnnxDetector : IRedactionDetector, IDisposable
         return results;
     }
 
-    private InferenceSession? Load(string settingName, int threads)
+    private InferenceSession? Load(string settingName, int threads, RedactionExecutionProvider provider, int deviceId)
     {
         if (string.IsNullOrWhiteSpace(_modelPath))
         {
@@ -99,12 +102,26 @@ internal abstract class OnnxDetector : IRedactionDetector, IDisposable
 
             // ffmpeg runs alongside on the same cores; idle ONNX Runtime threads mustn't spin and steal its CPU.
             options.AddSessionConfigEntry("session.intra_op.allow_spinning", "0");
-            return new InferenceSession(_modelPath, options);
+
+            if (provider == RedactionExecutionProvider.Cuda)
+            {
+                // Only the Microsoft.ML.OnnxRuntime.Gpu package (a GPU worker image) has the CUDA provider; the CPU
+                // package throws here, and the detector is then unavailable, so nothing is published unchecked.
+                options.AppendExecutionProvider_CUDA(deviceId);
+            }
+
+            var session = new InferenceSession(_modelPath, options);
+            _logger.LogInformation(
+                "Loaded the {Target} detection model on {Provider} with {Threads} threads.", Target, provider, threads);
+            return session;
         }
-        catch (Exception ex) when (ex is OnnxRuntimeException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is OnnxRuntimeException or IOException or UnauthorizedAccessException
+            or EntryPointNotFoundException or DllNotFoundException or NotSupportedException)
         {
-            _unavailableReason = $"The {Target} detection model couldn't be loaded.";
-            _logger.LogError(ex, "Couldn't load the {Target} detection model {Path}; media will go to review.", Target, _modelPath);
+            _unavailableReason = provider == RedactionExecutionProvider.Cpu
+                ? $"The {Target} detection model couldn't be loaded."
+                : $"The {Target} detection model couldn't be loaded on {provider} (Media:Redaction:ExecutionProvider); is this the GPU worker image?";
+            _logger.LogError(ex, "Couldn't load the {Target} detection model {Path} on {Provider}; media will go to review.", Target, _modelPath, provider);
             return null;
         }
     }

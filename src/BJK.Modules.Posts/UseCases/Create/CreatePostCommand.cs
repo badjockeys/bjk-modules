@@ -1,20 +1,27 @@
 using BJK.Modules.Media.Contracts;
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Create;
 
 /// <summary>
-/// Publishes a post. Upload the photos and videos through <c>/api/media</c> first and wait until they're Ready;
-/// the post is then visible to everyone straight away, unless content screening holds it for review. The author
-/// needs a profile and a passed age check. <c>IsSensitive</c> marks graphic content (hidden from logged-out viewers).
+/// Creates a post with 1 to 10 photos or one video, uploaded through <c>/api/media</c> first. They don't have to have
+/// finished processing: if any is still Processing (or waiting for a moderator's review), the post is saved as
+/// <see cref="PostMediaState.Pending"/>, seen only by its author (in "my posts") and moderators, and is published
+/// automatically once they're all Ready, or marked Failed (and the author emailed) if one fails. If they're all Ready
+/// already, it's visible to everyone straight away. Either way content screening can hold it for review. The author
+/// needs a confirmed email, a profile and a passed age check. <c>IsSensitive</c> marks graphic content (hidden from
+/// logged-out viewers).
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -51,10 +58,14 @@ public sealed class CreatePostCommandHandler(
     IContentScreener screener,
     NewAccountLimits limits,
     PostViews views,
+    PostMediaPublisher publisher,
     ICurrentUser caller,
     TimeProvider clock)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
+    /// <summary>The message when a post mixes a video with anything else.</summary>
+    public const string PhotosOrVideoMessage = "A post can have 1 to 10 photos or one video, not both. Post the video on its own.";
+
     public async Task<PostDto> Handle(CreatePostCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
@@ -75,12 +86,27 @@ public sealed class CreatePostCommandHandler(
                 throw PostAccess.Invalid(nameof(request.MediaIds), $"Media {id} isn't one of your uploads.");
             }
 
-            if (!item.IsReady)
+            switch (item.Status)
             {
-                throw PostAccess.Invalid(
-                    nameof(request.MediaIds),
-                    $"Media {id} is {item.Status}. Wait until it has finished processing.");
+                case MediaStatus.Ready or MediaStatus.Processing or MediaStatus.NeedsReview:
+                    break;
+                case MediaStatus.Uploading:
+                    throw PostAccess.Invalid(
+                        nameof(request.MediaIds),
+                        $"Media {id} hasn't finished uploading. Finish the upload, then post again.");
+                case MediaStatus.Failed:
+                    throw PostAccess.Invalid(
+                        nameof(request.MediaIds),
+                        $"Media {id} couldn't be processed: {item.FailureReason ?? "try uploading it again."} Remove it from the post.");
+                default:
+                    throw PostAccess.Invalid(nameof(request.MediaIds), $"Media {id} isn't one of your uploads.");
             }
+        }
+
+        // 1 to 10 photos, or one video on its own.
+        if (request.MediaIds.Count > 1 && request.MediaIds.Any(id => found[id].MediaType == MediaType.Video))
+        {
+            throw PostAccess.Invalid(nameof(request.MediaIds), PhotosOrVideoMessage);
         }
 
         if (await posts.AnyUseMediaAsync(request.MediaIds, cancellationToken))
@@ -88,10 +114,32 @@ public sealed class CreatePostCommandHandler(
             throw PostAccess.Invalid(nameof(request.MediaIds), "A photo or video is already in another post.");
         }
 
-        var post = Post.Create(userId, request.ToDetails(), request.MediaIds, clock.GetUtcNow(), request.IsSensitive);
+        var pending = request.MediaIds.Any(id => !found[id].IsReady);
+        var post = Post.Create(
+            userId,
+            request.ToDetails(),
+            request.MediaIds,
+            clock.GetUtcNow(),
+            request.IsSensitive,
+            mediaPending: pending,
+            notifyEmail: pending ? caller.Email : null);
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         posts.Add(post);
         await posts.SaveChangesAsync(cancellationToken);
+
+        if (pending)
+        {
+            // A photo or video may have finished between the check above and the save, before its event could find
+            // this post, so look again now that the post is saved.
+            try
+            {
+                await publisher.RefreshAsync(post, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // The media event handler updated the post at the same moment; it has done the same thing.
+            }
+        }
 
         return await views.BuildAsync(post, userId, cancellationToken);
     }

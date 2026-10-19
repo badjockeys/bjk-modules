@@ -19,7 +19,8 @@ public sealed class OutboxMessage
     public const int TypeMaxLength = 200;
     public const int LastErrorMaxLength = 1000;
 
-    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    /// <summary>How events are serialised: web defaults (camelCase) with enums as names. Consumers read with the same.</summary>
+    public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
     };
@@ -46,13 +47,25 @@ public sealed class OutboxMessage
     public string? LastError { get; private set; }
 
     public static OutboxMessage For<TEvent>(Guid id, TEvent payload, DateTimeOffset occurredAt)
-        where TEvent : notnull => new()
+        where TEvent : notnull => For(id, typeof(TEvent).Name, payload, occurredAt);
+
+    /// <summary>An event with an explicit message type, such as <c>media.ready</c>.</summary>
+    /// <param name="id">The message id (consumers use it to spot repeats).</param>
+    /// <param name="type">Sent as the RabbitMQ message type.</param>
+    /// <param name="payload">The event, serialised as JSON.</param>
+    /// <param name="occurredAt">When it happened.</param>
+    public static OutboxMessage For<TEvent>(Guid id, string type, TEvent payload, DateTimeOffset occurredAt)
+        where TEvent : notnull
     {
-        Id = id,
-        Type = typeof(TEvent).Name,
-        Payload = JsonSerializer.Serialize(payload, JsonOptions),
-        OccurredAt = occurredAt,
-    };
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+        return new OutboxMessage
+        {
+            Id = id,
+            Type = type.Length <= TypeMaxLength ? type : type[..TypeMaxLength],
+            Payload = JsonSerializer.Serialize(payload, JsonOptions),
+            OccurredAt = occurredAt,
+        };
+    }
 
     internal void MarkPublished(DateTimeOffset now)
     {

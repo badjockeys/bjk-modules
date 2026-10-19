@@ -4,9 +4,9 @@ using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Media.UseCases.Review;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
-using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 using static BJK.Modules.Media.Tests.TestData;
@@ -20,6 +20,7 @@ public sealed class MediaReviewTests
     private readonly IMediaRepository _media = Substitute.For<IMediaRepository>();
     private readonly IMediaStorage _storage = Substitute.For<IMediaStorage>();
     private readonly IMediaJobQueue _queue = Substitute.For<IMediaJobQueue>();
+    private readonly IModerationAuditLog _audit = Substitute.For<IModerationAuditLog>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
 
@@ -75,7 +76,7 @@ public sealed class MediaReviewTests
     public async Task Approving_publishes_the_blurred_files_and_makes_it_ready()
     {
         var item = InReview();
-        var handler = new ApproveMediaCommandHandler(_media, _storage, _caller, _clock, NullLogger<ApproveMediaCommandHandler>.Instance);
+        var handler = new ApproveMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         var dto = await handler.Handle(new ApproveMediaCommand(item.Id), Ct);
 
@@ -88,6 +89,11 @@ public sealed class MediaReviewTests
         await _storage.Received(1).PublishPrivateAsync(
             $"{UserId:D}/{item.Id:D}/review/thumbnail.jpg", $"{UserId:D}/{item.Id:D}/thumbnail.jpg", "image/jpeg", Arg.Any<CancellationToken>());
         await _media.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.ApproveMedia && e.TargetId == item.Id.ToString() && e.After == "Status=Ready"),
+            Arg.Any<CancellationToken>());
+        var change = Assert.Single(item.TakeStatusChanges());
+        Assert.Equal(MediaStatus.Ready, change.Status);
     }
 
     [Fact]
@@ -95,7 +101,7 @@ public sealed class MediaReviewTests
     {
         var item = MediaItem.Create(UserId, "clip", "video/mp4", Now);
         _media.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        var handler = new ApproveMediaCommandHandler(_media, _storage, _caller, _clock, NullLogger<ApproveMediaCommandHandler>.Instance);
+        var handler = new ApproveMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ValidationException>(() => handler.Handle(new ApproveMediaCommand(item.Id), Ct));
         await _storage.DidNotReceiveWithAnyArgs().PublishPrivateAsync(default!, default!, default!, Ct);
@@ -105,7 +111,7 @@ public sealed class MediaReviewTests
     public async Task Rejecting_fails_the_media_with_the_reason_and_removes_the_review_files()
     {
         var item = InReview();
-        var handler = new RejectMediaCommandHandler(_media, _storage, _caller, _clock, NullLogger<RejectMediaCommandHandler>.Instance);
+        var handler = new RejectMediaCommandHandler(_media, _storage, _audit, _caller, _clock);
 
         await handler.Handle(new RejectMediaCommand(item.Id, " A face couldn't be blurred reliably. "), Ct);
 
@@ -113,19 +119,27 @@ public sealed class MediaReviewTests
         Assert.Equal("A face couldn't be blurred reliably.", item.FailureReason);
         await _storage.Received(1).DeleteOriginalAsync($"{UserId:D}/{item.Id:D}/review/720p.mp4", Arg.Any<CancellationToken>());
         await _storage.DidNotReceive().DeleteOriginalAsync(item.OriginalKey, Arg.Any<CancellationToken>());
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.RejectMedia && e.Reason == "A face couldn't be blurred reliably."),
+            Arg.Any<CancellationToken>());
+        var change = Assert.Single(item.TakeStatusChanges());
+        Assert.Equal((MediaStatus.Failed, "A face couldn't be blurred reliably."), (change.Status, change.Reason));
     }
 
     [Fact]
     public async Task Only_admins_get_the_unblurred_original()
     {
         var item = InReview();
-        var handler = new GetOriginalForReviewQueryHandler(_media, _storage, _caller, _clock, NullLogger<GetOriginalForReviewQueryHandler>.Instance);
+        var handler = new GetOriginalForReviewQueryHandler(_media, _storage, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ForbiddenException>(() => handler.Handle(new GetOriginalForReviewQuery(item.Id), Ct));
 
         _caller.HasRole(StaffRoles.Admin).Returns(true);
         var link = await handler.Handle(new GetOriginalForReviewQuery(item.Id), Ct);
         Assert.Contains(item.OriginalKey, link.Url.ToString());
+        await _audit.Received(1).RecordAsync(
+            Arg.Is<ModerationAuditEntry>(e => e.Action == ModerationActions.ViewMediaOriginal && e.TargetId == item.Id.ToString()),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -135,7 +149,7 @@ public sealed class MediaReviewTests
         item.MarkUploaded(100, Now, TimeSpan.FromDays(90));
         item.MarkReady(1234, 10m, 1920, 1080, null, Now);
         _media.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        var handler = new AddManualRedactionsCommandHandler(_media, _storage, _queue, _caller, _clock, NullLogger<AddManualRedactionsCommandHandler>.Instance);
+        var handler = new AddManualRedactionsCommandHandler(_media, _storage, _queue, _audit, _caller, _clock);
         var region = new ManualRedaction(0.1, 0.1, 0.2, 0.1, 2, 4);
 
         var dto = await handler.Handle(new AddManualRedactionsCommand(item.Id, [region]), Ct);
@@ -155,7 +169,7 @@ public sealed class MediaReviewTests
         var item = MediaItem.Create(UserId, "clip", "video/mp4", Now);
         item.MarkUploaded(100, Now, TimeSpan.FromDays(90));
         _media.GetByIdAsync(item.Id, Arg.Any<CancellationToken>()).Returns(item);
-        var handler = new AddManualRedactionsCommandHandler(_media, _storage, _queue, _caller, _clock, NullLogger<AddManualRedactionsCommandHandler>.Instance);
+        var handler = new AddManualRedactionsCommandHandler(_media, _storage, _queue, _audit, _caller, _clock);
 
         await Assert.ThrowsAsync<ValidationException>(
             () => handler.Handle(new AddManualRedactionsCommand(item.Id, [new ManualRedaction(0, 0, 0.5, 0.5)]), Ct));

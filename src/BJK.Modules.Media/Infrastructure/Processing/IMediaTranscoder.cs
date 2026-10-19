@@ -6,7 +6,8 @@ namespace BJK.Modules.Media.Infrastructure.Processing;
 /// <param name="Width">Width as seen, after any rotation.</param>
 /// <param name="Height">Height as seen, after any rotation.</param>
 /// <param name="FrameRate">Average frames per second of a video, if known.</param>
-public sealed record ProbeResult(bool HasVideo, decimal? DurationSeconds, int? Width, int? Height, double? FrameRate = null);
+/// <param name="StartSeconds">When the video stream starts in the file's timeline (usually 0), if known.</param>
+public sealed record ProbeResult(bool HasVideo, decimal? DurationSeconds, int? Width, int? Height, double? FrameRate = null, double? StartSeconds = null);
 
 /// <summary>Converts originals into the files we publish. Implemented with ffmpeg.</summary>
 public interface IMediaTranscoder
@@ -26,6 +27,17 @@ public interface IMediaTranscoder
     /// from <see cref="Redaction.IMediaRedactor"/>.
     /// </summary>
     Task ConvertImageAsync(string inputPath, string imagePath, string thumbnailPath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Joins blurred video segments, in order, into one MP4 without re-encoding (ffmpeg's concat demuxer; every segment
+    /// is encoded with identical settings and starts on a keyframe), with fast start and no metadata. If
+    /// <paramref name="audioSourcePath"/> is given (audio removal switched off), the original's soundtrack is added.
+    /// </summary>
+    /// <param name="segmentPaths">The segment files, in order.</param>
+    /// <param name="audioSourcePath">The original, to take sound from; null for no sound.</param>
+    /// <param name="outputPath">Where to write the joined MP4.</param>
+    /// <param name="cancellationToken">Stops the job.</param>
+    Task ConcatenateVideoAsync(IReadOnlyList<string> segmentPaths, string? audioSourcePath, string outputPath, CancellationToken cancellationToken);
 }
 
 /// <summary>The file can't be processed whatever we do: corrupt, or not a video or photo.</summary>

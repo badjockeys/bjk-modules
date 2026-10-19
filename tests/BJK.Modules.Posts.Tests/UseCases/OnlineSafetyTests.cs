@@ -11,6 +11,7 @@ using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Create;
 using BJK.Modules.Posts.UseCases.Get;
 using BJK.Modules.Posts.UseCases.Moderation;
+using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Posts.UseCases.Safety;
@@ -778,7 +779,16 @@ public sealed class OnlineSafetyTests
 
     private CommentThreads Threads() => new(_comments, _commentReactions, _profiles);
 
-    private CreatePostCommandHandler CreateHandler() => new(_posts, _profiles, _media, _screener, Limits(), _views, _caller, _clock);
+    private CreatePostCommandHandler CreateHandler() => new(
+        _posts,
+        _profiles,
+        _media,
+        _screener,
+        Limits(),
+        _views,
+        new PostMediaPublisher(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance),
+        _caller,
+        _clock);
 
     private AddCommentCommandHandler AddCommentHandler() =>
         new(_posts, _comments, _profiles, _blocks, _screener, Limits(), _caller, _clock);

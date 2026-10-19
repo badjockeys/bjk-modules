@@ -4,11 +4,11 @@ using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using FluentValidation.Results;
 using MediatR;
-using Microsoft.Extensions.Logging;
 
 namespace BJK.Modules.Media.UseCases.Review;
 
@@ -169,8 +169,8 @@ public sealed class GetMediaForReviewQueryHandler(IMediaRepository media, IMedia
 }
 
 /// <summary>
-/// A short-lived link to the unblurred original. Admins only, and every use is logged (moderator id, media id), since
-/// it shows faces and plates in the clear. Originals are deleted 90 days after upload.
+/// A short-lived link to the unblurred original. Admins only, and every use is recorded in the moderation audit log,
+/// since it shows faces and plates in the clear. Originals are deleted 90 days after upload.
 /// </summary>
 /// <param name="MediaId">The media.</param>
 public sealed record GetOriginalForReviewQuery(Guid MediaId) : IRequest<OriginalDownload>;
@@ -178,9 +178,9 @@ public sealed record GetOriginalForReviewQuery(Guid MediaId) : IRequest<Original
 public sealed class GetOriginalForReviewQueryHandler(
     IMediaRepository media,
     IMediaStorage storage,
+    IModerationAuditLog audit,
     ICurrentUser caller,
-    TimeProvider clock,
-    ILogger<GetOriginalForReviewQueryHandler> logger)
+    TimeProvider clock)
     : IRequestHandler<GetOriginalForReviewQuery, OriginalDownload>
 {
     public async Task<OriginalDownload> Handle(GetOriginalForReviewQuery request, CancellationToken cancellationToken)
@@ -194,11 +194,9 @@ public sealed class GetOriginalForReviewQueryHandler(
 
         var url = await storage.CreateOriginalDownloadUrlAsync(item.OriginalKey, MediaReview.PreviewLifetime, cancellationToken);
 
-        // Audit: no shared audit log exists in this module yet, so this is logged (ids only, no personal data).
-        logger.LogWarning(
-            "AUDIT media.original.viewed: admin {ActorId} opened the unblurred original of media {MediaId}.",
-            caller.UserId()?.ToString() ?? "machine",
-            item.Id);
+        await audit.RecordAsync(
+            new ModerationAuditEntry("Media", ModerationActions.ViewMediaOriginal, "Media", item.Id.ToString(), "Opened the unblurred original."),
+            cancellationToken);
         return new OriginalDownload(url, clock.GetUtcNow() + MediaReview.PreviewLifetime);
     }
 }
@@ -210,9 +208,9 @@ public sealed record ApproveMediaCommand(Guid MediaId) : IRequest<MediaReviewDto
 public sealed class ApproveMediaCommandHandler(
     IMediaRepository media,
     IMediaStorage storage,
+    IModerationAuditLog audit,
     ICurrentUser caller,
-    TimeProvider clock,
-    ILogger<ApproveMediaCommandHandler> logger)
+    TimeProvider clock)
     : IRequestHandler<ApproveMediaCommand, MediaReviewDto>
 {
     public async Task<MediaReviewDto> Handle(ApproveMediaCommand request, CancellationToken cancellationToken)
@@ -244,11 +242,16 @@ public sealed class ApproveMediaCommandHandler(
         await storage.DeleteOriginalAsync(reviewFiles.Playback, cancellationToken);
         await storage.DeleteOriginalAsync(reviewFiles.Thumbnail, cancellationToken);
 
-        logger.LogInformation(
-            "AUDIT media.approved: moderator {ActorId} approved media {MediaId} (revision {Revision}).",
-            caller.UserId()?.ToString() ?? "machine",
-            item.Id,
-            item.Revision);
+        await audit.RecordAsync(
+            new ModerationAuditEntry(
+                "Media",
+                ModerationActions.ApproveMedia,
+                "Media",
+                item.Id.ToString(),
+                $"Approved the blurred files (revision {item.Revision}).",
+                $"Status={MediaStatus.NeedsReview}",
+                $"Status={item.Status}"),
+            cancellationToken);
         return await MediaReview.ToDtoAsync(item, storage, clock, cancellationToken);
     }
 }
@@ -269,9 +272,9 @@ public sealed class RejectMediaCommandValidator : AbstractValidator<RejectMediaC
 public sealed class RejectMediaCommandHandler(
     IMediaRepository media,
     IMediaStorage storage,
+    IModerationAuditLog audit,
     ICurrentUser caller,
-    TimeProvider clock,
-    ILogger<RejectMediaCommandHandler> logger)
+    TimeProvider clock)
     : IRequestHandler<RejectMediaCommand, MediaReviewDto>
 {
     public async Task<MediaReviewDto> Handle(RejectMediaCommand request, CancellationToken cancellationToken)
@@ -284,10 +287,16 @@ public sealed class RejectMediaCommandHandler(
         item.Reject(request.Reason.Trim(), caller.UserId(), clock.GetUtcNow());
         await media.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation(
-            "AUDIT media.rejected: moderator {ActorId} rejected media {MediaId}.",
-            caller.UserId()?.ToString() ?? "machine",
-            item.Id);
+        await audit.RecordAsync(
+            new ModerationAuditEntry(
+                "Media",
+                ModerationActions.RejectMedia,
+                "Media",
+                item.Id.ToString(),
+                request.Reason.Trim(),
+                $"Status={MediaStatus.NeedsReview}",
+                $"Status={item.Status}"),
+            cancellationToken);
         return await MediaReview.ToDtoAsync(item, storage, clock, cancellationToken);
     }
 }
@@ -327,9 +336,9 @@ public sealed class AddManualRedactionsCommandHandler(
     IMediaRepository media,
     IMediaStorage storage,
     IMediaJobQueue queue,
+    IModerationAuditLog audit,
     ICurrentUser caller,
-    TimeProvider clock,
-    ILogger<AddManualRedactionsCommandHandler> logger)
+    TimeProvider clock)
     : IRequestHandler<AddManualRedactionsCommand, MediaReviewDto>
 {
     public async Task<MediaReviewDto> Handle(AddManualRedactionsCommand request, CancellationToken cancellationToken)
@@ -366,6 +375,7 @@ public sealed class AddManualRedactionsCommandHandler(
             await MediaFiles.DeleteReviewFilesAsync(storage, item, cancellationToken);
         }
 
+        var before = item.Status;
         item.AddManualRedactions(request.Regions, clock.GetUtcNow());
 
         // Save first, then queue: the worker skips media that isn't Processing yet, so queueing first could lose the job.
@@ -374,12 +384,16 @@ public sealed class AddManualRedactionsCommandHandler(
             new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType),
             cancellationToken);
 
-        logger.LogInformation(
-            "AUDIT media.redactions.added: moderator {ActorId} added {Count} blur region(s) to media {MediaId} (revision {Revision}).",
-            caller.UserId()?.ToString() ?? "machine",
-            request.Regions.Count,
-            item.Id,
-            item.Revision);
+        await audit.RecordAsync(
+            new ModerationAuditEntry(
+                "Media",
+                ModerationActions.AddMediaRedactions,
+                "Media",
+                item.Id.ToString(),
+                $"Added {request.Regions.Count} blur region(s) and processed it again (revision {item.Revision}).",
+                $"Status={before}",
+                $"Status={item.Status}"),
+            cancellationToken);
         return await MediaReview.ToDtoAsync(item, storage, clock, cancellationToken);
     }
 }

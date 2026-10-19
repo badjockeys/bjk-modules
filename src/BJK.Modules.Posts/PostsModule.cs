@@ -1,8 +1,10 @@
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Moderation;
+using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
@@ -83,6 +85,10 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddContentScreening(configuration);
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
+
+        // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
+        services.AddScoped<PostMediaPublisher>();
+        services.AddMediaEventHandler<PostsMediaEventHandler>(configuration);
         services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
         services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration);
 

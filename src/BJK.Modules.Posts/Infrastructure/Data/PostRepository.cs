@@ -7,7 +7,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="AuthorId">Only this author's posts.</param>
 /// <param name="Category">Only this kind of incident.</param>
 /// <param name="Area">Only incidents inside this box.</param>
-/// <param name="IncludeHidden">Include hidden and held posts (for an author's own list).</param>
+/// <param name="IncludeHidden">Include hidden and held posts, and ones still waiting for their media (for an author's own list).</param>
 /// <param name="ExcludeSensitive">Leave out sensitive posts (for logged-out viewers).</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
 public sealed record PostSearch(
@@ -48,6 +48,9 @@ public interface IPostRepository
 {
     /// <summary>A post with its media, unless deleted. Tracked, so changes can be saved.</summary>
     Task<Post?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>The post (not deleted) that contains this photo or video, with its media; tracked. Null if none.</summary>
+    Task<Post?> FindByMediaAsync(Guid mediaId, CancellationToken cancellationToken);
 
     /// <summary>True if any of the media is already in a post (including hidden and deleted ones).</summary>
     Task<bool> AnyUseMediaAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
@@ -99,6 +102,11 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             .Include(p => p.Media)
             .FirstOrDefaultAsync(p => p.Id == id && p.Status != PostStatus.Deleted, cancellationToken);
 
+    public Task<Post?> FindByMediaAsync(Guid mediaId, CancellationToken cancellationToken) =>
+        db.Posts
+            .Include(p => p.Media)
+            .FirstOrDefaultAsync(p => p.Status != PostStatus.Deleted && p.Media.Any(m => m.MediaId == mediaId), cancellationToken);
+
     public Task<bool> AnyUseMediaAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken) =>
         db.Set<PostMedia>().AnyAsync(m => mediaIds.Contains(m.MediaId), cancellationToken);
 
@@ -112,7 +120,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 
         if (!search.IncludeHidden)
         {
-            query = query.Where(p => p.Status == PostStatus.Published && !p.IsAuthorDeactivated);
+            query = query.Where(p => p.Status == PostStatus.Published && p.MediaState == PostMediaState.Ready && !p.IsAuthorDeactivated);
         }
 
         if (search.ExcludeSensitive)

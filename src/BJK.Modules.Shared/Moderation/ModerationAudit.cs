@@ -43,6 +43,10 @@ public static class ModerationActions
     public const string DecideAppeal = "DecideAppeal";
     public const string ResetProfile = "ResetProfile";
     public const string DeleteMedia = "DeleteMedia";
+    public const string ApproveMedia = "ApproveMedia";
+    public const string RejectMedia = "RejectMedia";
+    public const string AddMediaRedactions = "AddMediaRedactions";
+    public const string ViewMediaOriginal = "ViewMediaOriginal";
 }
 
 /// <summary>Who did a moderation action, from the current request.</summary>

@@ -37,10 +37,9 @@ public sealed class RequestUploadCommandValidator : AbstractValidator<RequestUpl
             .GreaterThan(0)
             .Must((command, size) =>
                 !MediaFormats.TryGet(command.ContentType, out var type, out _) || size <= limits.MaxBytesFor(type))
-            .WithMessage(command =>
-                MediaFormats.TryGet(command.ContentType, out var type, out _) && type == MediaType.Video
-                    ? $"Videos can be up to {limits.MaxVideoBytes / (1024 * 1024)} MB."
-                    : $"Photos can be up to {limits.MaxImageBytes / (1024 * 1024)} MB.");
+            .WithMessage(command => limits.TooBigMessage(
+                MediaFormats.TryGet(command.ContentType, out var type, out _) ? type : MediaType.Image,
+                command.SizeBytes));
     }
 }
 

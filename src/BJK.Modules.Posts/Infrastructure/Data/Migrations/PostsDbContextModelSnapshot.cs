@@ -294,6 +294,22 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasPrecision(9, 6)
                         .HasColumnType("decimal(9,6)");
 
+                    b.Property<string>("MediaFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("MediaReadyAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("MediaState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("NotifyEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
                     b.Property<string>("PlaceName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
