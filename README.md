@@ -35,11 +35,13 @@ src/
       Upload/                    Request an upload link, then complete the upload
       Get/                       One item, or the caller's own uploads
       Delete/                    Delete files and mark the record Deleted
+      Review/                    Moderators: review queue, approve, reject, add blur regions (audited)
     Infrastructure/Storage/      IMediaStorage over the S3 API (Cloudflare R2)
-    Infrastructure/Messaging/    IMediaJobQueue over RabbitMQ, queue topology
-    Infrastructure/Data/         MediaDbContext (schema: media) and Migrations/
-    Domain/                      MediaItem, formats, storage keys
-    Contracts/                   IMediaDirectory: what other modules may ask of Media
+    Infrastructure/Messaging/    IMediaJobQueue over RabbitMQ (process, segment and assemble jobs), queue topology
+    Infrastructure/Processing/   The worker: MediaProcessor (whole media, segments, assembly), ffmpeg, Redaction/
+    Infrastructure/Data/         MediaDbContext (schema: media; outbox), VideoJobStore and Migrations/
+    Domain/                      MediaItem, VideoJob + VideoSegment (segment progress), formats, storage keys
+    Contracts/                   IMediaDirectory, and MediaEvents (media.ready / media.failed) for other modules
     MediaModule.cs               Module entry point
   BJK.Modules.Profiles/          Hosted by bjk-core
     API/Controllers/             ProfilesController (/api/profiles)
@@ -62,7 +64,9 @@ src/
       Appeals/                   Appeal a moderation decision once; admin decisions
       Moderation/                Screening queues, sensitive tag, audit log, report and appeal emails
       Safety/                    New-account limits
-    Infrastructure/              Moderation audit log (stored for every module), lifecycle and data export
+      Publishing/                Post now, publish when ready: PostMediaPublisher
+    Infrastructure/              Moderation audit log (stored for every module), media event handler, lifecycle
+                                 and data export
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
     Domain/                      Post (+ PinRounding), PostMedia, Reaction, Comment, CommentReaction, Report,
                                  Appeal, ModerationAuditRecord
@@ -184,7 +188,8 @@ Photos and videos follow the same flow; only the worker's processing differs.
 1. `POST /api/media/uploads` with `{ fileName, contentType, sizeBytes }` creates a `media.Media` row (`Uploading`) and returns a signed link, valid for 15 minutes, to PUT the file straight into the private **originals** bucket. The API never handles the file.
 2. The app PUTs the file to that link, sending the `Content-Type` header it was given.
 3. `POST /api/media/{id}/complete` checks the file is in storage and within the size limit, sets `Processing`, and puts a job on the RabbitMQ queue.
-4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, blurs faces and number plates, converts the file and publishes it to the **public** bucket, then sets `Ready`. If automatic blurring failed or wasn't sure, it keeps the blurred files private and sets `NeedsReview` instead; a moderator approves (then `Ready`) or rejects (then `Failed`). Only `Ready` media is visible to other users or can be posted.
+4. The **media worker** (bjk-core's worker container, using `services.AddMediaProcessing(...)` from this module) takes the job, blurs faces and number plates, converts the file and publishes it to the **public** bucket, then sets `Ready`. If automatic blurring failed or wasn't sure, it keeps the blurred files private and sets `NeedsReview` instead; a moderator approves (then `Ready`) or rejects (then `Failed`). Videos longer than 5 seconds are split into segments that several worker replicas blur at once (see "Videos in segments"). Only `Ready` media is visible to other users.
+5. Every change to `Ready` or `Failed` (and deleting media before it was ready) publishes a `media.ready` / `media.failed` event (see "Media events"). The Posts module uses them to publish posts that were created while their media were still processing.
 
 ### Processing
 
@@ -192,10 +197,11 @@ Photos and videos follow the same flow; only the worker's processing differs.
 |---|---|---|
 | Output | `720p.mp4`: H.264, no sound (see `Media:Redaction:RemoveAudio`), at most 720 pixels high and 30 fps, fast start for streaming | `image.webp`: at most 2048 pixels on its longest side |
 | Thumbnail | `thumbnail.jpg`, from one second in | `thumbnail.webp`, at most 640 pixels |
-| Checks | Must contain a picture; no longer than `Media:MaxVideoDurationSeconds` (5 minutes) | Must contain a picture |
+| Checks | Must contain a picture; no longer than `Media:MaxVideoDurationSeconds` (**30 seconds**, with half a second of slack for clips trimmed to exactly 30 s) | Must contain a picture |
 
 - **Metadata is stripped** from every published file, so no GPS position, device or owner details go public. The original keeps them, in the private bucket, until it's deleted after 90 days.
 - **SHA-256** of each original is recorded, for spotting duplicates later.
+- **Limits** (since 19 Oct 2026): videos up to **30 seconds** and **150 MB**, photos up to 25 MB. 150 MB is plenty for 30 seconds even of 4K dashcam footage (about 80 to 100 MB at typical bit rates), and the apps shrink videos before uploading. The size is checked when the upload is requested and again when it completes; the length once the worker has read the video. The messages say what to do, e.g. "Videos can be up to 30 seconds long, and this one is 47 seconds. Trim it to 30 seconds or less and upload it again." or "Videos can be up to 150 MB, and this one is 400 MB. Trim it to 30 seconds or export it at a lower quality, then upload it again."
 - **Failures.** A file ffmpeg can't read, with no picture, or too long fails straight away, with a reason the app can show. Anything temporary (storage or database unavailable) is retried; the job is delivered at most 3 times, and the last attempt marks the media `Failed`, so nothing stays at `Processing`.
 - **Deleted meanwhile.** If the owner deletes the media while it's being processed, the worker removes what it published.
 - ffmpeg runs as a child process with its arguments passed as a list, never through a shell.
@@ -204,7 +210,10 @@ Photos and videos follow the same flow; only the worker's processing differs.
 | Setting (`Media:Processing:*`, worker only) | Default |
 |---|---|
 | `FfmpegPath`, `FfprobePath` | `ffmpeg`, `ffprobe` on the PATH (ffmpeg 5.1 or later) |
-| `MaxConcurrentJobs` | 1 (encoding already uses every core) |
+| `MaxConcurrentJobs` | 1: one job per replica (each job already uses every core); scale out with more replicas |
+| `FfmpegThreads` | 0 = every core of the replica (`Environment.ProcessorCount`, which respects the container's CPU limit; ffmpeg's own automatic choice doesn't) |
+| `SegmentSeconds` | 5: videos longer than this are split into segments of this length, processed in parallel; 0 turns splitting off |
+| `SegmentOverlapSeconds` | 1.0: extra video each segment analyses either side of its own part, so tracking matches at the joins |
 | `VideoHeight`, `VideoCrf` | 720, 23 |
 | `ImageMaxSize`, `ThumbnailMaxSize` | 2048, 640 |
 | `CommandTimeout` | 15 minutes |
@@ -234,7 +243,22 @@ Configuration (user secrets locally, Key Vault in Azure):
 | `Media:Storage:OriginalsBucket`, `Media:Storage:PublicBucket` | Private and public buckets |
 | `Media:Storage:PublicBaseUrl` | Where the public bucket is served through Cloudflare |
 | `Media:Queue:QueueName` | Default `media.process`; failed jobs go to `media.process.failed` |
-| `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime`, `Media:OriginalRetention` | Defaults: 500 MB, 25 MB, 300 s, 15 min, 90 days |
+| `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime`, `Media:OriginalRetention` | Defaults: 150 MB (157286400), 25 MB, 30 s, 15 min, 90 days |
+| `Messaging:MediaEventsQueue` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (failed events go to `.failed` after 5 attempts) |
+
+### Videos in segments (parallel processing)
+
+A 30-second video is processed as six 5-second pieces by up to six worker replicas at once, then joined, so it's ready several times sooner than in one job (measured timings below). Photos and videos of 5 seconds or less (`SegmentSeconds`) are processed in one job as before.
+
+1. **Plan** (the normal `media.process` job): the worker downloads the original, checks it (length, picture), records its SHA-256, length and size, and saves a plan in `media.VideoJobs` with one row per segment in `media.VideoSegments`. Segments are counted in output frames on one frame grid (150 frames at 30 fps), so every worker agrees exactly where each segment starts and ends. A last piece shorter than a quarter of a segment joins the one before. It then queues one **segment** job per segment on the same queue.
+2. **Segment** (any replica): downloads the original and decodes only its part, plus `SegmentOverlapSeconds` either side (ffmpeg seeks a second early and picks frames by their place on the grid, which is exact whatever the keyframes). Detection runs on the same every-5th frames as for the whole video, and the tracker sees the overlap too, so a face or plate crossing a join is tracked as if the video were in one piece: blurs don't drop or start late at the joins (tested with a face that disappears just before a join). Only the segment's own frames are blurred and encoded, with exactly the same x264 settings as a whole video (each segment starts on a keyframe), and stored privately at `{userId}/{mediaId}/segments/r{revision}/{index}.mp4`. The segment is then marked done.
+3. **Assemble** (once all segments are done): joins the segments with ffmpeg's concat demuxer without re-encoding (`-c copy`, fast start), adds the soundtrack from the original if `RemoveAudio` is off, makes the thumbnail from the joined video, publishes it and sets `Ready`, or keeps it private and sets `NeedsReview` if any segment's detection was uncertain or failed (or a moderator added regions). The segment files are deleted.
+
+**Restart-safe and idempotent.** Progress is in the database, and every update that parallel workers might race on is one conditional SQL statement: a segment is marked done only if it wasn't already (so a redelivered or duplicated job is skipped, not redone); exactly one worker wins the claim to queue the assemble job when the last segment finishes; a redelivered segment job (the worker may have died after claiming but before queueing) queues it again, and the assemble job stops at once if the media is already finished. A plan job delivered again re-queues only the unfinished segments. Jobs for an older revision (a moderator re-processed the media) or for deleted media are skipped. A segment that fails three times marks the media `Failed` ("Processing failed. Try uploading the file again."), as a whole-video job would. Face and plate counts are summed over segments, so a face crossing a join counts once in each.
+
+### Media events (`media.ready`, `media.failed`)
+
+When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the RabbitMQ fanout exchange **`bjk.media`** with publisher confirms (message type `media.ready` or `media.failed`), using Shared's outbox publisher, as for user events. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration)`; the host reads them from `Messaging:MediaEventsQueue` (a quorum queue, 5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
 
 ### Automatic blurring (faces and number plates)
 
@@ -244,6 +268,7 @@ Every photo and video is blurred by the worker before anything is published (Onl
 
 1. ffmpeg decodes the picture (photos: upright, at most 2048 px; videos: at most 720p and 30 fps) into memory over a pipe. Nothing unblurred is written out.
 2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus a 2x2 grid of overlapping zoomed tiles for small, distant plates).
+   For videos, detection runs on a copy of each analysed frame scaled down to at most 640 pixels on its longest side (`DetectionMaxSize`) and the boxes are mapped back to the full frame. That makes face detection about four times cheaper than at 720p; plates are searched in the same zoomed 2x2 tiles of the smaller copy, so they're found as before and cost about the same. Faces smaller than about 20 pixels in a 720p frame may be missed; set `DetectionMaxSize` to 0 to analyse at full size. Photos are always analysed at full size.
 3. Each box is grown by 25% on every side (`BoxPadding`) and blurred irreversibly: reduced to a few large blocks of average colour (at most about 8 across and 3 down a plate) and then smoothed. A light Gaussian blur, which can be partly undone, isn't used.
 4. **Videos:** detection runs on every 5th frame (`DetectEveryNthFrame`). A tracker links boxes from one pass to the next (by overlap, or by distance for fast movers) and interpolates a box for every frame in between. A face or plate missed by up to 3 passes in a row (`MaxMissedDetections`) stays blurred across the gap, and each track starts one interval before its first detection and ends one after its last, following its motion, so blurs don't flicker, drop out or appear late. The video is read once; frames wait in memory only until detection has run far enough ahead (about 20 frames, ~55 MB at 720p).
 5. The blurred frames are encoded to H.264 as before. **The soundtrack is removed** (`-an`) unless `RemoveAudio` is false. Metadata (GPS, device) is stripped. Thumbnails are made from the blurred output only.
@@ -291,8 +316,13 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | `PlateTiles` | true (also search zoomed tiles for small plates; about 6x the plate detection cost) |
 | `RemoveAudio` | true |
 | `ReviewEverything` | false |
-| `InferenceThreads` | 0 (ONNX Runtime decides: all cores) |
-| `VideoTimeout` | 25 minutes per video |
+| `InferenceThreads` | 0 = every core of the replica (`Environment.ProcessorCount`); ONNX Runtime's intra-op threads, which don't spin while idle so ffmpeg keeps its CPU |
+| `DetectionMaxSize` | 640: video frames are analysed at most this big (boxes mapped back); 0 for full size. Photos always full size |
+| `ExecutionProvider` | `Cpu`. `Cuda` is reserved for a GPU worker (see below) |
+| `CudaDeviceId` | 0 |
+| `VideoTimeout` | 25 minutes per video (or per segment) |
+
+**GPU-ready.** `Media:Redaction:ExecutionProvider=Cuda` makes the detectors ask ONNX Runtime for its CUDA provider. A future GPU worker only needs the `Microsoft.ML.OnnxRuntime.Gpu` package in place of `Microsoft.ML.OnnxRuntime` (same API, no code changes) and a CUDA base image; ffmpeg stays on the CPU. With today's CPU package, `Cuda` makes both detectors unavailable (logged as an error), so every upload goes to review rather than being published unchecked.
 
 **Timing** (measured in CI on 2-vCPU GitHub runners, 60-second 1080p30 clips, the Media tests running alone; two runs, which varied by about 25%):
 
@@ -309,12 +339,12 @@ Per 720p frame analysed: faces 43–55 ms, plates 129–159 ms with tiles (25–
 |---|---|
 | `GET /api/admin/media/review?page=&pageSize=` | The review queue (`NeedsReview`), oldest first, with reasons, blur counts and signed preview links (15 minutes) |
 | `GET /api/admin/media/{id}/review` | One item with signed links to its blurred preview and thumbnail (public links once Ready) |
-| `GET /api/admin/media/{id}/original` | **Admins only.** A signed link (15 minutes) to the unblurred original. Each use is logged as `AUDIT media.original.viewed` with the admin's and media's ids (no shared audit log exists in this module yet) |
+| `GET /api/admin/media/{id}/original` | **Admins only.** A signed link (15 minutes) to the unblurred original. Each use is recorded in the moderation audit log (`ViewMediaOriginal`) |
 | `POST /api/admin/media/{id}/approve` | Copies the blurred files to the public bucket and sets `Ready` |
 | `POST /api/admin/media/{id}/reject` `{ "reason": "..." }` | Sets `Failed` with the reason (shown to the uploader) and removes the review copies |
 | `POST /api/admin/media/{id}/redactions` `{ "regions": [{ "x":0.1, "y":0.4, "width":0.2, "height":0.1, "startSeconds":3, "endSeconds":8 }] }` | Adds blur regions (fractions of the picture from the top left; optional time range for videos) and processes the media again from the original: automatic detection plus every manual region. Works on `NeedsReview` or `Ready` media (e.g. after a report); a Ready item's public files are deleted at once (purge Cloudflare's cache too). The result comes back to the queue. Each re-processing gets new file names (`720p-r1.mp4`), because published files are cached as immutable |
 
-Approvals, rejections and added regions are also logged with an `AUDIT` prefix. The original must still exist (90 days) to re-process.
+Approvals, rejections and added regions are recorded in the moderation audit log too (`ApproveMedia`, `RejectMedia`, `AddMediaRedactions`, with before/after status). The original must still exist (90 days) to re-process.
 
 ## Profiles module
 
@@ -346,9 +376,9 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new ProfilesModul
 Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `CommentReactions`, `Reports`, `Appeals`, `ModerationAuditLog`.
 
 - **Deactivated authors**: while an author's account is deactivated, their posts and comments are hidden from everyone (feed, post pages, comment lists and counts). Their reactions still count.
-- **A post** has a title (up to 120 characters), an optional description (5,000), a category, when the incident happened (not in the future), a map pin (latitude/longitude, optional place name), and 1 to 10 photos or videos.
+- **A post** has a title (up to 120 characters), an optional description (5,000), a category, when the incident happened (not in the future), a map pin (latitude/longitude, optional place name), and **1 to 10 photos or one video** (a video can't be mixed with anything else: "A post can have 1 to 10 photos or one video, not both. Post the video on its own.").
 - **Categories**: RoadRage, DangerousOvertaking, Tailgating, MobilePhoneUse, Speeding, RedLightRunning, CuttingUp, Undertaking, LaneHogging, ClosePass, BadParking, Other.
-- **Publishing**: the photos and videos must be the author's own uploads and already Ready. The app uploads them, waits for processing, then creates the post, which everyone can see straight away. Each photo or video can be in only one post. The author needs a profile.
+- **Post now, publish when ready** (19 Oct 2026): the photos or video must be the author's own uploads, and the upload must be complete, but they don't have to have finished processing. If any is still `Processing` (or `NeedsReview`, waiting for a moderator), the post is saved with `mediaState: "Pending"` (`isProcessing: true`): only its author (in `GET /api/posts/mine` and on the post page) and moderators see it, and its `media` lists only the items that are ready. When the last item becomes `Ready`, the `media.ready` event publishes it automatically (`mediaState: "Ready"`), and it appears in the feed. If any item fails, is rejected by a moderator or is deleted, `media.failed` marks the post `mediaState: "Failed"` with `mediaFailureReason` (e.g. "Videos can be up to 30 seconds long..."), it's never published, and the author is emailed once ("Your post couldn't be published", template `EmailTemplates.PostNotPublished`) at the `email` claim their token had when they posted; that address is kept on the post only while it's pending (`posts.Posts.NotifyEmail`) and cleared as soon as it's published or they've been told. They can delete the post and try again. Media that finishes while the post is being saved is caught by a second check after saving. Posts whose media are already Ready are visible straight away, as before. Content screening, the sensitive tag, the age check, new-account limits and moderation all apply as before, whatever the media state: a post shows to others only when its status is `Published` **and** its media are `Ready`. Each photo or video can be in only one post. The author needs a profile.
 - **Editing**: the author (or an admin) can change the details but not the media. Deleting a post also deletes its photos and videos. The row is kept, marked Deleted.
 - **Reactions**: one per user per post (Like, Angry, Shocked, Laugh). Reacting again changes it. Posts show counts per reaction and the viewer's own reaction.
 - **Comments and replies**: up to 2,000 characters. Replies go **one level deep**: a reply points to a top-level comment on the same post, and replying to a reply is refused with a 400 ("You can't reply to a reply..."). The author can edit; the author or a moderator can delete. Commenting needs a profile. Comment lists return top-level comments, oldest first, each with its reply count and first 3 replies; the rest come from the replies endpoint. A hidden or deleted top-level comment that still has replies is shown as a placeholder (`isRemoved: true`, no author, empty body) with its replies underneath. The post's comment count includes replies.
@@ -359,7 +389,7 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 | Endpoint | Access |
 |---|---|
 | `GET /api/posts`, `GET /api/posts/{id}` | Anyone, including anonymous callers (never sensitive posts for them) |
-| `GET /api/posts/mine` | Signed-in user (`bjk.posts`): my posts, including hidden and held ones |
+| `GET /api/posts/mine` | Signed-in user (`bjk.posts`): my posts, including hidden and held ones and ones waiting for their media (`mediaState`) |
 | `POST /api/posts`, `PUT` / `DELETE /api/posts/{id}` | Signed-in user; edit and delete are for the author |
 | `PUT` / `DELETE /api/posts/{id}/reaction` | Signed-in user |
 | `GET /api/posts/{id}/comments`, `GET /api/posts/{id}/comments/{commentId}/replies` | Signed-in user (logged-out viewers see no comments) |
@@ -398,7 +428,7 @@ Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
 - **New-account limits.** While a profile is younger than `Safety:NewAccounts:Period` (24 hours) it can create at most `MaxPosts` (3) posts and `MaxComments` (20) comments and replies in any rolling 24 hours, counting deleted ones. Over the limit: 429 with `code: "new_account_limit"`.
 - **Reports.** In the app: posts, comments, replies and profiles. The public form `POST /api/reports/public` ("Report content / I'm in this clip") needs no account: the post id or link (plus an optional comment id), a reason (InThisClip, PersonalInformation, IllegalContent, Threat, HarassmentOrHate, Copyright, Other), details, the reporter's name and email, consent, and a Cloudflare Turnstile token in `X-Captcha-Token` (`ICaptchaVerifier`; a failed token is a 400, an unreachable Turnstile a 503). It returns a reference (`R-1A2B3C4D`), the priority and when a decision is due. **Priority**: `Urgent` for IllegalContent and Threat, with a 4-hour target; `Normal` otherwise, 48 hours. The queue lists urgent reports first, then by due time. **Emails** (Email module, sent straight away): an acknowledgement when the report is made and the outcome when it's resolved, to the public form's address or, for signed-in reporters, the `email` claim in their token if it has one. A failed email is logged and recorded (`acknowledgedAt` / `outcomeNotifiedAt` stay empty); it never undoes the report or decision.
 - **Appeals.** An author can appeal a moderator's decision to hide their post or comment, once (`posts.Appeals`). Appeals have a 48-hour target and their own queue; overturning shows the content again. The author is emailed when the appeal is received and decided (if their token carries an email).
-- **Moderation audit log.** Every moderator or admin action in Posts (resolve report, unhide, delete post or comment, approve or remove screened content, sensitive tag, appeal decision), Profiles (reset) and Media (delete) is recorded in `posts.ModerationAuditLog`: actor id and role (Admin, Moderator, or Service for machine tokens), action, target type and id, reason, before/after summaries (states only, never content or personal details) and time. A reason or note is required on every action. `GET /api/admin/audit` (admins only) filters by actor, module, action, target and time. Other modules write through Shared's `IModerationAuditLog`, which the Posts module implements; Posts actions are saved together with their audit entry.
+- **Moderation audit log.** Every moderator or admin action in Posts (resolve report, unhide, delete post or comment, approve or remove screened content, sensitive tag, appeal decision), Profiles (reset) and Media (delete, approve, reject, add blur regions, open an original) is recorded in `posts.ModerationAuditLog`: actor id and role (Admin, Moderator, or Service for machine tokens), action, target type and id, reason, before/after summaries (states only, never content or personal details) and time. A reason or note is required on every action. `GET /api/admin/audit` (admins only) filters by actor, module, action, target and time. Other modules write through Shared's `IModerationAuditLog`, which the Posts module implements; Posts actions are saved together with their audit entry.
 - **Blocking.** See the Profiles module. Blocked users' posts are left out of the blocker's feed and look missing; their comments and replies are left out; and they can't comment on, reply to or react to the blocker's posts and comments.
 
 ### How modules talk to each other
@@ -412,6 +442,7 @@ A module never reads another module's tables. Each module that others depend on 
 | `IBlockDirectory` (Profiles) | Posts | Who the viewer has blocked; has the author blocked this user |
 | `IProfileModeration` (Profiles) | Posts | Resetting a reported profile |
 | `IModerationAuditLog` (Shared, stored by Posts) | Profiles, Media, Posts | Recording moderation actions |
+| `media.ready` / `media.failed` events (Media, RabbitMQ `bjk.media`) | Posts | Publishing (or failing) posts made while their media were processing |
 
 ## Database migrations
 
