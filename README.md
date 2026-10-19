@@ -324,14 +324,17 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 
 **GPU-ready.** `Media:Redaction:ExecutionProvider=Cuda` makes the detectors ask ONNX Runtime for its CUDA provider. A future GPU worker only needs the `Microsoft.ML.OnnxRuntime.Gpu` package in place of `Microsoft.ML.OnnxRuntime` (same API, no code changes) and a CUDA base image; ffmpeg stays on the CPU. With today's CPU package, `Cuda` makes both detectors unavailable (logged as an error), so every upload goes to review rather than being published unchecked.
 
-**Timing** (measured in CI on 2-vCPU GitHub runners, 60-second 1080p30 clips, the Media tests running alone; two runs, which varied by about 25%):
+**Timing** (measured in CI, run 49 on 19 Oct 2026, on a 2-vCPU GitHub runner with the Media tests running alone; 30-second 1080p30 clips; decode, detect, track, blur, encode and thumbnail, not counting storage downloads and uploads):
 
-| | Per minute of video | 5-minute clip | Of which detection |
-|---|---|---|---|
-| Moving test pattern, no faces (baseline) | 141–172 s | 12–14 min | 67–84 s/min |
-| Crowd photo panning, ~200 faces a frame (worst case for blurring) | 106–131 s | 9–11 min | 67–85 s/min |
+| 30-second 1080p30 clip | Time | Of which detection |
+|---|---|---|
+| Crowd photo panning (~200 faces a frame, worst case for blurring), **one job** | 49.6 s | 29.7 s |
+| The same, **6 segments** of 5 s, each as its own job | 9.1–11.2 s each (63 s in total, the overlap and per-job start-up cost about a quarter more) | |
+| Joining the segments + thumbnail | 0.3 s | |
+| **Estimated with 6 worker replicas in parallel** (probe + slowest segment + join) | **11.6 s, about 4x faster** | |
+| Moving test pattern (no faces, detailed picture), one job | 61.6 s | 29.8 s |
 
-Per 720p frame analysed: faces 43–55 ms, plates 129–159 ms with tiles (25–31 ms whole frame only). The rest is ffmpeg decoding and encoding. Speed scales roughly with cores, so a 4-vCPU worker should take about half as long. To go faster at some cost in safety: `PlateTiles=false` (saves about 3.5 minutes per 5-minute clip on 2 vCPUs) or `DetectEveryNthFrame=10` (about 3 minutes). `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
+Per frame analysed: faces 59 ms at full 720p, about 4 times less on the 640 px copy now used; plates 138 ms with the zoomed tiles (26 ms whole frame only), which is now most of the detection time. For comparison, before this change the same clips took 106–172 s per minute of video. Add a second or two per segment for downloading the original from R2, plus the queue wait if fewer than 6 replicas are free; with one replica the segments run one after another (about 25% slower than one job), so give the worker a KEDA maximum of at least 6. Speed scales roughly with cores. To go faster at some cost in safety: `PlateTiles=false` (detection would drop to roughly a quarter) or `DetectEveryNthFrame=10`. `VideoTimeout` (25 minutes) stops a runaway job before RabbitMQ's 30-minute acknowledgement timeout.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
