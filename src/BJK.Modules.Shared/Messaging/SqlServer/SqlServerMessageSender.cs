@@ -11,6 +11,7 @@ using Rebus.Logging;
 using Rebus.Messages;
 using Rebus.SqlServer;
 using Rebus.Threading;
+using Rebus.Threading.TaskParallelLibrary;
 using Rebus.Time;
 using Rebus.Transport;
 
@@ -39,13 +40,13 @@ internal sealed class SqlServerMessageSender(
         ArgumentException.ThrowIfNullOrWhiteSpace(queue);
         ArgumentNullException.ThrowIfNull(message);
 
-        var (bus, transport) = await GetBusAsync(cancellationToken);
+        var (bus, _) = await GetBusAsync(cancellationToken);
         var address = database.Address(queue);
         if (options.Value.CreateTables && _createdQueues.TryAdd(address, true))
         {
             try
             {
-                transport.CreateQueue(address);
+                CreateQueueTable(address);
             }
             catch
             {
@@ -83,20 +84,39 @@ internal sealed class SqlServerMessageSender(
 
     public async Task<int> CountSubscribersAsync(string topic, CancellationToken cancellationToken)
     {
-        await using var connection = new SqlConnection(database.ConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT COUNT(*) FROM {database.SubscriptionsTable} WHERE [topic] = @topic";
-        command.Parameters.Add("@topic", SqlDbType.NVarChar, 200).Value = topic;
         try
         {
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*) FROM {database.SubscriptionsTable} WHERE [topic] = @topic";
+            command.Parameters.Add("@topic", SqlDbType.NVarChar, 200).Value = topic;
             return (int)(await command.ExecuteScalarAsync(cancellationToken) ?? 0);
         }
-        catch (SqlException ex) when (ex.Number == 208)
+        catch (SqlException ex) when (ex.Number is 208 or 4060)
         {
-            // No subscriptions table yet: no consumer has started.
+            // No subscriptions table (208) or no database (4060) yet: no consumer has started.
             return 0;
         }
+    }
+
+    /// <summary>
+    /// Creates a queue's table (with the lease and delivery count columns) if it's missing, so a job can be queued
+    /// before any worker has started. The send-only bus itself never creates tables (it would add an unused
+    /// <c>error</c> queue).
+    /// </summary>
+    private void CreateQueueTable(string address)
+    {
+        var rebusLoggers = new RebusLoggerFactory(loggers);
+        using var creator = new SqlServerQueueTransport(
+            new DbConnectionProvider(database.ConnectionString, rebusLoggers),
+            address,
+            rebusLoggers,
+            new TplAsyncTaskFactory(rebusLoggers),
+            new DefaultRebusTime(),
+            QueueTimings.From(options.Value),
+            createTables: true);
+        creator.EnsureTableIsCreated();
     }
 
     private static Dictionary<string, string> HeadersFor(OutgoingMessage message) => new()
@@ -158,7 +178,7 @@ internal sealed class SqlServerMessageSender(
                                 c.Get<IAsyncTaskFactory>(),
                                 c.Get<IRebusTime>(),
                                 QueueTimings.From(settings),
-                                settings.CreateTables));
+                                createTables: false));
                         })
                         .Subscriptions(s => s.StoreInSqlServer(
                             database.ConnectionString,
