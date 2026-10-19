@@ -14,9 +14,13 @@ commit="47534e27c9851bb1128ccc0102f1145e27f23f98"
 base="https://media.githubusercontent.com/media/opencv/opencv_zoo/${commit}/models"
 mkdir -p "$dir"
 
+# sha256sum on Linux; shasum on macOS, which may not have sha256sum.
+if command -v sha256sum >/dev/null 2>&1; then sha256_check() { sha256sum -c -; }
+else sha256_check() { shasum -a 256 -c -; }; fi
+
 fetch() { # url file sha256
   curl -fsSL --retry 3 -o "$dir/$2" "$1"
-  echo "$3  $dir/$2" | sha256sum -c -
+  echo "$3  $dir/$2" | sha256_check
 }
 
 fetch "$base/face_detection_yunet/face_detection_yunet_2026may.onnx" \
