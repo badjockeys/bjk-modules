@@ -91,11 +91,28 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date");
+
                     b.Property<DateTimeOffset?>("DeactivatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("DeletionDueAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("LivenessAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LivenessAttemptsSince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LivenessCheckedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LivenessStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

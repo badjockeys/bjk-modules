@@ -4,7 +4,10 @@ using BJK.Modules.User.UseCases.AgeChecks;
 
 namespace BJK.Modules.User.UseCases;
 
-/// <summary>An account as the user (or an admin) sees it. The public profile (handle, display name) is in bjk-core.</summary>
+/// <summary>
+/// An account as the user (or a moderator) sees it, including the declared date of birth and the sign-up liveness
+/// result. The public profile (handle, display name) is in bjk-core.
+/// </summary>
 public sealed record UserDto(
     Guid Id,
     string? Email,
@@ -15,7 +18,10 @@ public sealed record UserDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeactivatedAt,
     DateTimeOffset? DeletionDueAt,
-    AgeCheckSummaryDto AgeCheck)
+    AgeCheckSummaryDto AgeCheck,
+    DateOnly? DateOfBirth,
+    LivenessStatus LivenessStatus,
+    DateTimeOffset? LivenessCheckedAt)
 {
     /// <summary>True once the account has passed the age check (tokens carry age_verified=true).</summary>
     public bool AgeVerified => AgeCheck.Status == AgeCheckStatus.Passed;
@@ -30,5 +36,8 @@ public sealed record UserDto(
         account.CreatedAt,
         account.DeactivatedAt,
         account.DeletionDueAt,
-        AgeCheckSummaryDto.From(account));
+        AgeCheckSummaryDto.From(account),
+        account.DateOfBirth,
+        account.LivenessStatus,
+        account.LivenessCheckedAt);
 }

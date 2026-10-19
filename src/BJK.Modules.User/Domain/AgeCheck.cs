@@ -1,6 +1,9 @@
 namespace BJK.Modules.User.Domain;
 
-/// <summary>Where an account is in the age check (minimum age 18). Only <see cref="Passed"/> earns the age_verified claim.</summary>
+/// <summary>
+/// Where an account is in the age check: the "highly effective" check (18 and over) needed to view sensitive posts,
+/// taken on demand. Only <see cref="Passed"/> earns the age_verified claim.
+/// </summary>
 public enum AgeCheckStatus
 {
     /// <summary>No age check done yet, or an admin reset it.</summary>
@@ -51,11 +54,11 @@ public enum AgeCheckResult
     DocumentUnreadable,
 }
 
-/// <summary>The age rules, kept free of any provider so they can be tested on their own.</summary>
+/// <summary>The age check's rules, kept free of any provider so they can be tested on their own.</summary>
 public static class AgeCheckRules
 {
-    /// <summary>Minimum age to use Bad Jockeys.</summary>
-    public const int MinimumAge = 18;
+    /// <summary>Age the check confirms: 18, for sensitive posts.</summary>
+    public const int AdultAge = AgeRules.AdultAge;
 
     /// <summary>
     /// Decides a face estimate. <paramref name="estimatedAge"/> is null when the provider couldn't estimate.
@@ -78,7 +81,7 @@ public static class AgeCheckRules
             return AgeCheckResult.Passed;
         }
 
-        return age + margin < MinimumAge ? AgeCheckResult.Underage : AgeCheckResult.Under25;
+        return age + margin < AdultAge ? AgeCheckResult.Underage : AgeCheckResult.Under25;
     }
 
     /// <summary>Decides a photo ID check. <paramref name="age"/> is null when the ID couldn't be read.</summary>
@@ -86,7 +89,7 @@ public static class AgeCheckRules
     public static AgeCheckResult DecideDocument(int? age) => age switch
     {
         null => AgeCheckResult.DocumentUnreadable,
-        >= MinimumAge => AgeCheckResult.Passed,
+        >= AdultAge => AgeCheckResult.Passed,
         _ => AgeCheckResult.Underage,
     };
 }

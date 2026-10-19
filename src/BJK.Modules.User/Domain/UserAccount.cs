@@ -15,6 +15,7 @@ public enum UserAccountStatus
 /// A Bad Jockeys account's status, in <c>users.Accounts</c>. Its <see cref="Id"/> is the sign-in account's id
 /// (the token's "sub"), the same GUID used everywhere. Nothing else is copied here: the email and password live in
 /// the sign-in account (<c>auth.AspNetUsers</c>), and the display name, handle and so on in the core profile.
+/// The declared date of birth is kept here, to apply the protections for under-18s.
 /// </summary>
 public sealed class UserAccount
 {
@@ -38,7 +39,29 @@ public sealed class UserAccount
 
     public byte[] RowVersion { get; private set; } = [];
 
-    /// <summary>Age check (minimum age 18). Only the outcome is kept: never the video, the photo, the estimate or ID details.</summary>
+    /// <summary>
+    /// The date of birth given at sign-up (13 or over). Needed to apply the protections for under-18s; deleted with the
+    /// account. Null only for accounts created before dates of birth were asked for: they're asked at their next
+    /// sign-in. Never logged.
+    /// </summary>
+    public DateOnly? DateOfBirth { get; private set; }
+
+    /// <summary>The sign-up liveness check (no age estimate). Only the result and the date are kept, never the video.</summary>
+    public LivenessStatus LivenessStatus { get; private set; } = LivenessStatus.NotChecked;
+
+    /// <summary>When the latest liveness result was recorded.</summary>
+    public DateTimeOffset? LivenessCheckedAt { get; private set; }
+
+    /// <summary>Liveness tries made since <see cref="LivenessAttemptsSince"/>, for the daily limit.</summary>
+    public int LivenessAttempts { get; private set; }
+
+    /// <summary>Start of the current 24-hour liveness tries window.</summary>
+    public DateTimeOffset? LivenessAttemptsSince { get; private set; }
+
+    /// <summary>
+    /// The "highly effective" age check (18 and over) for viewing sensitive posts, taken on demand. Only the outcome
+    /// is kept: never the video, the photo, the estimate or ID details.
+    /// </summary>
     public AgeCheckStatus AgeCheckStatus { get; private set; } = AgeCheckStatus.NotChecked;
 
     /// <summary>How the current <see cref="AgeCheckStatus"/> was reached, if any attempt was made.</summary>
@@ -63,6 +86,84 @@ public sealed class UserAccount
 
     /// <summary>True once the account has passed the age check; tokens then carry age_verified=true.</summary>
     public bool IsAgeVerified => AgeCheckStatus == AgeCheckStatus.Passed;
+
+    /// <summary>True once the sign-up liveness check has passed.</summary>
+    public bool HasPassedLiveness => LivenessStatus == LivenessStatus.Passed;
+
+    /// <summary>
+    /// Sign-up is finished: a date of birth is on record and the liveness check has passed. Until then the identity
+    /// server issues no tokens for the account and its sign-in pages send the user to finish.
+    /// </summary>
+    public bool IsSignUpComplete => DateOfBirth is not null && HasPassedLiveness;
+
+    /// <summary>True if the declared date of birth says the user is under 18 on <paramref name="today"/>.</summary>
+    /// <param name="today">Today (UTC date).</param>
+    public bool IsMinorOn(DateOnly today) => DateOfBirth is { } dateOfBirth && AgeRules.IsMinor(dateOfBirth, today);
+
+    /// <summary>Records the date of birth of an account created before dates of birth were asked for.</summary>
+    /// <param name="dateOfBirth">The date of birth. Must be 13 or over and believable.</param>
+    /// <param name="now">The current time.</param>
+    public void SetDateOfBirth(DateOnly dateOfBirth, DateTimeOffset now)
+    {
+        if (DateOfBirth is not null)
+        {
+            throw new InvalidOperationException("The date of birth is already recorded. Only support can change it.");
+        }
+
+        EnsureAllowed(dateOfBirth, now);
+        DateOfBirth = dateOfBirth;
+        UpdatedAt = now;
+    }
+
+    /// <summary>Liveness tries left in the current 24 hours.</summary>
+    /// <param name="now">The current time.</param>
+    /// <param name="maxPerDay">The daily limit.</param>
+    public int LivenessAttemptsLeft(DateTimeOffset now, int maxPerDay) =>
+        HasPassedLiveness ? 0
+        : LivenessAttemptsSince is { } since && now - since < TimeSpan.FromDays(1)
+            ? Math.Max(0, maxPerDay - LivenessAttempts)
+            : maxPerDay;
+
+    /// <summary>Counts a liveness try against the daily limit. Returns false (and counts nothing) if none are left.</summary>
+    /// <param name="now">The current time.</param>
+    /// <param name="maxPerDay">The daily limit.</param>
+    public bool TryStartLivenessAttempt(DateTimeOffset now, int maxPerDay)
+    {
+        if (HasPassedLiveness)
+        {
+            return false;
+        }
+
+        if (LivenessAttemptsSince is not { } since || now - since >= TimeSpan.FromDays(1))
+        {
+            LivenessAttemptsSince = now;
+            LivenessAttempts = 0;
+        }
+
+        if (LivenessAttempts >= maxPerDay)
+        {
+            return false;
+        }
+
+        LivenessAttempts++;
+        UpdatedAt = now;
+        return true;
+    }
+
+    /// <summary>Records a liveness result. A pass is final.</summary>
+    /// <param name="passed">True if the video showed one live person turning their head.</param>
+    /// <param name="now">The current time.</param>
+    public void RecordLiveness(bool passed, DateTimeOffset now)
+    {
+        if (HasPassedLiveness)
+        {
+            throw new InvalidOperationException("This account has already passed the liveness check.");
+        }
+
+        LivenessStatus = passed ? LivenessStatus.Passed : LivenessStatus.Failed;
+        LivenessCheckedAt = now;
+        UpdatedAt = now;
+    }
 
     /// <summary>
     /// The head-turn selfie is only for a first check: once the estimate says 18 to 24 (or under 18), photo ID is the
@@ -161,15 +262,27 @@ public sealed class UserAccount
 
     /// <summary>Creates the account record for a newly registered sign-in account.</summary>
     /// <param name="identityId">The sign-in account's id. Must be a GUID; it becomes this record's id.</param>
+    /// <param name="dateOfBirth">The declared date of birth: 13 or over.</param>
     /// <param name="now">The registration time.</param>
-    public static UserAccount Create(string identityId, DateTimeOffset now)
+    public static UserAccount Create(string identityId, DateOnly dateOfBirth, DateTimeOffset now)
     {
         if (!Guid.TryParse(identityId, out var id) || id == Guid.Empty)
         {
             throw new ArgumentException("The account id must be a GUID.", nameof(identityId));
         }
 
-        return new UserAccount { Id = id, Status = UserAccountStatus.Active, CreatedAt = now };
+        EnsureAllowed(dateOfBirth, now);
+        return new UserAccount { Id = id, Status = UserAccountStatus.Active, CreatedAt = now, DateOfBirth = dateOfBirth };
+    }
+
+    private static void EnsureAllowed(DateOnly dateOfBirth, DateTimeOffset now)
+    {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        if (!AgeRules.IsPlausible(dateOfBirth, today) || !AgeRules.IsOldEnoughToJoin(dateOfBirth, today))
+        {
+            // The validators refuse these first, with a kind message; this is the last line of defence.
+            throw new ArgumentOutOfRangeException(nameof(dateOfBirth), "Accounts are for people aged 13 and over.");
+        }
     }
 
     public bool IsOwnedBy(Guid userId) => Id == userId;

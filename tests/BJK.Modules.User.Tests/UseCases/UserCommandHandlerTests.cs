@@ -46,10 +46,10 @@ public sealed class UserCommandHandlerTests
             .Returns(AccountResult.Success(User1));
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
-        var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!"), Ct);
+        var id = await handler.Handle(new AddUserCommand(" rider@example.com ", "Passw0rd!", TestDates.Fifteen), Ct);
 
         Assert.Equal(Guid.Parse(User1), id);
-        _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive));
+        _users.Received(1).Add(Arg.Is<UserAccount>(u => u.Id == id && u.IsActive && u.DateOfBirth == TestDates.Fifteen && !u.IsSignUpComplete));
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
         await _identity.Received(1).SendEmailConfirmationAsync(User1, Arg.Any<CancellationToken>());
     }
@@ -62,7 +62,7 @@ public sealed class UserCommandHandlerTests
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         var ex = await Assert.ThrowsAsync<ValidationException>(
-            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!"), Ct));
+            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!", TestDates.Adult), Ct));
 
         Assert.Contains(ex.Errors, e => e.PropertyName == "Email");
         _users.DidNotReceive().Add(Arg.Any<UserAccount>());
@@ -77,7 +77,7 @@ public sealed class UserCommandHandlerTests
         var handler = new AddUserCommandHandler(_users, _identity, _clock);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!"), Ct));
+            () => handler.Handle(new AddUserCommand("rider@example.com", "Passw0rd!", TestDates.Adult), Ct));
 
         await _identity.Received(1).DeleteAccountAsync(User1, Arg.Any<CancellationToken>());
     }
@@ -299,10 +299,10 @@ public sealed class UserCommandHandlerTests
     {
         var handler = new AddExternalUserCommandHandler(_users, _clock);
 
-        var id = await handler.Handle(new AddExternalUserCommand(User1), Ct);
+        var id = await handler.Handle(new AddExternalUserCommand(User1, TestDates.Adult), Ct);
 
         Assert.Equal(Guid.Parse(User1), id);
-        _users.Received(1).Add(Arg.Is<UserAccount>(a => a.Id == id));
+        _users.Received(1).Add(Arg.Is<UserAccount>(a => a.Id == id && a.DateOfBirth == TestDates.Adult));
     }
 
     [Fact]
@@ -334,7 +334,7 @@ public sealed class UserCommandHandlerTests
 
     private UserAccount Existing(string identityId)
     {
-        var account = UserAccount.Create(identityId, Now.AddYears(-1));
+        var account = UserAccount.Create(identityId, TestDates.Adult, Now.AddYears(-1));
         _users.GetByIdAsync(account.Id, Arg.Any<CancellationToken>()).Returns(account);
         return account;
     }

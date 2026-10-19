@@ -1,7 +1,9 @@
 namespace BJK.Modules.User;
 
 /// <summary>
-/// Age check settings, section <c>AgeAssurance</c>. Each <c>Provider</c> picks an implementation by name.
+/// Settings for the sign-up liveness check (<see cref="Liveness"/> only) and the on-demand age check for sensitive
+/// posts (liveness, then <see cref="Estimator"/>, with <see cref="Document"/> as the fallback), section
+/// <c>AgeAssurance</c>. Each <c>Provider</c> picks an implementation by name.
 /// <c>Development</c> providers don't check anything real and the app refuses to start with them outside the
 /// Development environment.
 /// </summary>
@@ -18,7 +20,10 @@ public sealed class AgeAssuranceOptions
     /// <summary>Estimated age that passes without photo ID ("Challenge 25"). Default 25; at least 18.</summary>
     public int ChallengeAge { get; set; } = 25;
 
-    /// <summary>Attempts (selfie or photo ID) allowed in 24 hours. Default 3.</summary>
+    /// <summary>
+    /// Tries allowed in 24 hours, counted separately for the sign-up liveness check and for the age check (selfie or
+    /// photo ID). Default 3.
+    /// </summary>
     public int MaxAttemptsPerDay { get; set; } = 3;
 
     /// <summary>Largest selfie video accepted, in bytes. Default 15 MB (a 3–5 second clip is usually under 2 MB).</summary>
