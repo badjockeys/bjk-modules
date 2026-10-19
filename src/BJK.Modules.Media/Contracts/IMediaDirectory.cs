@@ -36,6 +36,12 @@ public interface IMediaDirectory
     /// <param name="clearAutomatic">When clearing: also clear automatic marks (moderators only).</param>
     Task SetSensitiveAsync(IReadOnlyCollection<Guid> mediaIds, bool isSensitive, CancellationToken cancellationToken, bool clearAutomatic = false);
 
+    /// <summary>
+    /// The post using these media has been published: their uploaded originals aren't needed any more and are deleted
+    /// now (Ready media only; anything else keeps its original until it's ready, or the 24-hour sweep). Safe to repeat.
+    /// </summary>
+    Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
+
     /// <summary>Deletes the files and marks the media Deleted. Ids that don't exist are ignored.</summary>
     Task DeleteAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
 }

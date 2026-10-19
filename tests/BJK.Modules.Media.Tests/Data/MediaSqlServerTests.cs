@@ -120,6 +120,42 @@ public sealed class MediaSqlServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Originals_are_swept_only_when_finished_and_past_their_deadline()
+    {
+        await using (var db = Context())
+        {
+            MediaItem Uploaded(string name, DateTimeOffset at)
+            {
+                var m = MediaItem.Create(UserId, name, "video/mp4", at);
+                m.MarkUploaded(10, at, TimeSpan.FromHours(24));
+                db.Media.Add(m);
+                return m;
+            }
+
+            var failedOld = Uploaded("failed-old.mp4", Now.AddHours(-25));
+            failedOld.MarkFailed("Processing failed.", Now.AddHours(-25));
+            var failedNew = Uploaded("failed-new.mp4", Now.AddHours(-2));
+            failedNew.MarkFailed("Processing failed.", Now.AddHours(-2));
+            var readyOld = Uploaded("ready-old.mp4", Now.AddHours(-30));
+            readyOld.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-30));
+            var released = Uploaded("released.mp4", Now.AddHours(-30));
+            released.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-30));
+            released.MarkOriginalDeleted(Now.AddHours(-29));
+            Uploaded("stuck-processing.mp4", Now.AddDays(-3));
+            var abandoned = MediaItem.Create(UserId, "abandoned.mp4", "video/mp4", Now.AddHours(-26));
+            db.Media.Add(abandoned);
+            db.Media.Add(MediaItem.Create(UserId, "uploading.mp4", "video/mp4", Now.AddHours(-1)));
+            await db.SaveChangesAsync(Ct);
+
+            var due = await new MediaRepository(db).ListOriginalsToDeleteAsync(Now, Now.AddHours(-24), 50, Ct);
+
+            Assert.Equal(
+                new[] { readyOld.Id, abandoned.Id, failedOld.Id }.Order(),
+                due.Select(m => m.Id).Order());
+        }
+    }
+
+    [Fact]
     public async Task Restricted_state_and_scores_are_saved()
     {
         var saved = await SavedProcessingVideo();

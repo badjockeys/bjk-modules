@@ -18,7 +18,7 @@ namespace BJK.Modules.Posts.UseCases.Publishing;
 /// in any order: called when the post is created and for every <c>media.ready</c> / <c>media.failed</c> event. It also
 /// applies automatic sensitive tags: if the media worker's graphic content detection marked any of the post's media,
 /// the post is tagged sensitive (source Automatic) before it's published, recorded in the audit log, and queued for a
-/// moderator to confirm or undo.
+/// moderator to confirm or undo. Once a post is published, its media's uploaded originals are deleted.
 /// </summary>
 public sealed class PostMediaPublisher(
     IPostRepository posts,
@@ -86,10 +86,30 @@ public sealed class PostMediaPublisher(
                 {
                     await RecordAutomaticTagAsync(post, cancellationToken);
                 }
+
+                await ReleaseOriginalsAsync(post, cancellationToken);
             }
         }
 
         return post.MediaState;
+    }
+
+    /// <summary>
+    /// The post's media are all ready and it's published: the uploaded originals aren't needed any more, so the Media
+    /// module deletes them. A failure is only logged: the Media module's 24-hour sweep deletes them anyway.
+    /// </summary>
+    /// <param name="post">The post.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    public async Task ReleaseOriginalsAsync(Post post, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await media.ReleaseOriginalsAsync(post.Media.Select(m => m.MediaId).ToList(), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Couldn't delete the originals of post {PostId}'s media now; the 24-hour sweep will.", post.Id);
+        }
     }
 
     /// <summary>

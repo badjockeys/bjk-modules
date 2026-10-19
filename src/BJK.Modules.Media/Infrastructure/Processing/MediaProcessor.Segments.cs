@@ -108,7 +108,7 @@ internal sealed partial class MediaProcessor
             isLastAttempt,
             async folder =>
             {
-                var original = Path.Combine(folder, "original" + Path.GetExtension(item.OriginalKey));
+                var original = Path.Combine(folder, SourceFileName(item));
                 await DownloadOriginalAsync(item, original, cancellationToken);
 
                 var output = Path.Combine(folder, $"{index:D3}.mp4");
@@ -214,7 +214,7 @@ internal sealed partial class MediaProcessor
                 string? audio = null;
                 if (!_redaction.RemoveAudio)
                 {
-                    audio = Path.Combine(folder, "original" + Path.GetExtension(item.OriginalKey));
+                    audio = Path.Combine(folder, SourceFileName(item));
                     await DownloadOriginalAsync(item, audio, cancellationToken);
                 }
 

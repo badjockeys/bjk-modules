@@ -24,7 +24,49 @@ public sealed class MediaDirectoryTests
             .Returns(ci => new Uri("https://account.r2.cloudflarestorage.com/sensitive/" + ci.ArgAt<string>(1) + "?X-Amz-Signature=abc"));
         _media.GetSensitiveMarksAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, SensitiveMediaMark>());
-        _directory = new MediaDirectory(_media, _storage, _queue, Options(), new FixedTimeProvider(Now), NullLogger<MediaDirectory>.Instance);
+        var clock = new FixedTimeProvider(Now);
+        _directory = new MediaDirectory(
+            _media, _storage, _queue, Options(), clock, NullLogger<MediaDirectory>.Instance,
+            new OriginalsCleanup(_media, _storage, Options(), clock, NullLogger<OriginalsCleanup>.Instance));
+    }
+
+    [Fact]
+    public async Task Publishing_a_post_deletes_the_originals_of_its_ready_media_only()
+    {
+        var ready = Ready();
+        var processing = MediaItem.Create(UserId, "b.mp4", "video/mp4", Now);
+        processing.MarkUploaded(10, Now, TimeSpan.FromDays(1));
+        _media.GetManyAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new List<MediaItem> { ready, processing });
+
+        await _directory.ReleaseOriginalsAsync([ready.Id, processing.Id], Ct);
+
+        await _storage.Received(1).DeleteOriginalAsync(ready.OriginalKey, Arg.Any<CancellationToken>());
+        await _storage.DidNotReceive().DeleteOriginalAsync(processing.OriginalKey, Arg.Any<CancellationToken>());
+        Assert.Equal(Now, ready.OriginalDeletedAt);
+        Assert.Null(processing.OriginalDeletedAt);
+        await _media.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+
+        // Again: nothing more to delete.
+        _storage.ClearReceivedCalls();
+        await _directory.ReleaseOriginalsAsync([ready.Id, processing.Id], Ct);
+        await _storage.DidNotReceiveWithAnyArgs().DeleteOriginalAsync(default!, Ct);
+    }
+
+    [Fact]
+    public async Task The_sweep_deletes_originals_past_their_deadline_counting_24_hours_for_abandoned_uploads()
+    {
+        var failed = MediaItem.Create(UserId, "c.mp4", "video/mp4", Now.AddDays(-2));
+        failed.MarkUploaded(10, Now.AddDays(-2), TimeSpan.FromHours(24));
+        failed.MarkFailed("Processing failed.", Now.AddDays(-2));
+        _media.ListOriginalsToDeleteAsync(Now, Now.AddHours(-24), OriginalsCleanup.SweepBatchSize, Arg.Any<CancellationToken>())
+            .Returns(new List<MediaItem> { failed });
+        var cleanup = new OriginalsCleanup(_media, _storage, Options(), new FixedTimeProvider(Now), NullLogger<OriginalsCleanup>.Instance);
+
+        var deleted = await cleanup.SweepAsync(Ct);
+
+        Assert.Equal(1, deleted);
+        await _storage.Received(1).DeleteOriginalAsync(failed.OriginalKey, Arg.Any<CancellationToken>());
+        Assert.Equal(Now, failed.OriginalDeletedAt);
     }
 
     private static MediaItem Ready(string contentType = "video/mp4")
@@ -52,7 +94,7 @@ public sealed class MediaDirectoryTests
         Assert.StartsWith($"https://account.r2.cloudflarestorage.com/sensitive/{UserId:D}/{item.Id:D}/sensitive/720p.mp4", signed.PlaybackUrl!.ToString());
         Assert.Contains("/sensitive/thumbnail.jpg", signed.ThumbnailUrl!.ToString());
         Assert.Equal(Now.AddMinutes(10), signed.LinksExpireAt);
-        await _storage.Received(1).CreateDownloadUrlAsync(MediaBucket.Sensitive, Arg.Any<string>(), TimeSpan.FromMinutes(10), Arg.Any<CancellationToken>());
+        await _storage.Received(2).CreateDownloadUrlAsync(MediaBucket.Sensitive, Arg.Any<string>(), TimeSpan.FromMinutes(10), Arg.Any<CancellationToken>());
     }
 
     [Fact]

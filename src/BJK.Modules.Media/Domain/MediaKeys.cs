@@ -73,6 +73,20 @@ public static class MediaKeys
     public static string Preview(Guid userId, Guid mediaId, int revision = 0) =>
         $"{Folder(userId, mediaId)}/{Revised(PreviewFile, revision)}";
 
+    /// <summary>Sub-folder, in the private originals bucket, for copies of processed files being re-processed.</summary>
+    public const string ReworkFolder = "rework";
+
+    /// <summary>
+    /// A copy of the processed main file, in the private originals bucket, that a re-processing (a moderator added blur
+    /// regions) works from instead of the original, e.g. <c>{userId}/{mediaId}/rework/r1.mp4</c>.
+    /// </summary>
+    /// <param name="userId">The uploader.</param>
+    /// <param name="mediaId">The media.</param>
+    /// <param name="type">Video or Image.</param>
+    /// <param name="revision">The revision being made.</param>
+    public static string ReworkSource(Guid userId, Guid mediaId, MediaType type, int revision) =>
+        $"{Folder(userId, mediaId)}/{ReworkFolder}/r{revision}{(type == MediaType.Video ? ".mp4" : ".webp")}";
+
     /// <summary>Sub-folder, in the private originals bucket, for blurred video segments waiting to be joined.</summary>
     public const string SegmentsFolder = "segments";
 

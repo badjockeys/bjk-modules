@@ -82,6 +82,7 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
         builder.Property(m => m.PlaybackKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.ThumbnailKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.PreviewKey).HasMaxLength(MediaItem.KeyMaxLength);
+        builder.Property(m => m.SourceKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.DurationSeconds).HasPrecision(9, 3);
         builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
         builder.Property(m => m.FailureReason).HasMaxLength(MediaItem.FailureReasonMaxLength);

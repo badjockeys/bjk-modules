@@ -59,6 +59,13 @@ public interface IMediaRepository
         double? score = null,
         bool clearAutomatic = false);
 
+    /// <summary>
+    /// Media whose original should be deleted now (tracked), oldest first: Ready or Failed media past
+    /// <see cref="MediaItem.OriginalDeletesAt"/>, and uploads never completed that were started before
+    /// <paramref name="abandonedBefore"/>. Never media still processing or waiting for review.
+    /// </summary>
+    Task<IReadOnlyList<MediaItem>> ListOriginalsToDeleteAsync(DateTimeOffset now, DateTimeOffset abandonedBefore, int max, CancellationToken cancellationToken);
+
     /// <summary>Reloads a tracked media item from the database, after someone else changed it.</summary>
     Task ReloadAsync(MediaItem media, CancellationToken cancellationToken);
 
@@ -189,6 +196,19 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
             cancellationToken);
         return inserted > 0;
     }
+
+    public async Task<IReadOnlyList<MediaItem>> ListOriginalsToDeleteAsync(
+        DateTimeOffset now,
+        DateTimeOffset abandonedBefore,
+        int max,
+        CancellationToken cancellationToken) =>
+        await db.Media
+            .Where(m => m.OriginalDeletedAt == null
+                && (((m.Status == MediaStatus.Ready || m.Status == MediaStatus.Failed) && m.OriginalDeletesAt != null && m.OriginalDeletesAt <= now)
+                    || (m.Status == MediaStatus.Uploading && m.CreatedAt <= abandonedBefore)))
+            .OrderBy(m => m.CreatedAt)
+            .Take(max)
+            .ToListAsync(cancellationToken);
 
     public Task ReloadAsync(MediaItem media, CancellationToken cancellationToken) =>
         db.Entry(media).ReloadAsync(cancellationToken);

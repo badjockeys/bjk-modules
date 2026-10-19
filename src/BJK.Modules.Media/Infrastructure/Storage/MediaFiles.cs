@@ -8,6 +8,11 @@ internal static class MediaFiles
     public static async Task DeleteAllAsync(IMediaStorage storage, MediaItem item, CancellationToken cancellationToken)
     {
         await storage.DeleteOriginalAsync(item.OriginalKey, cancellationToken);
+        if (item.SourceKey is not null)
+        {
+            await storage.DeleteOriginalAsync(item.SourceKey, cancellationToken);
+        }
+
         if (item.Status == MediaStatus.NeedsReview)
         {
             await DeleteReviewFilesAsync(storage, item, cancellationToken);

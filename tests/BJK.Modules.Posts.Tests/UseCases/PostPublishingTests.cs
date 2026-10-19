@@ -189,6 +189,24 @@ public sealed class PostPublishingTests
     }
 
     [Fact]
+    public async Task Originals_are_released_once_the_post_is_published_and_not_before()
+    {
+        var ready = Media(MediaType.Image, MediaStatus.Ready);
+        await CreateHandler().Handle(Command(ready), Ct);
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == ready), Arg.Any<CancellationToken>());
+
+        _media.ClearReceivedCalls();
+        var video = Media(MediaType.Video, MediaStatus.NeedsReview);
+        await CreateHandler().Handle(Command(video), Ct);
+        await _media.DidNotReceiveWithAnyArgs().ReleaseOriginalsAsync(default!, Ct);
+
+        // A moderator approves the video: it becomes Ready, the post is published and its original released.
+        Set(video, MediaType.Video, MediaStatus.Ready);
+        await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == video), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Media_flagged_by_detection_tags_the_post_sensitive_before_it_is_published()
     {
         var video = Media(MediaType.Video, MediaStatus.Processing);

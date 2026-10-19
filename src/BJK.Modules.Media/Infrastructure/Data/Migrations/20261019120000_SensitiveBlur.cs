@@ -9,7 +9,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
     /// Sensitive media shown blurred: which media are sensitive and who marked them (media.SensitiveMedia: its post's
     /// tag or automatic detection, with the score), and on media.Media whether the processed files are kept privately
     /// (IsRestricted), the key of the blurred public preview (PreviewKey) and the graphic content score
-    /// (SensitiveScore, also per video segment). Only additions; nothing is changed or removed, and existing media stay public.
+    /// (SensitiveScore, also per video segment). Also, since originals are no longer kept for 90 days: when the original
+    /// was deleted (OriginalDeletedAt) and the processed copy a moderator's re-processing works from (SourceKey). Only
+    /// additions; nothing is changed or removed, and existing media stay public.
     /// </summary>
     public partial class SensitiveBlur : Migration
     {
@@ -37,6 +39,21 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                 schema: "media",
                 table: "Media",
                 type: "float",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTimeOffset>(
+                name: "OriginalDeletedAt",
+                schema: "media",
+                table: "Media",
+                type: "datetimeoffset",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "SourceKey",
+                schema: "media",
+                table: "Media",
+                type: "nvarchar(512)",
+                maxLength: 512,
                 nullable: true);
 
             migrationBuilder.AddColumn<double>(
@@ -95,6 +112,16 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                 name: "SensitiveScore",
                 schema: "media",
                 table: "VideoSegments");
+
+            migrationBuilder.DropColumn(
+                name: "OriginalDeletedAt",
+                schema: "media",
+                table: "Media");
+
+            migrationBuilder.DropColumn(
+                name: "SourceKey",
+                schema: "media",
+                table: "Media");
         }
     }
 }

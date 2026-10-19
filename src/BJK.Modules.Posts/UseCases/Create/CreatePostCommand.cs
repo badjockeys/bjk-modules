@@ -142,6 +142,12 @@ public sealed class CreatePostCommandHandler(
             await publisher.RecordAutomaticTagAsync(post, cancellationToken);
         }
 
+        if (!pending)
+        {
+            // Published with its media ready: the uploaded originals aren't needed any more.
+            await publisher.ReleaseOriginalsAsync(post, cancellationToken);
+        }
+
         if (pending)
         {
             // A photo or video may have finished between the check above and the save, before its event could find

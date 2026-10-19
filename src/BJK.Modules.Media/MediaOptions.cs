@@ -79,8 +79,16 @@ public sealed class MediaOptions
     /// </summary>
     public TimeSpan SensitiveLinkLifetime { get; set; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>How long originals are kept. Must match the lifecycle rule on the originals bucket.</summary>
-    public TimeSpan OriginalRetention { get; set; } = TimeSpan.FromDays(90);
+    /// <summary>
+    /// Originals are deleted as soon as they're no longer needed: when the post using the media is published (or the
+    /// media is deleted). This is the most they're kept otherwise, counted from upload: failed media (until the user
+    /// uploads again), media never posted, and abandoned uploads. Media still processing or waiting for a moderator
+    /// keeps its original. Replaces the 90-day retention (owner's decision, 19 Oct 2026).
+    /// </summary>
+    public TimeSpan UnusedOriginalRetention { get; set; } = TimeSpan.FromHours(24);
+
+    /// <summary>How often the API host's sweeper deletes originals past <see cref="UnusedOriginalRetention"/>.</summary>
+    public TimeSpan OriginalSweepInterval { get; set; } = TimeSpan.FromHours(1);
 
     public long MaxBytesFor(Domain.MediaType type) =>
         type == Domain.MediaType.Video ? MaxVideoBytes : MaxImageBytes;

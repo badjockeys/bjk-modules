@@ -105,7 +105,7 @@ internal sealed partial class MediaProcessor(
 
     private async Task<ProcessingOutcome> ProcessFilesAsync(MediaItem item, MediaProcessingJob job, string folder, CancellationToken cancellationToken)
     {
-        var original = Path.Combine(folder, "original" + Path.GetExtension(item.OriginalKey));
+        var original = Path.Combine(folder, SourceFileName(item));
         var sha256 = await DownloadOriginalAsync(item, original, cancellationToken);
 
         var probe = await transcoder.ProbeAsync(original, cancellationToken);
@@ -371,15 +371,24 @@ internal sealed partial class MediaProcessor(
         }
     }
 
-    /// <summary>Downloads the original to <paramref name="path"/>, returning its SHA-256 (hex).</summary>
+    /// <summary>
+    /// Downloads the file to process to <paramref name="path"/>: the original, or, when a moderator's added blur regions
+    /// are being applied, the copy of the processed file (<see cref="MediaItem.SourceKey"/>), since originals aren't kept
+    /// once a post is published. Returns the original's SHA-256 (hex): computed while downloading it, or the one
+    /// recorded at the first processing.
+    /// </summary>
     private async Task<string> DownloadOriginalAsync(MediaItem item, string path, CancellationToken cancellationToken)
     {
         await using var file = File.Create(path);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         await using var hashing = new HashingStream(file, hash);
-        await storage.DownloadOriginalAsync(item.OriginalKey, hashing, cancellationToken);
-        return Convert.ToHexStringLower(hash.GetHashAndReset());
+        await storage.DownloadOriginalAsync(item.SourceKey ?? item.OriginalKey, hashing, cancellationToken);
+        var computed = Convert.ToHexStringLower(hash.GetHashAndReset());
+        return item.SourceKey is not null && item.Sha256 is { } recorded ? recorded : computed;
     }
+
+    /// <summary>The local file name for the file being processed, keeping its extension.</summary>
+    private static string SourceFileName(MediaItem item) => "original" + Path.GetExtension(item.SourceKey ?? item.OriginalKey);
 
     private async Task<ProcessingOutcome> FailAsync(MediaItem item, string reason, CancellationToken cancellationToken)
     {

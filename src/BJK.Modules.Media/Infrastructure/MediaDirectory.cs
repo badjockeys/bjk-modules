@@ -14,8 +14,12 @@ internal sealed class MediaDirectory(
     IMediaJobQueue queue,
     IOptions<MediaOptions> options,
     TimeProvider clock,
-    ILogger<MediaDirectory> logger) : IMediaDirectory
+    ILogger<MediaDirectory> logger,
+    OriginalsCleanup originals) : IMediaDirectory
 {
+    public Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken) =>
+        originals.ReleaseAsync(mediaIds, cancellationToken);
+
     public async Task<IReadOnlyList<MediaSummary>> GetAsync(
         IReadOnlyCollection<Guid> mediaIds,
         CancellationToken cancellationToken)

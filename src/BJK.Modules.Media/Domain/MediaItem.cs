@@ -42,8 +42,24 @@ public sealed class MediaItem
 
     public string OriginalKey { get; private set; } = string.Empty;
 
-    /// <summary>When the storage lifecycle rule removes the original (upload time + retention).</summary>
+    /// <summary>
+    /// The latest the original is kept once processing has finished (upload time + <c>Media:UnusedOriginalRetention</c>,
+    /// 24 hours): the API host's sweeper deletes it then if nothing released it sooner (failed media, or Ready media that
+    /// was never posted). Media still processing or waiting for review keeps it.
+    /// </summary>
     public DateTimeOffset? OriginalDeletesAt { get; private set; }
+
+    /// <summary>
+    /// When the uploaded original was deleted: as soon as its post was published (or by the sweeper). Null while it
+    /// exists. Nothing is ever processed from it again: moderators' extra blurs work from the processed file.
+    /// </summary>
+    public DateTimeOffset? OriginalDeletedAt { get; private set; }
+
+    /// <summary>
+    /// While re-processing after a moderator added blur regions: the copy of the processed file to work from (in the
+    /// originals bucket, <see cref="MediaKeys.ReworkSource"/>), instead of the original. Null for a first processing.
+    /// </summary>
+    public string? SourceKey { get; private set; }
 
     public string? PlaybackKey { get; private set; }
 
@@ -156,6 +172,9 @@ public sealed class MediaItem
     public bool IsOwnedBy(Guid userId) => UserId == userId;
 
     /// <summary>The file has arrived in storage; processing can start.</summary>
+    /// <param name="sizeBytes">The original's size.</param>
+    /// <param name="now">The time.</param>
+    /// <param name="originalRetention">How long the original may be kept at most once processing is finished.</param>
     public void MarkUploaded(long sizeBytes, DateTimeOffset now, TimeSpan originalRetention)
     {
         EnsureStatus(MediaStatus.Uploading);
@@ -273,6 +292,14 @@ public sealed class MediaItem
         UpdatedAt = now;
     }
 
+    /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
+    /// <param name="now">The time.</param>
+    public void MarkOriginalDeleted(DateTimeOffset now)
+    {
+        OriginalDeletedAt ??= now;
+        UpdatedAt = now;
+    }
+
     /// <summary>A moderator rejected it: it becomes <see cref="MediaStatus.Failed"/> with the reason, which the uploader sees.</summary>
     /// <param name="reason">Shown to the uploader.</param>
     /// <param name="moderatorId">The moderator, or null for a machine token.</param>
@@ -294,7 +321,11 @@ public sealed class MediaItem
     /// </summary>
     /// <param name="regions">Regions to add to any already there.</param>
     /// <param name="now">The time.</param>
-    public void AddManualRedactions(IReadOnlyCollection<ManualRedaction> regions, DateTimeOffset now)
+    /// <param name="sourceKey">
+    /// The copy of the current processed file to re-process from (<see cref="MediaKeys.ReworkSource"/>); originals
+    /// aren't kept once a post is published.
+    /// </param>
+    public void AddManualRedactions(IReadOnlyCollection<ManualRedaction> regions, DateTimeOffset now, string? sourceKey = null)
     {
         if (Status is not (MediaStatus.NeedsReview or MediaStatus.Ready))
         {
@@ -309,6 +340,7 @@ public sealed class MediaItem
 
         ManualRedactionsJson = JsonSerializer.Serialize(all, RedactionJson);
         Revision++;
+        SourceKey = sourceKey ?? SourceKey;
         PlaybackKey = null;
         ThumbnailKey = null;
         IsRestricted = false;

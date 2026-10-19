@@ -67,6 +67,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTimeOffset?>("OriginalDeletedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("OriginalDeletesAt")
                         .HasColumnType("datetimeoffset");
 
@@ -129,6 +132,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nchar(64)")
                         .IsFixedLength();
+
+                    b.Property<string>("SourceKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
 
                     b.Property<string>("Status")
                         .IsRequired()

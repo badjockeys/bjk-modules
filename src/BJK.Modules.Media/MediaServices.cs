@@ -84,6 +84,8 @@ public static class MediaServices
             .Validate(
                 o => o.SensitiveLinkLifetime >= TimeSpan.FromMinutes(1) && o.SensitiveLinkLifetime <= TimeSpan.FromHours(1),
                 "Media:SensitiveLinkLifetime must be between 1 minute and 1 hour.")
+            .Validate(o => o.UnusedOriginalRetention > TimeSpan.Zero, "Media:UnusedOriginalRetention must be positive.")
+            .Validate(o => o.OriginalSweepInterval >= TimeSpan.FromMinutes(1), "Media:OriginalSweepInterval must be at least a minute.")
             .ValidateOnStart();
         services.AddOptions<MediaStorageOptions>()
             .Bind(configuration.GetSection(MediaStorageOptions.SectionName))

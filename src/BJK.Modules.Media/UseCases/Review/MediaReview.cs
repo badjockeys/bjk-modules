@@ -191,8 +191,9 @@ public sealed class GetOriginalForReviewQueryHandler(
     {
         caller.RequireAdmin(MediaModule.ManageScope);
         var item = await MediaReview.GetAsync(media, request.MediaId, cancellationToken);
-        if (item.OriginalDeletesAt is { } deletesAt && deletesAt <= clock.GetUtcNow())
+        if (item.OriginalDeletedAt is not null)
         {
+            // Originals are deleted once the post is published (or after 24 hours unused).
             throw new NotFoundException("Original", request.MediaId);
         }
 
@@ -322,7 +323,8 @@ public sealed class RejectMediaCommandHandler(
 
 /// <summary>
 /// A moderator adds blur regions for things automatic detection missed, and the media is processed again (automatic
-/// detection plus every manual region). The result always comes back to the review queue. Works on media waiting for
+/// detection plus every manual region) from its current processed file, since the original is deleted once the post is
+/// published. The result always comes back to the review queue. Works on media waiting for
 /// review or already Ready (e.g. after a report); a Ready item's public files are removed straight away.
 /// </summary>
 /// <param name="MediaId">The media.</param>
@@ -374,10 +376,17 @@ public sealed class AddManualRedactionsCommandHandler(
             throw MediaReview.Invalid(nameof(request.Regions), $"Media can have at most {ManualRedaction.MaxPerMedia} blur regions.");
         }
 
-        if (item.OriginalDeletesAt is { } deletesAt && deletesAt <= clock.GetUtcNow())
-        {
-            throw MediaReview.Invalid(nameof(request.MediaId), "The original has been deleted (after 90 days), so it can't be processed again.");
-        }
+        // Re-process from the current processed (already blurred) file, not the original, which is deleted once the
+        // post is published: copy it aside first, then take the published or review files down.
+        var (playbackType, _) = MediaFiles.ContentTypes(item.MediaType);
+        var current = item.Status == MediaStatus.NeedsReview
+            ? (Bucket: MediaBucket.Originals, Key: MediaKeys.ReviewPlayback(item.UserId, item.Id, item.MediaType, item.Revision))
+            : item.IsRestricted
+                ? (Bucket: MediaBucket.Sensitive, Key: MediaKeys.Sensitive(item.PlaybackKey!))
+                : (Bucket: MediaBucket.Public, Key: item.PlaybackKey!);
+        var source = MediaKeys.ReworkSource(item.UserId, item.Id, item.MediaType, item.Revision + 1);
+        await storage.CopyAsync(current.Bucket, current.Key, MediaBucket.Originals, source, playbackType, cancellationToken);
+        var previousSource = item.SourceKey;
 
         // Take down what's there now: public files of Ready media (something unblurred may be showing), or the
         // review copies. Cloudflare may keep serving a cached public file until it's purged.
@@ -397,13 +406,17 @@ public sealed class AddManualRedactionsCommandHandler(
         }
 
         var before = item.Status;
-        item.AddManualRedactions(request.Regions, clock.GetUtcNow());
+        item.AddManualRedactions(request.Regions, clock.GetUtcNow(), source);
 
         // Save first, then queue: the worker skips media that isn't Processing yet, so queueing first could lose the job.
         await media.SaveChangesAsync(cancellationToken);
         await queue.EnqueueAsync(
             new MediaProcessingJob(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType),
             cancellationToken);
+        if (previousSource is not null && previousSource != source)
+        {
+            await storage.DeleteOriginalAsync(previousSource, cancellationToken);
+        }
 
         await audit.RecordAsync(
             new ModerationAuditEntry(

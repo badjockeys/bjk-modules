@@ -334,6 +334,40 @@ public sealed class SensitiveVisibilityTests
         Assert.True(_storage.Has(MediaBucket.Public, item.PlaybackKey!));
     }
 
+    // Originals aren't kept once a post is published: moderators' extra blurs work from the processed file
+
+    [Fact]
+    public async Task Adding_blur_regions_reprocesses_from_the_processed_file_when_the_original_is_gone()
+    {
+        var item = PublicReady();
+        await _storage.DeleteOriginalAsync(item.OriginalKey, Ct);
+        item.MarkOriginalDeleted(Now);
+        var caller = Substitute.For<BJK.Modules.Shared.Security.ICurrentUser>();
+        caller.IdentityId.Returns(Guid.NewGuid().ToString());
+        caller.HasScope(MediaModule.ManageScope).Returns(true);
+        caller.HasRole(BJK.Modules.Shared.Security.StaffRoles.Moderator).Returns(true);
+        caller.UsedMfa.Returns(true);
+        var handler = new BJK.Modules.Media.UseCases.Review.AddManualRedactionsCommandHandler(
+            _media, _storage, _queue, Substitute.For<BJK.Modules.Shared.Moderation.IModerationAuditLog>(), caller, new FixedTimeProvider(Now));
+
+        await handler.Handle(
+            new BJK.Modules.Media.UseCases.Review.AddManualRedactionsCommand(item.Id, [new ManualRedaction(0.1, 0.1, 0.2, 0.2)]), Ct);
+
+        var rework = $"{Folder(item)}/rework/r1.mp4";
+        Assert.Equal(rework, item.SourceKey);
+        Assert.Contains((MediaBucket.Public, $"{Folder(item)}/720p.mp4", MediaBucket.Originals, rework), _storage.Copies);
+        Assert.Empty(_storage.Keys(MediaBucket.Public));
+
+        var outcome = await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(ProcessingOutcome.Completed, outcome);
+        Assert.Equal(MediaStatus.NeedsReview, item.Status);
+        Assert.Equal(1, item.Revision);
+        await _redactor.Received(1).RedactVideoAsync(
+            Arg.Is<string>(p => p.EndsWith("original.mp4")), Arg.Any<ProbeResult>(), Arg.Is<IReadOnlyList<ManualRedaction>>(r => r.Count == 1), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.True(_storage.Has(MediaBucket.Originals, $"{Folder(item)}/review/720p-r1.mp4"));
+    }
+
     [Fact]
     public void Visibility_jobs_have_their_own_message_ids()
     {

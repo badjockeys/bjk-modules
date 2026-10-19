@@ -47,7 +47,7 @@ public sealed class CompleteUploadCommandHandler(
             throw Invalid(item.FailureReason!);
         }
 
-        item.MarkUploaded(file.SizeBytes, clock.GetUtcNow(), options.Value.OriginalRetention);
+        item.MarkUploaded(file.SizeBytes, clock.GetUtcNow(), options.Value.UnusedOriginalRetention);
 
         // Queue first, then save: if queueing fails the media stays Uploading and the app can retry.
         // If saving fails after queueing, the worker still finds the file and processes it.
