@@ -38,6 +38,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
                 p.Longitude,
                 p.PlaceName,
                 p.Status,
+                p.IsSensitive,
                 p.HiddenReason,
                 p.CreatedAt,
                 p.UpdatedAt,
@@ -49,7 +50,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
         var comments = await db.Comments.AsNoTracking()
             .Where(c => c.AuthorId == userId)
             .OrderBy(c => c.CreatedAt)
-            .Select(c => new { c.Id, c.PostId, c.Body, c.Status, c.CreatedAt, c.UpdatedAt, c.DeletedAt })
+            .Select(c => new { c.Id, c.PostId, c.ParentCommentId, c.Body, c.Status, c.CreatedAt, c.UpdatedAt, c.DeletedAt })
             .ToListAsync(cancellationToken);
 
         var reactions = await db.Reactions.AsNoTracking()
@@ -58,12 +59,24 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(r => new { r.PostId, r.Type, r.CreatedAt })
             .ToListAsync(cancellationToken);
 
+        var commentReactions = await db.CommentReactions.AsNoTracking()
+            .Where(r => r.UserId == userId)
+            .OrderBy(r => r.CreatedAt)
+            .Select(r => new { r.CommentId, r.Type, r.CreatedAt })
+            .ToListAsync(cancellationToken);
+
         var reports = await db.Reports.AsNoTracking()
             .Where(r => r.ReporterId == userId)
             .OrderBy(r => r.CreatedAt)
-            .Select(r => new { r.Id, r.TargetType, r.TargetId, r.PostId, r.Reason, r.Details, r.Status, r.CreatedAt, r.ResolvedAt })
+            .Select(r => new { r.Id, r.TargetType, r.TargetId, r.PostId, r.Reason, r.Details, r.ContactEmail, r.Status, r.CreatedAt, r.ResolvedAt })
             .ToListAsync(cancellationToken);
 
-        return new { posts, comments, reactions, reportsMade = reports };
+        var appeals = await db.Appeals.AsNoTracking()
+            .Where(a => a.AppellantId == userId)
+            .OrderBy(a => a.CreatedAt)
+            .Select(a => new { a.Id, a.TargetType, a.TargetId, a.PostId, a.Statement, a.ContactEmail, a.Status, a.CreatedAt, a.DecidedAt })
+            .ToListAsync(cancellationToken);
+
+        return new { posts, comments, reactions, commentReactions, reportsMade = reports, appeals };
     }
 }

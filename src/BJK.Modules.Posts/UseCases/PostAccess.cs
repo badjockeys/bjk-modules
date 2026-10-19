@@ -1,5 +1,6 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
@@ -15,8 +16,43 @@ internal static class PostAccess
     public static bool IsAuthor(Post post, ICurrentUser caller) =>
         caller.UserId() is { } userId && post.IsOwnedBy(userId);
 
-    /// <summary>Anyone sees public posts; authors also see their own hidden ones.</summary>
-    public static bool CanSee(Post post, ICurrentUser caller) => post.IsPublic || IsAuthor(post, caller);
+    /// <summary>Logged-out viewers (and machine tokens): no comments, no sensitive posts.</summary>
+    public static bool IsSignedOut(ICurrentUser caller) => caller.UserId() is null;
+
+    /// <summary>
+    /// Anyone sees public posts, except that logged-out viewers never see sensitive ones; authors also see their own
+    /// hidden and held ones.
+    /// </summary>
+    public static bool CanSee(Post post, ICurrentUser caller) =>
+        (post.IsPublic && !(post.IsSensitive && IsSignedOut(caller))) || IsAuthor(post, caller);
+
+    /// <summary>A 404 if the viewer has blocked the post's author: blocked users' posts are hidden from them.</summary>
+    public static async Task EnsureAuthorNotBlockedByViewerAsync(
+        IBlockDirectory blocks,
+        Post post,
+        ICurrentUser caller,
+        CancellationToken cancellationToken)
+    {
+        if (caller.UserId() is { } viewerId
+            && viewerId != post.AuthorId
+            && await blocks.IsBlockedAsync(viewerId, post.AuthorId, cancellationToken))
+        {
+            throw new NotFoundException("Post", post.Id);
+        }
+    }
+
+    /// <summary>A 403 if the post's author has blocked the user: they can't comment on or react to the author's posts.</summary>
+    public static async Task EnsureNotBlockedByAuthorAsync(
+        IBlockDirectory blocks,
+        Post post,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        if (userId != post.AuthorId && await blocks.IsBlockedAsync(post.AuthorId, userId, cancellationToken))
+        {
+            throw new ForbiddenException("You can't comment on or react to this post.");
+        }
+    }
 
     /// <summary>
     /// A post the caller can see. Hidden posts look missing to everyone but their author, so nobody can probe for
@@ -73,6 +109,18 @@ internal static class PostAccess
             throw Invalid("Email", $"Confirm your email address before {action}.");
         }
     }
+
+    /// <summary>The text of a post that's screened and checked: title, description and place name.</summary>
+    public static string TextOf(IPostDetails details) =>
+        string.Join('\n', new[] { details.Title, details.Description, details.PlaceName }.Where(t => !string.IsNullOrWhiteSpace(t)));
+
+    /// <summary>Moderation reasons: required, because every action is audited.</summary>
+    public static IRuleBuilderOptions<T, string?> ModerationReason<T>(this IRuleBuilder<T, string?> rule) =>
+        rule
+            .NotEmpty()
+            .WithMessage("Give a reason. It's recorded in the moderation audit log.")
+            .Must(r => r is null || r.Trim().Length <= ModerationAuditRecord.ReasonMaxLength)
+            .WithMessage($"Reasons are {ModerationAuditRecord.ReasonMaxLength} characters or fewer.");
 
     public static ValidationException Invalid(string property, string message) =>
         new(new[] { new ValidationFailure(property, message) });

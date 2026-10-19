@@ -27,6 +27,15 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
     /// <summary>Scope the apps need to create and change the signed-in user's profile.</summary>
     public const string ApiScope = "bjk.profiles";
 
+    /// <summary>
+    /// Moderation scope, for the back-office: look up any profile and reset offensive or identifying profiles.
+    /// A user token also needs the Moderator or Admin role and two-factor sign-in.
+    /// </summary>
+    public const string ManageScope = "bjk.profiles.manage";
+
+    /// <summary>Policy for the moderation endpoints under <c>/api/admin/profiles</c>.</summary>
+    public const string ManagePolicy = "bjk.profiles.manage";
+
     /// <summary>Policy for changing your own profile: a signed-in user with <see cref="ApiScope"/>.</summary>
     public const string UsePolicy = "bjk.profiles";
 
@@ -49,6 +58,8 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
             }));
         services.AddScoped<IProfileRepository, ProfileRepository>();
         services.AddScoped<IProfileDirectory, ProfileDirectory>();
+        services.AddScoped<IBlockDirectory, BlockDirectory>();
+        services.AddScoped<IProfileModeration, ProfileModeration>();
         services.AddScoped<IPersonalDataExporter, ProfilePersonalDataExporter>();
         services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration);
 
@@ -57,6 +68,10 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.HasScope(ApiScope)))
+            .AddPolicy(ManagePolicy, policy => policy
+                .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => context.User.HasModeratorRights(ManageScope)))
             .AddPolicy(ReadPolicy, policy => policy
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAssertion(_ => true));

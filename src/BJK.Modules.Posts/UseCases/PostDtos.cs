@@ -15,6 +15,7 @@ public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri?
             : new AuthorDto(userId, null, "Former member", null);
 }
 
+/// <summary>Where it happened: the map pin, rounded to about 500 m when the post was saved, and the place name.</summary>
 public sealed record LocationDto(decimal Latitude, decimal Longitude, string? PlaceName);
 
 /// <summary>A photo or video in a post. Media that isn't Ready (or was deleted) is left out.</summary>
@@ -27,6 +28,11 @@ public sealed record PostMediaDto(
     int? Width,
     int? Height);
 
+/// <summary>
+/// A post. <c>IsSensitive</c> posts are never sent to logged-out viewers. <c>CommentsRequireSignIn</c> is true for
+/// logged-out viewers: comments aren't shown to them (the count still is), so the app shows "Sign in to see comments".
+/// <c>Status</c> is HeldForReview or Hidden only for the author (and moderators).
+/// </summary>
 public sealed record PostDto(
     Guid Id,
     AuthorDto Author,
@@ -42,34 +48,114 @@ public sealed record PostDto(
     ReactionType? MyReaction,
     int CommentCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    bool IsSensitive = false,
+    bool CommentsRequireSignIn = false);
 
+/// <summary>
+/// A comment or reply. <c>Status</c> is HeldForReview only for its author, while a moderator reviews it.
+/// <c>IsRemoved</c> marks a top-level comment that was hidden or deleted but still has visible replies: it's shown as
+/// a "comment removed" placeholder, with no author and an empty body. Top-level comments in a list carry their
+/// <c>ReplyCount</c> and the first few <c>Replies</c>; the rest come from the replies endpoint.
+/// </summary>
 public sealed record CommentDto(
     Guid Id,
     Guid PostId,
-    AuthorDto Author,
+    AuthorDto? Author,
     string Body,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    CommentStatus Status = CommentStatus.Visible,
+    Guid? ParentCommentId = null,
+    bool IsRemoved = false,
+    IReadOnlyDictionary<ReactionType, int>? Reactions = null,
+    ReactionType? MyReaction = null,
+    int ReplyCount = 0,
+    IReadOnlyList<CommentDto>? Replies = null);
 
+/// <summary>A report, as moderators see it, including the public reporter's contact details.</summary>
 public sealed record ReportDto(
     Guid Id,
+    string Reference,
+    ReportTargetType TargetType,
+    Guid TargetId,
+    Guid? PostId,
+    string? TargetUrl,
+    ReportReason Reason,
+    string? Details,
+    ReportPriority Priority,
+    DateTimeOffset DueAt,
+    ReportStatus Status,
+    ReportSource Source,
+    Guid? ReporterId,
+    string? ReporterName,
+    string? ContactEmail,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? AcknowledgedAt,
+    DateTimeOffset? ResolvedAt,
+    Guid? ResolvedBy,
+    string? ResolutionNote,
+    DateTimeOffset? OutcomeNotifiedAt)
+{
+    internal static ReportDto From(Report r) => new(
+        r.Id, r.Reference, r.TargetType, r.TargetId, r.PostId, r.TargetUrl, r.Reason, r.Details, r.Priority, r.DueAt,
+        r.Status, r.Source, r.ReporterId, r.ReporterName, r.ContactEmail, r.CreatedAt, r.AcknowledgedAt, r.ResolvedAt,
+        r.ResolvedBy, r.ResolutionNote, r.OutcomeNotifiedAt);
+}
+
+/// <summary>
+/// What someone gets back after reporting through the public form: a reference to quote, the priority, when a
+/// decision is due and whether the acknowledgement email was sent.
+/// </summary>
+public sealed record ReportReceipt(string Reference, ReportPriority Priority, DateTimeOffset RespondBy, bool AcknowledgementSent)
+{
+    internal static ReportReceipt From(Report r, bool sent) => new(r.Reference, r.Priority, r.DueAt, sent);
+}
+
+/// <summary>An appeal against a moderation decision.</summary>
+public sealed record AppealDto(
+    Guid Id,
+    string Reference,
+    Guid AppellantId,
     ReportTargetType TargetType,
     Guid TargetId,
     Guid PostId,
-    ReportReason Reason,
-    string? Details,
-    ReportStatus Status,
-    Guid ReporterId,
+    string Statement,
+    AppealStatus Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ResolvedAt,
-    Guid? ResolvedBy,
-    string? ResolutionNote)
+    DateTimeOffset DueAt,
+    DateTimeOffset? DecidedAt,
+    Guid? DecidedBy,
+    string? DecisionNote)
 {
-    internal static ReportDto From(Report r) => new(
-        r.Id, r.TargetType, r.TargetId, r.PostId, r.Reason, r.Details, r.Status, r.ReporterId,
-        r.CreatedAt, r.ResolvedAt, r.ResolvedBy, r.ResolutionNote);
+    internal static AppealDto From(Appeal a) => new(
+        a.Id, a.Reference, a.AppellantId, a.TargetType, a.TargetId, a.PostId, a.Statement, a.Status, a.CreatedAt,
+        a.DueAt, a.DecidedAt, a.DecidedBy, a.DecisionNote);
 }
+
+/// <summary>One moderation audit log entry.</summary>
+public sealed record AuditEntryDto(
+    Guid Id,
+    DateTimeOffset OccurredAt,
+    Guid? ActorId,
+    string ActorRole,
+    string Module,
+    string Action,
+    string TargetType,
+    string TargetId,
+    string Reason,
+    string? Before,
+    string? After)
+{
+    internal static AuditEntryDto From(ModerationAuditRecord a) => new(
+        a.Id, a.OccurredAt, a.ActorId, a.ActorRole, a.Module, a.Action, a.TargetType, a.TargetId, a.Reason, a.Before, a.After);
+}
+
+/// <summary>A post in a content screening queue, with its score and labels.</summary>
+public sealed record ScreenedPostDto(PostDto Post, bool IsFlagged, double? ScreeningScore, string? ScreeningLabels);
+
+/// <summary>A comment in a content screening queue, with its score and labels.</summary>
+public sealed record ScreenedCommentDto(CommentDto Comment, bool IsFlagged, double? ScreeningScore, string? ScreeningLabels);
 
 /// <summary>
 /// Turns posts into <see cref="PostDto"/>s by gathering their authors (Profiles module), media (Media module)
@@ -117,7 +203,9 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 s.MyReaction,
                 s.CommentCount,
                 p.CreatedAt,
-                p.UpdatedAt);
+                p.UpdatedAt,
+                p.IsSensitive,
+                CommentsRequireSignIn: viewerId is null);
         }).ToList();
     }
 

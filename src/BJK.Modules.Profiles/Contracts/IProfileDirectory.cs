@@ -14,4 +14,30 @@ public interface IProfileDirectory
     Task<ProfileSummary?> FindByHandleAsync(string handle, CancellationToken cancellationToken);
 }
 
-public sealed record ProfileSummary(Guid UserId, string Handle, string DisplayName, Uri? AvatarUrl);
+/// <summary>A profile as other modules see it. <c>CreatedAt</c> lets Posts apply the new-account limits.</summary>
+public sealed record ProfileSummary(
+    Guid UserId,
+    string Handle,
+    string DisplayName,
+    Uri? AvatarUrl,
+    DateTimeOffset CreatedAt = default);
+
+/// <summary>Blocks between users, for Posts to hide content and refuse interactions.</summary>
+public interface IBlockDirectory
+{
+    /// <summary>Everyone the user has blocked. Their posts and comments are hidden from the user.</summary>
+    Task<IReadOnlyCollection<Guid>> GetBlockedIdsAsync(Guid blockerId, CancellationToken cancellationToken);
+
+    /// <summary>True if <paramref name="blockerId"/> has blocked <paramref name="blockedId"/>.</summary>
+    Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken);
+}
+
+/// <summary>Moderation of profiles by other modules (Posts resolves reports about profiles).</summary>
+public interface IProfileModeration
+{
+    /// <summary>
+    /// Resets the public details the user wrote (display name back to the handle; bio, location and avatar removed)
+    /// and deletes the old avatar. Returns false if there's no profile.
+    /// </summary>
+    Task<bool> ResetPublicDetailsAsync(Guid userId, CancellationToken cancellationToken);
+}

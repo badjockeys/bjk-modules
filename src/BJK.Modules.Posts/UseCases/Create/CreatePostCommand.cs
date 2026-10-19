@@ -1,16 +1,20 @@
 using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
+using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Create;
 
 /// <summary>
 /// Publishes a post. Upload the photos and videos through <c>/api/media</c> first and wait until they're Ready;
-/// the post is then visible to everyone straight away. The author needs a profile.
+/// the post is then visible to everyone straight away, unless content screening holds it for review. The author
+/// needs a profile and a passed age check. <c>IsSensitive</c> marks graphic content (hidden from logged-out viewers).
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -20,12 +24,13 @@ public sealed record CreatePostCommand(
     decimal Latitude,
     decimal Longitude,
     string? PlaceName,
-    IReadOnlyList<Guid> MediaIds) : IRequest<PostDto>, IPostDetails;
+    IReadOnlyList<Guid> MediaIds,
+    bool IsSensitive = false) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
-    public CreatePostCommandValidator(TimeProvider clock)
-        : base(clock)
+    public CreatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
+        : base(clock, options)
     {
         RuleFor(c => c.MediaIds)
             .NotEmpty()
@@ -43,6 +48,8 @@ public sealed class CreatePostCommandHandler(
     IPostRepository posts,
     IProfileDirectory profiles,
     IMediaDirectory media,
+    IContentScreener screener,
+    NewAccountLimits limits,
     PostViews views,
     ICurrentUser caller,
     TimeProvider clock)
@@ -57,6 +64,8 @@ public sealed class CreatePostCommandHandler(
         {
             throw PostAccess.Invalid("Profile", "Create your profile before posting.");
         }
+
+        await limits.EnsureCanPostAsync(userId, cancellationToken);
 
         var found = (await media.GetAsync(request.MediaIds, cancellationToken)).ToDictionary(m => m.Id);
         foreach (var id in request.MediaIds)
@@ -79,7 +88,8 @@ public sealed class CreatePostCommandHandler(
             throw PostAccess.Invalid(nameof(request.MediaIds), "A photo or video is already in another post.");
         }
 
-        var post = Post.Create(userId, request.ToDetails(), request.MediaIds, clock.GetUtcNow());
+        var post = Post.Create(userId, request.ToDetails(), request.MediaIds, clock.GetUtcNow(), request.IsSensitive);
+        post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         posts.Add(post);
         await posts.SaveChangesAsync(cancellationToken);
 

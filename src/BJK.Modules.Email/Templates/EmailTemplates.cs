@@ -48,4 +48,70 @@ public static class EmailTemplates
             .Paragraph("Enter this code to finish signing in to Bad Jockeys. It expires in a few minutes.")
             .Code("Sign-in code", code)
             .Note("If you didn't try to sign in, change your password."));
+
+    /// <summary>
+    /// Sent straight after someone reports content, whether through the app or the public "Report content" form.
+    /// </summary>
+    /// <param name="reference">The report's reference, e.g. R-1A2B3C4D.</param>
+    /// <param name="what">What was reported, e.g. "a post" or "a comment".</param>
+    /// <param name="urgent">True for illegal content and threats, which are looked at first.</param>
+    /// <param name="respondWithin">The target time for a decision.</param>
+    public static EmailTemplate ReportReceived(string reference, string what, bool urgent, TimeSpan respondWithin)
+    {
+        var body = BrandedEmail.Create("We've received your report")
+            .Paragraph($"Thank you for reporting {what} on Bad Jockeys. A moderator will review it.")
+            .Code("Your reference", reference)
+            .Paragraph(urgent
+                ? $"Because it may involve illegal content or a threat to someone's safety, we treat it as urgent and aim to act within {Hours(respondWithin)}."
+                : $"We aim to review it within {Hours(respondWithin)}, and we'll email you when we've decided.")
+            .Note("If someone is in immediate danger, call 999. Please quote your reference if you contact us about this report.")
+            .Footer(ReportFooter);
+        return new EmailTemplate($"We've received your report ({reference})", body);
+    }
+
+    /// <summary>Sent when a moderator has decided what to do about a report.</summary>
+    /// <param name="reference">The report's reference.</param>
+    /// <param name="contentRemoved">True if the content was taken down or changed; false if it was left up.</param>
+    public static EmailTemplate ReportResolved(string reference, bool contentRemoved)
+    {
+        var body = BrandedEmail.Create("We've reviewed your report")
+            .Code("Your reference", reference)
+            .Paragraph(contentRemoved
+                ? "Thank you. A moderator reviewed the content you reported and has removed it from Bad Jockeys."
+                : "Thank you. A moderator reviewed the content you reported and decided it doesn't break our rules, so it has been left up.")
+            .Paragraph("If you don't agree with this decision, reply to this email quoting your reference and a different moderator will take another look.")
+            .Footer(ReportFooter);
+        return new EmailTemplate($"Your report has been reviewed ({reference})", body);
+    }
+
+    /// <summary>Sent when someone appeals a moderation decision about their own post or comment.</summary>
+    /// <param name="reference">The appeal's reference, e.g. A-1A2B3C4D.</param>
+    /// <param name="respondWithin">The target time for a decision.</param>
+    public static EmailTemplate AppealReceived(string reference, TimeSpan respondWithin) => new(
+        $"We've received your appeal ({reference})",
+        BrandedEmail.Create("We've received your appeal")
+            .Paragraph("Thank you. A moderator who wasn't involved in the original decision will review your appeal.")
+            .Code("Your reference", reference)
+            .Paragraph($"We aim to decide within {Hours(respondWithin)}, and we'll email you when we have.")
+            .Note("Each decision can be appealed once."));
+
+    /// <summary>Sent when a moderator has decided an appeal.</summary>
+    /// <param name="reference">The appeal's reference.</param>
+    /// <param name="overturned">True if the content has been restored; false if the original decision stands.</param>
+    public static EmailTemplate AppealDecided(string reference, bool overturned) => new(
+        $"Your appeal has been decided ({reference})",
+        BrandedEmail.Create("Your appeal has been decided")
+            .Code("Your reference", reference)
+            .Paragraph(overturned
+                ? "We've looked again and reversed the decision. Your content is visible again."
+                : "We've looked again and the original decision stands. Your content will stay hidden.")
+            .Note("This was your one appeal for this decision. Our rules are in the Bad Jockeys terms of use."));
+
+    private const string ReportFooter = "You're getting this email because you reported content on Bad Jockeys.";
+
+    private static string Hours(TimeSpan duration)
+    {
+        var hours = (int)Math.Ceiling(duration.TotalHours);
+        return hours == 1 ? "1 hour" : $"{hours} hours";
+    }
 }

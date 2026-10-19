@@ -92,6 +92,21 @@ public sealed class Profile
         DeactivatedAt = null;
     }
 
+    /// <summary>
+    /// A moderator's reset of everything the user wrote on their profile, after a report: the display name becomes
+    /// the handle, and the bio, location and avatar are removed. Returns the removed avatar's media id, if any.
+    /// </summary>
+    public Guid? ResetPublicDetails(DateTimeOffset now)
+    {
+        DisplayName = Handle;
+        Bio = null;
+        Location = null;
+        var avatar = AvatarMediaId;
+        AvatarMediaId = null;
+        UpdatedAt = now;
+        return avatar;
+    }
+
     /// <summary>Sets or (with null) removes the avatar. Returns the previous avatar's media id, if it changed.</summary>
     public Guid? SetAvatar(Guid? mediaId, DateTimeOffset now)
     {

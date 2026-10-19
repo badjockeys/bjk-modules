@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BJK.Modules.Shared.Behaviours;
 using BJK.Modules.Shared.Errors;
+using BJK.Modules.Shared.Moderation;
+using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
@@ -63,6 +65,9 @@ public static class ModuleServiceCollectionExtensions
             mvc.AddApplicationPart(assembly);
         }
 
+        // The Posts module stores the moderation audit log; without it, entries go to the application log.
+        services.TryAddScoped<IModerationAuditLog, LoggingModerationAuditLog>();
+
         // Shared endpoints, such as GET /api/me/data-export.
         mvc.AddApplicationPart(typeof(ModuleServiceCollectionExtensions).Assembly);
         services.AddAuthorizationBuilder()
@@ -74,12 +79,15 @@ public static class ModuleServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddSafetyOptions(configuration);
 
         // MediatR is registered once for all modules so pipeline behaviours aren't duplicated.
         services.AddMediatR(cfg =>
         {
             cfg.LicenseKey = configuration[MediatRLicenseKeySetting];
             cfg.RegisterServicesFromAssemblies(assemblies);
+            // The age check comes first, so an unverified user isn't asked to fix fields they can't submit anyway.
+            cfg.AddOpenBehavior(typeof(AgeVerificationBehaviour<,>));
             cfg.AddOpenBehavior(typeof(ValidationBehaviour<,>));
         });
 

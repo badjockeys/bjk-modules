@@ -9,24 +9,31 @@ using MediatR;
 namespace BJK.Modules.Posts.UseCases.Get;
 
 /// <summary>
-/// One post. Open to anonymous callers. Hidden posts are only shown to their author, or to moderators through the
-/// admin endpoint (<c>AsModerator</c>).
+/// One post. Open to anonymous callers, except that sensitive posts look missing (404) to logged-out viewers.
+/// Hidden and held posts are only shown to their author, or to moderators through the admin endpoint
+/// (<c>AsModerator</c>). Posts by someone the viewer has blocked look missing too.
 /// </summary>
 public sealed record GetPostQuery(Guid PostId, bool AsModerator = false) : IRequest<PostDto>;
 
-public sealed class GetPostQueryHandler(IPostRepository posts, PostViews views, ICurrentUser caller)
+public sealed class GetPostQueryHandler(IPostRepository posts, PostViews views, IBlockDirectory blocks, ICurrentUser caller)
     : IRequestHandler<GetPostQuery, PostDto>
 {
     public async Task<PostDto> Handle(GetPostQuery request, CancellationToken cancellationToken)
     {
         var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken, request.AsModerator);
+        if (!request.AsModerator)
+        {
+            await PostAccess.EnsureAuthorNotBlockedByViewerAsync(blocks, post, caller, cancellationToken);
+        }
+
         return await views.BuildAsync(post, caller.UserId(), cancellationToken);
     }
 }
 
 /// <summary>
-/// The public feed, newest first. Open to anonymous callers. Optional filters: category, author's @handle,
-/// and an area (a point plus a radius in km).
+/// The public feed, newest first. Open to anonymous callers, who never get sensitive posts. Signed-in viewers don't
+/// get posts by people they've blocked. Optional filters: category, author's @handle, and an area (a point plus a
+/// radius in km).
 /// </summary>
 public sealed record ListPostsQuery(
     IncidentCategory? Category = null,
@@ -59,6 +66,7 @@ public sealed class ListPostsQueryValidator : AbstractValidator<ListPostsQuery>
 public sealed class ListPostsQueryHandler(
     IPostRepository posts,
     IProfileDirectory profiles,
+    IBlockDirectory blocks,
     PostViews views,
     ICurrentUser caller)
     : IRequestHandler<ListPostsQuery, PagedResult<PostDto>>
@@ -81,21 +89,30 @@ public sealed class ListPostsQueryHandler(
             ? GeoBox.Around(lat, lng, radius)
             : null;
 
+        var viewerId = caller.UserId();
+        var blocked = viewerId is { } id ? await blocks.GetBlockedIdsAsync(id, cancellationToken) : null;
+
         var (items, total) = await posts.SearchAsync(
-            new PostSearch(authorId, request.Category, area, IncludeHidden: false),
+            new PostSearch(
+                authorId,
+                request.Category,
+                area,
+                IncludeHidden: false,
+                ExcludeSensitive: viewerId is null,
+                ExcludeAuthorIds: blocked),
             request.Page,
             request.PageSize,
             cancellationToken);
 
         return new PagedResult<PostDto>(
-            await views.BuildAsync(items, caller.UserId(), cancellationToken),
+            await views.BuildAsync(items, viewerId, cancellationToken),
             request.Page,
             request.PageSize,
             total);
     }
 }
 
-/// <summary>The signed-in user's own posts, newest first, including ones an admin has hidden.</summary>
+/// <summary>The signed-in user's own posts, newest first, including hidden and held ones.</summary>
 public sealed record ListMyPostsQuery(int Page = 1, int PageSize = 20) : IRequest<PagedResult<PostDto>>;
 
 public sealed class ListMyPostsQueryValidator : AbstractValidator<ListMyPostsQuery>

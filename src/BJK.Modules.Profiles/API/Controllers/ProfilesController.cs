@@ -1,4 +1,5 @@
 using BJK.Modules.Profiles.UseCases;
+using BJK.Modules.Profiles.UseCases.Blocks;
 using BJK.Modules.Profiles.UseCases.Create;
 using BJK.Modules.Profiles.UseCases.Get;
 using BJK.Modules.Profiles.UseCases.Update;
@@ -56,6 +57,34 @@ public sealed class ProfilesController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ProfileDto> SetAvatar(SetAvatarCommand command, CancellationToken cancellationToken) =>
         await sender.Send(command, cancellationToken);
+
+    /// <summary>Everyone you've blocked, most recent first.</summary>
+    [HttpGet("me/blocks")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<IReadOnlyList<BlockDto>>(StatusCodes.Status200OK)]
+    public async Task<IReadOnlyList<BlockDto>> ListBlocks(CancellationToken cancellationToken) =>
+        await sender.Send(new ListMyBlocksQuery(), cancellationToken);
+
+    /// <summary>
+    /// Block someone, by @handle or user id. You won't see their posts or comments, and they can't comment on or react to yours.
+    /// </summary>
+    [HttpPut("me/blocks/{user}")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<BlockDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<BlockDto> Block(string user, CancellationToken cancellationToken) =>
+        await sender.Send(new BlockUserCommand(user), cancellationToken);
+
+    /// <summary>Unblock someone, by @handle or user id.</summary>
+    [HttpDelete("me/blocks/{user}")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Unblock(string user, CancellationToken cancellationToken)
+    {
+        await sender.Send(new UnblockUserCommand(user), cancellationToken);
+        return NoContent();
+    }
 
     /// <summary>Whether a handle is free. Anyone can call this.</summary>
     [HttpGet("handles/{handle}/availability")]

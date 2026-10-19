@@ -9,6 +9,12 @@ internal sealed class ProfilesUserLifecycleHandler(IProfileRepository profiles, 
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
     {
+        if (userEvent.Type == UserLifecycleEventType.Deleted)
+        {
+            // Blocks can exist without a profile on either side, so they go first.
+            await profiles.DeleteBlocksForUserAsync(userEvent.UserId, cancellationToken);
+        }
+
         var profile = await profiles.GetByIdAsync(userEvent.UserId, cancellationToken);
         if (profile is null)
         {
@@ -40,8 +46,11 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
     public async Task<object?> ExportAsync(Guid userId, CancellationToken cancellationToken)
     {
         var p = await profiles.GetByIdAsync(userId, cancellationToken);
+        var blocks = (await profiles.ListBlocksAsync(userId, cancellationToken))
+            .Select(b => new { b.BlockedId, b.CreatedAt })
+            .ToList();
         return p is null
-            ? null
+            ? (object)new { blocks }
             : new
             {
                 p.Id,
@@ -53,6 +62,7 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
                 p.CreatedAt,
                 p.UpdatedAt,
                 p.DeactivatedAt,
+                blocks,
             };
     }
 }
