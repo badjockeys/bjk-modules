@@ -692,7 +692,7 @@ public sealed class OnlineSafetyTests
     [Fact]
     public void Posts_and_comments_cant_contain_personal_details()
     {
-        var create = new CreatePostCommandValidator(_clock);
+        var create = new CreatePostCommandValidator(_clock, Options.Create(new PostsOptions()));
 
         var plate = create.Validate(Command(Guid.NewGuid()) with { Title = "Close pass by AB12 CDE" });
         var place = create.Validate(Command(Guid.NewGuid()) with { PlaceName = "outside 12 Acacia Avenue" });

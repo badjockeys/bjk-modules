@@ -1,6 +1,7 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Shared.Safety;
 using FluentValidation;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases;
 
@@ -31,8 +32,12 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
 
     private static readonly DateTimeOffset Earliest = new(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    protected PostDetailsValidator(TimeProvider clock)
+    /// <summary>Shown when the pin is outside the allowed regions.</summary>
+    public const string OutsideServiceAreaMessage = "Bad Jockeys only accepts incidents in the UK for now.";
+
+    protected PostDetailsValidator(TimeProvider clock, IOptions<PostsOptions> options)
     {
+        var regions = options.Value.EffectiveRegions;
         RuleFor(x => x.Title)
             .NotEmpty()
             .Must(t => t is null || t.Trim().Length <= Post.TitleMaxLength)
@@ -48,6 +53,13 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
             .WithMessage("Check the incident date.");
         RuleFor(x => x.Latitude).InclusiveBetween(-90m, 90m);
         RuleFor(x => x.Longitude).InclusiveBetween(-180m, 180m);
+
+        // The pin as given (before it's rounded to about 500 m) must be in an allowed region: the UK by default.
+        RuleFor(x => x)
+            .Must(x => ServiceRegions.IsAllowed(x.Latitude, x.Longitude, regions))
+            .When(x => x.Latitude is >= -90m and <= 90m && x.Longitude is >= -180m and <= 180m)
+            .OverridePropertyName("Location")
+            .WithMessage(OutsideServiceAreaMessage);
         RuleFor(x => x.PlaceName)
             .Must(p => p is null || p.Trim().Length <= Post.PlaceNameMaxLength)
             .WithMessage($"Place names are {Post.PlaceNameMaxLength} characters or fewer.");
