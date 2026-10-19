@@ -232,6 +232,50 @@ public sealed class AgeCheckHandlerTests
     }
 
     [Fact]
+    public async Task A_final_photo_id_fail_offers_support_with_the_stored_reference()
+    {
+        _document.CheckAsync(Arg.Any<DocumentImage>(), Arg.Any<CancellationToken>()).Returns(new DocumentAgeResult(16, "Development"));
+
+        var result = await Document().Handle(DocumentCommand(), Ct);
+
+        Assert.True(result.NeedsSupport);
+        Assert.Matches("^AGE-[A-HJ-KM-NP-Z2-9]{6}$", result.Reference);
+        Assert.Equal(_account.AgeCheckReference, result.Reference);
+    }
+
+    [Fact]
+    public async Task Each_attempt_gets_a_new_reference_and_running_out_of_tries_offers_support()
+    {
+        _liveness.CheckAsync(Arg.Any<SelfieVideo>(), Arg.Any<CancellationToken>())
+            .Returns(LivenessResult.Failed(LivenessFailure.NoFace));
+        var handler = Face();
+        var references = new List<string?>();
+        AgeCheckDto? last = null;
+        for (var i = 0; i < 3; i++)
+        {
+            last = await handler.Handle(FaceCommand(), Ct);
+            references.Add(last.Reference);
+        }
+
+        Assert.Equal(3, references.Distinct().Count());
+        Assert.True(last!.NeedsSupport);
+        Assert.Equal(0, last.AttemptsLeft);
+    }
+
+    [Fact]
+    public async Task No_support_prompt_for_a_pass_or_when_photo_id_is_simply_next()
+    {
+        EstimateIs(21);
+        var under25 = await Face().Handle(FaceCommand(), Ct);
+        Assert.False(under25.NeedsSupport);
+        Assert.NotNull(under25.Reference);
+
+        _document.CheckAsync(Arg.Any<DocumentImage>(), Arg.Any<CancellationToken>()).Returns(new DocumentAgeResult(30, "Development"));
+        var passed = await Document().Handle(DocumentCommand(), Ct);
+        Assert.False(passed.NeedsSupport);
+    }
+
+    [Fact]
     public async Task Only_admins_can_reset()
     {
         _account.RecordAgeCheck(AgeCheckMethod.FaceEstimate, AgeCheckResult.Passed, "Development", Now);
@@ -246,6 +290,7 @@ public sealed class AgeCheckHandlerTests
         var dto = await handler.Handle(new ResetAgeCheckCommand(_account.Id), Ct);
 
         Assert.Equal(AgeCheckStatus.NotChecked, dto.AgeCheck.Status);
+        Assert.Null(dto.AgeCheck.Reference);
         Assert.False(dto.AgeVerified);
         await _users.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
@@ -261,6 +306,7 @@ public sealed class AgeCheckHandlerTests
 
         Assert.Contains("\"AgeCheck\":{\"Status\":\"Passed\",\"Method\":\"FaceEstimate\"", json);
         Assert.Contains("\"DateOfBirth\":\"1990-06-15\"", json);
+        Assert.Contains("\"Reference\":\"AGE-", json);
     }
 
     [Fact]

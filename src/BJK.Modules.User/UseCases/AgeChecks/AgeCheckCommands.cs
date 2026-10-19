@@ -93,7 +93,8 @@ public sealed class SubmitFaceAgeCheckCommandHandler(
             {
                 account.RecordAgeCheck(AgeCheckMethod.FaceEstimate, AgeCheckResult.LivenessFailed, liveness.Name, now);
                 await users.SaveChangesAsync(cancellationToken);
-                logger.LogInformation("Age check for account {UserId}: liveness failed ({Reason}).", account.Id, live.Failure);
+                logger.LogInformation(
+                    "Age check {Reference} for account {UserId}: liveness failed ({Reason}).", account.AgeCheckReference, account.Id, live.Failure);
                 return AgeCheckDto.From(account, now, settings.MaxAttemptsPerDay, live.Failure);
             }
 
@@ -103,7 +104,8 @@ public sealed class SubmitFaceAgeCheckCommandHandler(
             await users.SaveChangesAsync(cancellationToken);
 
             // The outcome only; never the estimated age.
-            logger.LogInformation("Age check for account {UserId}: face estimate {Result}.", account.Id, result);
+            logger.LogInformation(
+                "Age check {Reference} for account {UserId}: face estimate {Result}.", account.AgeCheckReference, account.Id, result);
             return AgeCheckDto.From(account, now, settings.MaxAttemptsPerDay);
         }
         finally
@@ -176,7 +178,8 @@ public sealed class SubmitDocumentAgeCheckCommandHandler(
             account.RecordAgeCheck(AgeCheckMethod.Document, result, checkResult.Provider, now);
             await users.SaveChangesAsync(cancellationToken);
 
-            logger.LogInformation("Age check for account {UserId}: photo ID {Result}.", account.Id, result);
+            logger.LogInformation(
+                "Age check {Reference} for account {UserId}: photo ID {Result}.", account.AgeCheckReference, account.Id, result);
             return AgeCheckDto.From(account, now, settings.MaxAttemptsPerDay);
         }
         finally

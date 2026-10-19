@@ -93,3 +93,19 @@ public static class AgeCheckRules
         _ => AgeCheckResult.Underage,
     };
 }
+
+/// <summary>Short references for age check attempts, quoted to support: <c>AGE-</c> and 6 unambiguous characters.</summary>
+public static class AgeCheckReference
+{
+    /// <summary>The prefix.</summary>
+    public const string Prefix = "AGE-";
+
+    /// <summary>Longest reference stored.</summary>
+    public const int MaxLength = 16;
+
+    // No 0/O, 1/I/L: easy to read out over the phone or type from a screenshot.
+    private const string Alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+    /// <summary>A new random reference, e.g. AGE-7KQ2MX.</summary>
+    public static string New() => Prefix + System.Security.Cryptography.RandomNumberGenerator.GetString(Alphabet, 6);
+}

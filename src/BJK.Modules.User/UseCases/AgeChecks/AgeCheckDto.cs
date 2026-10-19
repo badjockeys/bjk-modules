@@ -16,6 +16,11 @@ namespace BJK.Modules.User.UseCases.AgeChecks;
 /// True if the declared date of birth says the user is under 18: sensitive posts aren't for them yet, so the check
 /// isn't offered at all.
 /// </param>
+/// <param name="Reference">The latest attempt's support reference, e.g. AGE-7KQ2MX.</param>
+/// <param name="NeedsSupport">
+/// True when the check has failed, couldn't verify the user, or they're out of tries for today: the page offers
+/// "Contact support" with <paramref name="Reference"/>.
+/// </param>
 public sealed record AgeCheckDto(
     AgeCheckStatus Status,
     AgeCheckMethod? Method,
@@ -25,7 +30,9 @@ public sealed record AgeCheckDto(
     bool CanUseFaceCheck,
     bool CanUseDocumentCheck,
     string? Message,
-    bool UnderAgeByDateOfBirth = false)
+    bool UnderAgeByDateOfBirth = false,
+    string? Reference = null,
+    bool NeedsSupport = false)
 {
     internal static AgeCheckDto From(UserAccount account, DateTimeOffset now, int maxPerDay, LivenessFailure? livenessFailure = null)
     {
@@ -42,8 +49,19 @@ public sealed record AgeCheckDto(
             account.DateOfBirth is null ? AgeCheckMessages.NoDateOfBirth
                 : minor && !account.IsAgeVerified ? AgeCheckMessages.UnderAgeByDateOfBirth
                 : AgeCheckMessages.For(account, attemptsLeft, livenessFailure),
-            minor && account.DateOfBirth is not null);
+            minor && account.DateOfBirth is not null,
+            account.AgeCheckReference,
+            NeedsSupportFor(account, attemptsLeft, minor));
     }
+
+    /// <summary>Failed, couldn't verify, or out of tries, after at least one attempt; never for a pass or an under-18.</summary>
+    internal static bool NeedsSupportFor(UserAccount account, int attemptsLeft, bool minor) =>
+        !account.IsAgeVerified
+        && !minor
+        && account.AgeCheckReference is not null
+        && (account.AgeCheckStatus == AgeCheckStatus.Failed
+            || account.AgeCheckResult is AgeCheckResult.Uncertain or AgeCheckResult.DocumentUnreadable or AgeCheckResult.LivenessFailed
+            || attemptsLeft == 0);
 }
 
 /// <summary>Age check status for staff (never the video, photo or estimate).</summary>
@@ -52,19 +70,22 @@ public sealed record AgeCheckDto(
 /// <param name="Result">The most recent attempt's outcome.</param>
 /// <param name="Provider">Which provider gave it.</param>
 /// <param name="RecordedAt">When.</param>
+/// <param name="Reference">The latest attempt's support reference (what the user quotes when they contact support).</param>
 public sealed record AgeCheckSummaryDto(
     AgeCheckStatus Status,
     AgeCheckMethod? Method,
     AgeCheckResult? Result,
     string? Provider,
-    DateTimeOffset? RecordedAt)
+    DateTimeOffset? RecordedAt,
+    string? Reference)
 {
     internal static AgeCheckSummaryDto From(UserAccount account) => new(
         account.AgeCheckStatus,
         account.AgeCheckMethod,
         account.AgeCheckResult,
         account.AgeCheckProvider,
-        account.AgeCheckRecordedAt);
+        account.AgeCheckRecordedAt,
+        account.AgeCheckReference);
 }
 
 /// <summary>What we tell the user. Kind and plain; never mentions an estimated age.</summary>

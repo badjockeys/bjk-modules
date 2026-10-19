@@ -93,6 +93,7 @@ internal sealed class AccountPersonalDataExporter(IUserRepository users, IIdenti
                 Result = account.AgeCheckResult,
                 Provider = account.AgeCheckProvider,
                 RecordedAt = account.AgeCheckRecordedAt,
+                Reference = account.AgeCheckReference,
             },
         };
     }

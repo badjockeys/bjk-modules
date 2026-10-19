@@ -79,6 +79,10 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("AgeCheckRecordedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("AgeCheckReference")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("AgeCheckResult")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");

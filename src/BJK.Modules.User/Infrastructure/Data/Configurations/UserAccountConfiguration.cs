@@ -20,6 +20,7 @@ internal sealed class UserAccountConfiguration : IEntityTypeConfiguration<UserAc
         builder.Property(u => u.AgeCheckMethod).HasConversion<string>().HasMaxLength(20);
         builder.Property(u => u.AgeCheckResult).HasConversion<string>().HasMaxLength(30);
         builder.Property(u => u.AgeCheckProvider).HasMaxLength(UserAccount.ProviderMaxLength);
+        builder.Property(u => u.AgeCheckReference).HasMaxLength(AgeCheckReference.MaxLength);
 
         // The declared date of birth (a date, no time).
         builder.Property(u => u.DateOfBirth).HasColumnType("date");
