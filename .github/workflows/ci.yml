@@ -67,10 +67,8 @@ jobs:
             grep -iE "error|fail|exception" test-output.txt | head -40 | sed 's/^/::error::/'
             exit 1
           fi
-          # Each test project's totals (passed and skipped), as one notice per project on the PR.
-          awk '/Test run summary/ { match($0, /BJK\.Modules\.[A-Za-z]+\.Tests/); p = substr($0, RSTART, RLENGTH) }
-               /total:/ { t = $2 } /succeeded:/ { s = $2 }
-               /skipped:/ { print "::notice::" p ": " t " tests, " s " passed, " $2 " skipped" }' test-output.txt
+          # The test totals (passed, skipped), as notices on the PR.
+          grep -E "Test run summary|total:|succeeded:|skipped:" test-output.txt | tail -9 | sed 's/^ */::notice::/' || true
 
       # The Media tests again, alone, with the timed runs of the real models switched on, so nothing else competes
       # for the CPU. Timings are written to the job summary and shown as notices.
