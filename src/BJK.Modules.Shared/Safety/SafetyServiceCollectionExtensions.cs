@@ -1,0 +1,79 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+
+namespace BJK.Modules.Shared.Safety;
+
+public static class SafetyServiceCollectionExtensions
+{
+    /// <summary>
+    /// Registers <see cref="IContentScreener"/> from <c>Screening:Provider</c>, with its settings checked at startup.
+    /// Safe to call more than once.
+    /// </summary>
+    public static IServiceCollection AddContentScreening(this IServiceCollection services, IConfiguration configuration)
+    {
+        if (services.Any(s => s.ServiceType == typeof(KeywordContentScreener)))
+        {
+            return services;
+        }
+
+        services.AddOptions<ScreeningOptions>()
+            .Bind(configuration.GetSection(ScreeningOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<ScreeningOptions>, ScreeningOptionsValidator>());
+        services.AddSingleton<KeywordContentScreener>();
+
+        var provider = configuration[$"{ScreeningOptions.SectionName}:{nameof(ScreeningOptions.Provider)}"] ?? ScreeningOptions.KeywordsProvider;
+        if (provider == ScreeningOptions.HttpProvider)
+        {
+            services.AddHttpClient<IContentScreener, HttpContentScreener>((sp, client) =>
+                client.Timeout = sp.GetRequiredService<IOptions<ScreeningOptions>>().Value.Timeout);
+        }
+        else
+        {
+            services.AddSingleton<IContentScreener>(sp => sp.GetRequiredService<KeywordContentScreener>());
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="ICaptchaVerifier"/> from <c>Captcha:Provider</c>, with its settings checked at startup.
+    /// Safe to call more than once.
+    /// </summary>
+    public static IServiceCollection AddCaptchaVerification(this IServiceCollection services, IConfiguration configuration)
+    {
+        if (services.Any(s => s.ServiceType == typeof(IValidateOptions<CaptchaOptions>)))
+        {
+            return services;
+        }
+
+        services.AddOptions<CaptchaOptions>()
+            .Bind(configuration.GetSection(CaptchaOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<CaptchaOptions>, CaptchaOptionsValidator>();
+
+        var provider = configuration[$"{CaptchaOptions.SectionName}:{nameof(CaptchaOptions.Provider)}"] ?? CaptchaOptions.TurnstileProvider;
+        if (provider == CaptchaOptions.AlwaysPassProvider)
+        {
+            services.AddSingleton<ICaptchaVerifier, AlwaysPassCaptchaVerifier>();
+        }
+        else
+        {
+            services.AddHttpClient<ICaptchaVerifier, TurnstileCaptchaVerifier>(http => http.Timeout = TimeSpan.FromSeconds(10));
+        }
+
+        return services;
+    }
+
+    /// <summary>Binds <see cref="SafetyOptions"/> (section <c>Safety</c>). Called by <c>AddBjkModules</c>.</summary>
+    internal static IServiceCollection AddSafetyOptions(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<SafetyOptions>()
+            .Bind(configuration.GetSection(SafetyOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SafetyOptions>, SafetyOptionsValidator>());
+        return services;
+    }
+}

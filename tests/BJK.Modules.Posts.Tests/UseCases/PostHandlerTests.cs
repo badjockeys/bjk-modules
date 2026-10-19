@@ -1,3 +1,5 @@
+using BJK.Modules.Email;
+using BJK.Modules.Email.Contracts;
 using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Domain;
 using BJK.Modules.Posts.Domain;
@@ -7,13 +9,18 @@ using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Create;
 using BJK.Modules.Posts.UseCases.Delete;
 using BJK.Modules.Posts.UseCases.Get;
+using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
+using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Moderation;
+using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 using static BJK.Modules.Posts.Tests.TestData;
@@ -28,6 +35,11 @@ public sealed class PostHandlerTests
     private readonly IReportRepository _reports = Substitute.For<IReportRepository>();
     private readonly IProfileDirectory _profiles = Substitute.For<IProfileDirectory>();
     private readonly IMediaDirectory _media = Substitute.For<IMediaDirectory>();
+    private readonly IBlockDirectory _blocks = Substitute.For<IBlockDirectory>();
+    private readonly IProfileModeration _profileModeration = Substitute.For<IProfileModeration>();
+    private readonly IContentScreener _screener = Substitute.For<IContentScreener>();
+    private readonly IModerationAuditLog _audit = Substitute.For<IModerationAuditLog>();
+    private readonly IEmailSender _email = Substitute.For<IEmailSender>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
     private readonly PostViews _views;
@@ -46,6 +58,8 @@ public sealed class PostHandlerTests
             .Returns(new List<MediaSummary>());
         _posts.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, PostStats>());
+        _screener.ScreenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ScreeningResult.Clean);
+        _blocks.GetBlockedIdsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(new List<Guid>());
         _views = new PostViews(_posts, _profiles, _media);
     }
 
@@ -117,7 +131,7 @@ public sealed class PostHandlerTests
     {
         var post = Existing(OtherUserId);
         post.Hide("Reported", Now);
-        var handler = new GetPostQueryHandler(_posts, _views, _caller);
+        var handler = new GetPostQueryHandler(_posts, _views, _blocks, _caller);
 
         await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(new GetPostQuery(post.Id), Ct));
     }
@@ -127,7 +141,7 @@ public sealed class PostHandlerTests
     {
         var post = Existing(UserId);
         post.Hide("Reported", Now);
-        var handler = new GetPostQueryHandler(_posts, _views, _caller);
+        var handler = new GetPostQueryHandler(_posts, _views, _blocks, _caller);
 
         var dto = await handler.Handle(new GetPostQuery(post.Id), Ct);
 
@@ -209,7 +223,7 @@ public sealed class PostHandlerTests
         var post = Existing(OtherUserId);
         var existing = Reaction.Create(post.Id, UserId, ReactionType.Like, Now);
         _reactions.GetAsync(post.Id, UserId, Arg.Any<CancellationToken>()).Returns(existing);
-        var handler = new ReactToPostCommandHandler(_posts, _reactions, _caller, _clock);
+        var handler = new ReactToPostCommandHandler(_posts, _reactions, _blocks, _caller, _clock);
 
         await handler.Handle(new ReactToPostCommand(post.Id, ReactionType.Angry), Ct);
 
@@ -223,7 +237,7 @@ public sealed class PostHandlerTests
     {
         var post = Existing(OtherUserId);
         post.Hide("Reported", Now);
-        var handler = new ReactToPostCommandHandler(_posts, _reactions, _caller, _clock);
+        var handler = new ReactToPostCommandHandler(_posts, _reactions, _blocks, _caller, _clock);
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => handler.Handle(new ReactToPostCommand(post.Id, ReactionType.Like), Ct));
@@ -235,7 +249,7 @@ public sealed class PostHandlerTests
         var post = Existing(OtherUserId);
         var comment = Comment.Create(post.Id, OtherUserId, "Shocking driving", Now);
         _comments.GetAsync(post.Id, comment.Id, Arg.Any<CancellationToken>()).Returns(comment);
-        var handler = new EditCommentCommandHandler(_posts, _comments, _profiles, _caller, _clock);
+        var handler = new EditCommentCommandHandler(_posts, _comments, _profiles, _screener, _caller, _clock);
 
         await Assert.ThrowsAsync<ForbiddenException>(
             () => handler.Handle(new EditCommentCommand(post.Id, comment.Id, "Edited"), Ct));
@@ -246,7 +260,7 @@ public sealed class PostHandlerTests
     {
         var post = Existing(OtherUserId);
         _reports.ExistsAsync(UserId, ReportTargetType.Post, post.Id, Arg.Any<CancellationToken>()).Returns(true);
-        var handler = new ReportPostCommandHandler(_posts, _reports, _caller, _clock);
+        var handler = new ReportPostCommandHandler(_posts, _reports, Notifications(), _caller, _clock);
 
         await Assert.ThrowsAsync<ValidationException>(
             () => handler.Handle(new ReportPostCommand(post.Id, ReportReason.Spam, null), Ct));
@@ -263,7 +277,7 @@ public sealed class PostHandlerTests
         _reports.ListOpenForTargetAsync(ReportTargetType.Post, post.Id, Arg.Any<CancellationToken>())
             .Returns(new List<Report> { report, another });
         CallerIsModerator();
-        var handler = new ResolveReportCommandHandler(_reports, _posts, _comments, _caller, _clock);
+        var handler = ResolveHandler();
 
         await handler.Handle(new ResolveReportCommand(report.Id, ReportAction.HideContent, "Shows a face"), Ct);
 
@@ -277,7 +291,7 @@ public sealed class PostHandlerTests
     [Fact]
     public async Task Only_admins_resolve_reports()
     {
-        var handler = new ResolveReportCommandHandler(_reports, _posts, _comments, _caller, _clock);
+        var handler = ResolveHandler();
 
         await Assert.ThrowsAsync<ForbiddenException>(
             () => handler.Handle(new ResolveReportCommand(Guid.NewGuid(), ReportAction.Dismiss, null), Ct));
@@ -290,10 +304,20 @@ public sealed class PostHandlerTests
         _caller.UsedMfa.Returns(true);
     }
 
-    private CreatePostCommandHandler CreateHandler() => new(_posts, _profiles, _media, _views, _caller, _clock);
+    private CreatePostCommandHandler CreateHandler() =>
+        new(_posts, _profiles, _media, _screener, Limits(), _views, _caller, _clock);
 
     private DeletePostCommandHandler DeleteHandler() =>
-        new(_posts, _media, _caller, _clock, NullLogger<DeletePostCommandHandler>.Instance);
+        new(_posts, _media, _audit, _caller, _clock, NullLogger<DeletePostCommandHandler>.Instance);
+
+    private ResolveReportCommandHandler ResolveHandler() =>
+        new(_reports, _posts, _comments, _profileModeration, _audit, Notifications(), _caller, _clock);
+
+    private NewAccountLimits Limits(SafetyOptions? options = null) =>
+        new(_profiles, _posts, _comments, Options.Create(options ?? new SafetyOptions()), _clock);
+
+    private ModerationNotifications Notifications() =>
+        new(_email, Options.Create(new EmailOptions()), _clock, NullLogger<ModerationNotifications>.Instance);
 
     private static CreatePostCommand Command(params Guid[] mediaIds)
     {

@@ -25,7 +25,7 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
 
         return found.ToDictionary(
             p => p.Id,
-            p => new ProfileSummary(p.Id, p.Handle, p.DisplayName, Avatars.UrlFor(p, avatars)));
+            p => new ProfileSummary(p.Id, p.Handle, p.DisplayName, Avatars.UrlFor(p, avatars), p.CreatedAt));
     }
 
     public async Task<ProfileSummary?> FindByHandleAsync(string handle, CancellationToken cancellationToken)
@@ -43,6 +43,36 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
         }
 
         var avatars = await Avatars.GetUrlsAsync(media, [profile], cancellationToken);
-        return new ProfileSummary(profile.Id, profile.Handle, profile.DisplayName, Avatars.UrlFor(profile, avatars));
+        return new ProfileSummary(profile.Id, profile.Handle, profile.DisplayName, Avatars.UrlFor(profile, avatars), profile.CreatedAt);
+    }
+}
+
+internal sealed class BlockDirectory(IProfileRepository profiles) : IBlockDirectory
+{
+    public async Task<IReadOnlyCollection<Guid>> GetBlockedIdsAsync(Guid blockerId, CancellationToken cancellationToken) =>
+        await profiles.GetBlockedIdsAsync(blockerId, cancellationToken);
+
+    public Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken) =>
+        profiles.IsBlockedAsync(blockerId, blockedId, cancellationToken);
+}
+
+internal sealed class ProfileModeration(IProfileRepository profiles, IMediaDirectory media, TimeProvider clock) : IProfileModeration
+{
+    public async Task<bool> ResetPublicDetailsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var profile = await profiles.GetByIdAsync(userId, cancellationToken);
+        if (profile is null)
+        {
+            return false;
+        }
+
+        var oldAvatar = profile.ResetPublicDetails(clock.GetUtcNow());
+        await profiles.SaveChangesAsync(cancellationToken);
+        if (oldAvatar is { } avatarId)
+        {
+            await media.DeleteAsync([avatarId], cancellationToken);
+        }
+
+        return true;
     }
 }

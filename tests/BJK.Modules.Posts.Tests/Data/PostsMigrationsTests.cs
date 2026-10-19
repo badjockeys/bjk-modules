@@ -33,6 +33,9 @@ public sealed class PostsMigrationsTests
     [InlineData(typeof(Reaction), "Reactions")]
     [InlineData(typeof(Comment), "Comments")]
     [InlineData(typeof(Report), "Reports")]
+    [InlineData(typeof(CommentReaction), "CommentReactions")]
+    [InlineData(typeof(Appeal), "Appeals")]
+    [InlineData(typeof(ModerationAuditRecord), "ModerationAuditLog")]
     public void Tables_live_in_the_posts_schema(Type entityType, string table)
     {
         using var db = new PostsDbContextDesignTimeFactory().CreateDbContext([]);
@@ -51,5 +54,15 @@ public sealed class PostsMigrationsTests
         var entity = db.Model.FindEntityType(typeof(PostMedia))!;
 
         Assert.Contains(entity.GetIndexes(), i => i.IsUnique && i.Properties.Single().Name == nameof(PostMedia.MediaId));
+    }
+
+    [Fact]
+    public void Public_form_reports_dont_count_against_the_one_report_per_user_rule()
+    {
+        using var db = new PostsDbContextDesignTimeFactory().CreateDbContext([]);
+
+        var unique = db.Model.FindEntityType(typeof(Report))!.GetIndexes().Single(i => i.IsUnique);
+
+        Assert.Equal("[ReporterId] IS NOT NULL", unique.GetFilter());
     }
 }

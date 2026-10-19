@@ -10,6 +10,8 @@ public sealed class ProfilesDbContext(DbContextOptions<ProfilesDbContext> option
 {
     public DbSet<Profile> Profiles => Set<Profile>();
 
+    public DbSet<Block> Blocks => Set<Block>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(ProfilesModule.Schema);
@@ -33,6 +35,18 @@ internal sealed class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         builder.Property(p => p.Bio).HasMaxLength(Profile.BioMaxLength);
         builder.Property(p => p.Location).HasMaxLength(Profile.LocationMaxLength);
         builder.Property(p => p.RowVersion).IsRowVersion();
+    }
+}
+
+internal sealed class BlockConfiguration : IEntityTypeConfiguration<Block>
+{
+    public void Configure(EntityTypeBuilder<Block> builder)
+    {
+        builder.ToTable("Blocks");
+        builder.HasKey(b => new { b.BlockerId, b.BlockedId });
+
+        // "Who has blocked this user", for clean-up when an account is deleted.
+        builder.HasIndex(b => b.BlockedId);
     }
 }
 

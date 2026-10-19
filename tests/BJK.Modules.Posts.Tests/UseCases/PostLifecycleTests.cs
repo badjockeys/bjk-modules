@@ -54,9 +54,9 @@ public sealed class PostLifecycleTests
         var views = new PostViews(_posts, Substitute.For<IProfileDirectory>(), Substitute.For<IMediaDirectory>());
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => new GetPostQueryHandler(_posts, views, _caller).Handle(new GetPostQuery(post.Id), Ct));
+            () => new GetPostQueryHandler(_posts, views, Substitute.For<IBlockDirectory>(), _caller).Handle(new GetPostQuery(post.Id), Ct));
         await Assert.ThrowsAsync<NotFoundException>(
-            () => new ReactToPostCommandHandler(_posts, Substitute.For<IReactionRepository>(), _caller, new FixedTimeProvider(Now))
+            () => new ReactToPostCommandHandler(_posts, Substitute.For<IReactionRepository>(), Substitute.For<IBlockDirectory>(), _caller, new FixedTimeProvider(Now))
                 .Handle(new ReactToPostCommand(post.Id, ReactionType.Like), Ct));
     }
 }

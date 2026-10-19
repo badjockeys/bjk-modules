@@ -10,6 +10,10 @@ src/
                                  current user, safe startup migrations, RabbitMQ connection and outbox,
                                  provider retries and MessageDeliveryException (Email, SMS),
                                  user lifecycle events, GET /api/me/data-export
+    Safety/                      Online safety: TextSafety (plates, phones, emails, addresses, handles),
+                                 IContentScreener (keywords + optional classifier), ICaptchaVerifier (Turnstile),
+                                 age verification pipeline step, SafetyOptions
+    Moderation/                  IModerationAuditLog contract and action names
   BJK.Modules.User/              Hosted by bjk-identity-server
     API/Controllers/             UserController
     API/Contracts/               Request/response records
@@ -41,19 +45,27 @@ src/
     API/Controllers/             ProfilesController (/api/profiles)
     UseCases/
       Create/  Update/  Get/     Create, edit, change @handle, set avatar; read by handle
-    Contracts/                   IProfileDirectory: author names and avatars for other modules
+      Blocks/                    Block, unblock, list my blocks
+      Moderation/                Admin: look up any profile, reset an offensive profile (audited)
+    Contracts/                   IProfileDirectory (author names and avatars), IBlockDirectory, IProfileModeration
     Infrastructure/Data/         ProfilesDbContext (schema: profiles) and Migrations/
     Domain/                      Profile, Handle rules
     ProfilesModule.cs            Module entry point
   BJK.Modules.Posts/             Hosted by bjk-core
-    API/Controllers/             PostsController (/api/posts), PostReportsController (/api/posts/reports)
+    API/Controllers/             PostsController (/api/posts), ReportsController (public form, profile reports),
+                                 AdminPostsController (/api/admin)
     UseCases/
       Create/  Update/  Delete/  Publish, edit and delete posts
       Get/                       One post, the public feed, my posts
-      Reactions/  Comments/      React, comment
-      Reports/                   Report a post or comment; admin review queue
+      Reactions/  Comments/      React to posts and comments; comments and one level of replies
+      Reports/                   Report a post, comment or profile; the public report form; admin review queue
+      Appeals/                   Appeal a moderation decision once; admin decisions
+      Moderation/                Screening queues, sensitive tag, audit log, report and appeal emails
+      Safety/                    New-account limits
+    Infrastructure/              Moderation audit log (stored for every module), lifecycle and data export
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
-    Domain/                      Post, PostMedia, Reaction, Comment, Report
+    Domain/                      Post (+ PinRounding), PostMedia, Reaction, Comment, CommentReaction, Report,
+                                 Appeal, ModerationAuditRecord
     PostsModule.cs               Module entry point
   BJK.Modules.Email/             Hosted by bjk-identity-server and bjk-core (no database, no endpoints)
     Contracts/                   IEmailSender, EmailMessage
@@ -67,6 +79,7 @@ src/
     Infrastructure/              Twilio sender; Log sender for local development
     SMSModule.cs                 Module entry point
 tests/
+  BJK.Modules.Shared.Tests/
   BJK.Modules.User.Tests/
   BJK.Modules.Media.Tests/
   BJK.Modules.Profiles.Tests/
@@ -102,6 +115,13 @@ app.MapControllers();
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
+| `Safety:RequireAgeVerification` | Default `true`: posting, editing posts, commenting, reacting and reporting need the `age_verified` claim. `false` only for local development and tests. |
+| `Safety:NewAccounts:Period`, `:MaxPosts`, `:MaxComments` | New-account limits. Defaults `1.00:00:00`, 3, 20. bjk-core only. |
+| `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
+| `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
+| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
+
+`user-secrets.template.json` lists these with local development values.
 
 ### One id per person, one copy of each fact
 
@@ -199,7 +219,8 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 | `POST /api/media/uploads`, `POST /api/media/{id}/complete` | Signed-in user (`bjk.media` scope) |
 | `GET /api/media/{id}` | Anyone with `bjk.media` once Ready; the owner or an admin before that |
 | `GET /api/media/mine` | The signed-in user's own uploads, any state |
-| `DELETE /api/media/{id}` | Owner, or admin (`bjk.media.manage`) |
+| `DELETE /api/media/{id}` | Owner |
+| `DELETE /api/admin/media/{id}?reason=` | Moderator (`bjk.media.manage`); the reason is required and the action is audited |
 
 Storage is Cloudflare R2. R2 speaks the S3 API and Cloudflare has no .NET SDK of its own, so the module uses the `AWSSDK.S3` client pointed at the R2 endpoint, as Cloudflare's R2 docs recommend. Nothing is sent to AWS and no AWS account is needed. The storage code sits behind `IMediaStorage`, so any S3-compatible store works by changing configuration.
 
@@ -310,12 +331,19 @@ Each user's public profile, in `profiles.Profiles`. The profile's id is the user
 | `PUT /api/profiles/me/handle`, `PUT /api/profiles/me/avatar` | Signed-in user |
 | `GET /api/profiles/{handle}` | Anyone, including anonymous callers |
 | `GET /api/profiles/handles/{handle}/availability` | Anyone: check a handle as the user types |
+| `GET /api/profiles/me/blocks`, `PUT` / `DELETE /api/profiles/me/blocks/{handle or user id}` | Signed-in user: list, block, unblock |
+| `POST /api/profiles/{handle}/reports` | Signed-in user: report a profile (served by the Posts module, which owns the reports queue) |
+| `GET /api/admin/profiles/{handle}`, `POST /api/admin/profiles/{handle}/reset` | Moderator (`bjk.profiles.manage`): any profile; reset an offensive profile (reason required, audited) |
+
+- **No personal details**: display names, bios and locations can't contain number plates, phone numbers, email addresses, street addresses or social handles (see "Online safety").
+- **Blocking**: up to 1,000 people per user, in `profiles.Blocks`. The Posts module hides blocked users' posts and comments from the blocker and stops blocked users commenting on or reacting to the blocker's posts. Blocks go when either account is deleted.
+- **Moderation reset**: the display name goes back to the handle and the bio, location and avatar are removed (the avatar's files are deleted). The handle itself isn't changed.
 
 Configuration: `ConnectionStrings:<name>`, the name passed to `new ProfilesModule(...)`. Its tables are in the `profiles` schema of `badjockeys`. It needs the Media module registered too.
 
 ## Posts module
 
-Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `Reports`.
+Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `CommentReactions`, `Reports`, `Appeals`, `ModerationAuditLog`.
 
 - **Deactivated authors**: while an author's account is deactivated, their posts and comments are hidden from everyone (feed, post pages, comment lists and counts). Their reactions still count.
 - **A post** has a title (up to 120 characters), an optional description (5,000), a category, when the incident happened (not in the future), a map pin (latitude/longitude, optional place name), and 1 to 10 photos or videos.
@@ -323,19 +351,29 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 - **Publishing**: the photos and videos must be the author's own uploads and already Ready. The app uploads them, waits for processing, then creates the post, which everyone can see straight away. Each photo or video can be in only one post. The author needs a profile.
 - **Editing**: the author (or an admin) can change the details but not the media. Deleting a post also deletes its photos and videos. The row is kept, marked Deleted.
 - **Reactions**: one per user per post (Like, Angry, Shocked, Laugh). Reacting again changes it. Posts show counts per reaction and the viewer's own reaction.
-- **Comments**: flat (no replies), up to 2,000 characters. The author can edit; the author or an admin can delete. Commenting needs a profile.
-- **Reports**: any signed-in user can report a post or comment once, with a reason (DangerousOrIllegal, PersonalInformation, HarassmentOrHate, Spam, NotADrivingIncident, Other). Admins work through the queue. **Dismiss** leaves the content up. **HideContent** hides it and closes every open report about it. A hidden post looks missing to everyone except its author and admins. Admins can unhide it.
+- **Comments and replies**: up to 2,000 characters. Replies go **one level deep**: a reply points to a top-level comment on the same post, and replying to a reply is refused with a 400 ("You can't reply to a reply..."). The author can edit; the author or a moderator can delete. Commenting needs a profile. Comment lists return top-level comments, oldest first, each with its reply count and first 3 replies; the rest come from the replies endpoint. A hidden or deleted top-level comment that still has replies is shown as a placeholder (`isRemoved: true`, no author, empty body) with its replies underneath. The post's comment count includes replies.
+- **Comment reactions**: one per user per comment or reply (Like, Angry, Shocked, Laugh), changeable and removable, in `posts.CommentReactions`. Comments show counts per type and the viewer's own reaction.
+- **Reports**: signed-in users can report a post, comment, reply or profile once, with a reason (DangerousOrIllegal, PersonalInformation, HarassmentOrHate, Spam, NotADrivingIncident, IllegalContent, Threat, InThisClip, Copyright, Other). Anyone can use the public form. Moderators work through the queue, urgent first. **Dismiss** leaves the content up. **HideContent** hides it (or resets a profile) and closes every open report about it. A hidden post looks missing to everyone except its author and moderators. See "Online safety" for priorities, emails and appeals.
 - **Feed**: newest first, filterable by category, author's @handle, and area (a point plus a radius of up to 200 km).
 
 | Endpoint | Access |
 |---|---|
-| `GET /api/posts`, `GET /api/posts/{id}`, `GET /api/posts/{id}/comments` | Anyone, including anonymous callers |
-| `GET /api/posts/mine` | Signed-in user (`bjk.posts`): my posts, including hidden ones |
-| `POST /api/posts`, `PUT` / `DELETE /api/posts/{id}` | Signed-in user; edit and delete are for the author or an admin |
+| `GET /api/posts`, `GET /api/posts/{id}` | Anyone, including anonymous callers (never sensitive posts for them) |
+| `GET /api/posts/mine` | Signed-in user (`bjk.posts`): my posts, including hidden and held ones |
+| `POST /api/posts`, `PUT` / `DELETE /api/posts/{id}` | Signed-in user; edit and delete are for the author |
 | `PUT` / `DELETE /api/posts/{id}/reaction` | Signed-in user |
-| `POST /api/posts/{id}/comments`, `PUT` / `DELETE /api/posts/{id}/comments/{commentId}` | Signed-in user |
-| `POST /api/posts/{id}/reports`, `POST /api/posts/{id}/comments/{commentId}/reports` | Signed-in user |
-| `GET /api/posts/reports`, `POST /api/posts/reports/{id}/resolve`, `POST /api/posts/{id}/unhide` | Admin (`bjk.posts.manage`) |
+| `GET /api/posts/{id}/comments`, `GET /api/posts/{id}/comments/{commentId}/replies` | Signed-in user (logged-out viewers see no comments) |
+| `POST /api/posts/{id}/comments`, `POST /api/posts/{id}/comments/{commentId}/replies`, `PUT` / `DELETE /api/posts/{id}/comments/{commentId}` | Signed-in user |
+| `PUT` / `DELETE /api/posts/{id}/comments/{commentId}/reaction` | Signed-in user |
+| `POST /api/posts/{id}/reports`, `POST /api/posts/{id}/comments/{commentId}/reports`, `POST /api/profiles/{handle}/reports` | Signed-in user |
+| `POST /api/posts/{id}/appeal`, `POST /api/posts/{id}/comments/{commentId}/appeal` | Signed-in author, once per decision |
+| `POST /api/reports/public` | Anyone, with a Turnstile token in `X-Captcha-Token` |
+| `GET /api/admin/reports`, `POST /api/admin/reports/{id}/resolve` | Moderator (`bjk.posts.manage`): the queue, urgent first; resolve (note required) |
+| `GET /api/admin/appeals`, `POST /api/admin/appeals/{id}/decide` | Moderator: appeals queue; uphold or overturn (note required) |
+| `GET /api/admin/screening/posts`, `GET /api/admin/screening/comments` (`?queue=Held` or `Flagged`), `POST .../screening/posts/{id}`, `POST .../screening/comments/{commentId}` | Moderator: held and flagged content; approve or remove (reason required) |
+| `GET /api/admin/posts/{id}`, `POST /api/admin/posts/{id}/unhide`, `PUT /api/admin/posts/{id}/sensitive` | Moderator (reason required for changes) |
+| `DELETE /api/admin/posts/{id}?reason=`, `DELETE /api/admin/posts/{id}/comments/{commentId}?reason=` | Moderator |
+| `GET /api/admin/audit` | Admin: the moderation audit log for Posts, Profiles and Media |
 
 Configuration: `ConnectionStrings:<name>`, the name passed to `new PostsModule(...)`. Its tables are in the `posts` schema of `badjockeys`. It needs the Media and Profiles modules registered too:
 
@@ -343,8 +381,25 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new PostsModule(.
 builder.Services.AddBjkModules(builder.Configuration,
     new MediaModule("AppDatabase"),
     new ProfilesModule("AppDatabase"),
-    new PostsModule("AppDatabase"));
+    new PostsModule("AppDatabase"),
+    new EmailModule()); // report and appeal emails
 ```
+
+### Online safety
+
+Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
+
+- **No personal details in text.** Post titles, descriptions and place names, comments and replies, and profile display names, bios and locations are checked by `TextSafety` (Shared). Refused, with a 400 and a friendly message on the field: UK number plates in every format (current `AB12 CDE`, prefix `A123 BCD`, suffix `ABC 123D`, Northern Ireland `AXZ 99`, and dateless `ABC 123` / `123 ABC` when written in capitals), in any case and with or without the space; UK and international phone numbers (10 to 15 digits starting `0`, `00` or `+`); email addresses; street addresses (a house number, one or two name words, then a street type such as Road or Avenue); and social handles or profile links (`@handle`, `x.com/…`, `tiktok.com/@…`, `instagram.com/…`, `facebook.com/…` and similar). Road numbers, junctions, speeds and car models are deliberately allowed: "M62 J26", "A road", "doing 70 in a 30", "BMW 320d". A plate whose letters spell a common short word ("A56 THE") is missed rather than refusing ordinary text.
+- **Content screening.** Every comment, reply and post text goes through `IContentScreener`, scoring 0 to 1. At or above `Screening:HoldThreshold` (0.8) it's **held for review**: only its author sees it (status `HeldForReview`) until a moderator approves or removes it. At or above `Screening:FlagThreshold` (0.5) it's published but **flagged** for a moderator. The default provider is a built-in keyword and phrase list (threats, slurs, abuse, and calls to find or confront people) with three severities; text is normalised so "k1lll" matches "kill". The `Http` provider also calls a classifier service, intended for an open-source Detoxify model in a sidecar container: `POST {"text": "..."}` returning `{"scores": {"toxicity": 0.97, ...}}`; the higher of the two scores wins, and if the service is down the keyword result is used (labelled `classifier_unavailable`). Edits are screened again; a flag stays until a moderator clears it.
+- **Sensitive posts.** `isSensitive` (graphic injuries, serious crashes) is set by the author on create or edit, or by a moderator. Logged-out callers never get sensitive posts: they're left out of the feed and profile lists, and the post page is a 404.
+- **No comments for logged-out viewers.** The comment and reply lists need a signed-in token. Post responses to logged-out callers carry `commentsRequireSignIn: true`; the comment count is still included (it shows activity without revealing anything), so the apps can show "Sign in to see 12 comments".
+- **Location rounding.** Map pins are rounded to about 500 m when saved (`PinRounding`): latitude to a grid of 0.0045° (500 m north–south), then longitude to 0.0045° / cos(latitude) (about 500 m east–west). The API returns only the rounded pin and the place name. The OnlineSafety migration rounds existing rows the same way (an update; nothing is deleted).
+- **Age check.** Writes (create and edit posts, comment, reply, react, report as a signed-in user) need the token's `age_verified` claim (`"true"`), issued by the identity server once the account has passed the age check, while `Safety:RequireAgeVerification` is on (the default). Without it the API returns 403 with `code: "age_verification_required"` (type `https://badjockeys.com/problems/age-verification-required`), so the apps can send the user to the age check.
+- **New-account limits.** While a profile is younger than `Safety:NewAccounts:Period` (24 hours) it can create at most `MaxPosts` (3) posts and `MaxComments` (20) comments and replies in any rolling 24 hours, counting deleted ones. Over the limit: 429 with `code: "new_account_limit"`.
+- **Reports.** In the app: posts, comments, replies and profiles. The public form `POST /api/reports/public` ("Report content / I'm in this clip") needs no account: the post id or link (plus an optional comment id), a reason (InThisClip, PersonalInformation, IllegalContent, Threat, HarassmentOrHate, Copyright, Other), details, the reporter's name and email, consent, and a Cloudflare Turnstile token in `X-Captcha-Token` (`ICaptchaVerifier`; a failed token is a 400, an unreachable Turnstile a 503). It returns a reference (`R-1A2B3C4D`), the priority and when a decision is due. **Priority**: `Urgent` for IllegalContent and Threat, with a 4-hour target; `Normal` otherwise, 48 hours. The queue lists urgent reports first, then by due time. **Emails** (Email module, sent straight away): an acknowledgement when the report is made and the outcome when it's resolved, to the public form's address or, for signed-in reporters, the `email` claim in their token if it has one. A failed email is logged and recorded (`acknowledgedAt` / `outcomeNotifiedAt` stay empty); it never undoes the report or decision.
+- **Appeals.** An author can appeal a moderator's decision to hide their post or comment, once (`posts.Appeals`). Appeals have a 48-hour target and their own queue; overturning shows the content again. The author is emailed when the appeal is received and decided (if their token carries an email).
+- **Moderation audit log.** Every moderator or admin action in Posts (resolve report, unhide, delete post or comment, approve or remove screened content, sensitive tag, appeal decision), Profiles (reset) and Media (delete) is recorded in `posts.ModerationAuditLog`: actor id and role (Admin, Moderator, or Service for machine tokens), action, target type and id, reason, before/after summaries (states only, never content or personal details) and time. A reason or note is required on every action. `GET /api/admin/audit` (admins only) filters by actor, module, action, target and time. Other modules write through Shared's `IModerationAuditLog`, which the Posts module implements; Posts actions are saved together with their audit entry.
+- **Blocking.** See the Profiles module. Blocked users' posts are left out of the blocker's feed and look missing; their comments and replies are left out; and they can't comment on, reply to or react to the blocker's posts and comments.
 
 ### How modules talk to each other
 
@@ -353,7 +408,10 @@ A module never reads another module's tables. Each module that others depend on 
 | Contract | Used by | For |
 |---|---|---|
 | `IMediaDirectory` (Media) | Profiles, Posts | Checking media is the user's own and Ready, getting its URLs, deleting it with a post or old avatar |
-| `IProfileDirectory` (Profiles) | Posts | Authors' handles, names and avatars; does the user have a profile |
+| `IProfileDirectory` (Profiles) | Posts | Authors' handles, names, avatars and profile age; does the user have a profile |
+| `IBlockDirectory` (Profiles) | Posts | Who the viewer has blocked; has the author blocked this user |
+| `IProfileModeration` (Profiles) | Posts | Resetting a reported profile |
+| `IModerationAuditLog` (Shared, stored by Posts) | Profiles, Media, Posts | Recording moderation actions |
 
 ## Database migrations
 

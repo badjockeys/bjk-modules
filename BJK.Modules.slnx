@@ -9,6 +9,7 @@
     <Project Path="src/BJK.Modules.SMS/BJK.Modules.SMS.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/BJK.Modules.Shared.Tests/BJK.Modules.Shared.Tests.csproj" />
     <Project Path="tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Profiles.Tests/BJK.Modules.Profiles.Tests.csproj" />
