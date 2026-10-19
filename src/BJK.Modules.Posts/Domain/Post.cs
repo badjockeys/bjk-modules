@@ -123,6 +123,19 @@ public sealed class Post
     /// </summary>
     public string? NotifyEmail { get; private set; }
 
+    /// <summary>
+    /// The post is one video (a post has 1 to 10 photos or one video), so it's also a reel. Set when the post is
+    /// created; a post's media never change afterwards.
+    /// </summary>
+    public bool HasVideo { get; private set; }
+
+    /// <summary>
+    /// Reels ranking ("recent and popular"), for video posts: (1 + reactions + 2 × comments) / (age in hours + 2)^1.5
+    /// (<see cref="ReelRanking"/>). Refreshed in the database every few minutes by the reels background job; 0 for
+    /// photo posts and once a video is older than the ranking window.
+    /// </summary>
+    public double ReelScore { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     /// <summary>The photos and videos, in the order the author chose.</summary>
@@ -137,6 +150,7 @@ public sealed class Post
     /// True if any of the media is still being processed: the post waits (<see cref="PostMediaState.Pending"/>).
     /// </param>
     /// <param name="notifyEmail">For a pending post: where to tell the author if it can't be published.</param>
+    /// <param name="hasVideo">The post is one video (a reel).</param>
     public static Post Create(
         Guid authorId,
         PostDetails details,
@@ -144,7 +158,8 @@ public sealed class Post
         DateTimeOffset now,
         bool isSensitive = false,
         bool mediaPending = false,
-        string? notifyEmail = null)
+        string? notifyEmail = null,
+        bool hasVideo = false)
     {
         if (authorId == Guid.Empty)
         {
@@ -170,6 +185,8 @@ public sealed class Post
             IsSensitive = isSensitive,
             SensitiveSource = isSensitive ? PostSensitiveSource.Author : PostSensitiveSource.None,
             MediaState = mediaPending ? PostMediaState.Pending : PostMediaState.Ready,
+            HasVideo = hasVideo,
+            ReelScore = hasVideo ? ReelRanking.Score(0, 0, TimeSpan.Zero) : 0,
             NotifyEmail = mediaPending && !string.IsNullOrWhiteSpace(notifyEmail) && notifyEmail.Trim().Length <= NotifyEmailMaxLength
                 ? notifyEmail.Trim()
                 : null,

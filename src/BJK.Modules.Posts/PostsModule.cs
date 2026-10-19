@@ -3,8 +3,10 @@ using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Posts.UseCases.Comments;
+using BJK.Modules.Posts.UseCases.Heatmap;
 using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Publishing;
+using BJK.Modules.Posts.UseCases.Reels;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
@@ -85,6 +87,21 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddContentScreening(configuration);
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
+
+        // Reels (daily plays by plan, ranking refreshed in the background) and the incident heat map.
+        services.AddOptions<ReelsOptions>()
+            .Bind(configuration.GetSection(ReelsOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ReelsOptions>, ReelsOptionsValidator>();
+        services.AddOptions<HeatmapOptions>()
+            .Bind(configuration.GetSection(HeatmapOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<HeatmapOptions>, HeatmapOptionsValidator>();
+        services.AddScoped<IReelRepository, ReelRepository>();
+        services.AddScoped<IHeatmapRepository, HeatmapRepository>();
+        services.AddScoped<ReelAllowances>();
+        services.AddScoped<HeatmapAccess>();
+        services.AddHostedService<ReelsMaintenance>();
 
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();

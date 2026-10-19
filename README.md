@@ -60,7 +60,8 @@ src/
     ProfilesModule.cs            Module entry point
   BJK.Modules.Posts/             Hosted by bjk-core
     API/Controllers/             PostsController (/api/posts), ReportsController (public form, profile reports),
-                                 AdminPostsController (/api/admin)
+                                 AdminPostsController (/api/admin), ReelsController (/api/reels),
+                                 HeatmapController (/api/heatmap)
     UseCases/
       Create/  Update/  Delete/  Publish, edit and delete posts
       Get/                       One post, the public feed, my posts
@@ -70,8 +71,10 @@ src/
       Moderation/                Screening queues, sensitive tag, audit log, report and appeal emails
       Safety/                    New-account limits
       Publishing/                Post now, publish when ready: PostMediaPublisher
+      Reels/                     Reels: list (ranked, daily allowance by plan), record a play
+      Heatmap/                   Incident heat map: cells, area figures, CSV export (entitlements by plan)
     Infrastructure/              Moderation audit log (stored for every module), media event handler, lifecycle
-                                 and data export
+                                 and data export, ReelsMaintenance (reels ranking refresh, play retention)
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
     Domain/                      Post (+ PinRounding), PostMedia, Reaction, Comment, CommentReaction, Report,
                                  Appeal, ModerationAuditRecord
@@ -129,6 +132,9 @@ app.MapControllers();
 | `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
 | `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
 | `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
+| `Plans:Overrides:<user id>` | `free`, `premium` or `premium_plus`, for testing paid features before billing exists. See [Plans](#plans-and-entitlements). |
+| `Reels:*` | Daily plays and the ranking job. bjk-core only. See [Reels](#reels). |
+| `Heatmap:*` | Suppression threshold and history by plan. bjk-core only. See [Incident heat map](#incident-heat-map). |
 | `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
 
 `user-secrets.template.json` lists these with local development values.
@@ -591,6 +597,45 @@ builder.Services.AddBjkModules(builder.Configuration,
     new PostsModule("AppDatabase"),
     new EmailModule()); // report and appeal emails
 ```
+
+### Plans and entitlements
+
+Billing isn't built yet. Plans come from the access token's **`plan`** claim (`free`, `premium`, `premium_plus`; missing or unknown = Free), which the identity server will issue once subscriptions exist. Modules read it through `IPlanResolver` (Shared), which also applies **`Plans:Overrides`**: a list of user ids with the plan to treat them as, for testing Premium features now (startup refuses ids that aren't GUIDs and unknown plan names). Remove the overrides once the claim is issued. Logged-out callers have no plan. Limits follow the "Pricing and plan limits" sheet (Plan matrix).
+
+### Reels
+
+A full-screen feed of video posts: **one reel = one post** (a post is 1–10 photos or one video, so only video posts are reels; photo posts stay in the feed). Reels carry the same `PostDto` as the feed: author, reactions, comments count, sensitive fields, `linksExpireAt` and so on.
+
+| Endpoint | Access |
+|---|---|
+| `GET /api/reels?cursor=&category=&pageSize=` | Anyone. Returns `items`, `nextCursor`, `playsRemainingToday` (null = unlimited), `dailyPlayLimit`, `playsToday`, `resetsAt`. With nothing left today: **403** with `code` = `daily_limit`, `resetsAt` and `limit` (problem details). |
+| `POST /api/reels/{postId}/play` | Anyone. The app calls it once about **3 seconds** have been watched. Idempotent per viewer, reel and UK day. Returns `counted`, `playsRemainingToday`, `dailyPlayLimit`, `playsToday`, `resetsAt`; 403 `daily_limit` if the allowance is used up and this reel wasn't already played today (replays are free); 404 for photo posts, hidden ones and sensitive ones the caller can't see. |
+
+- **Daily plays** per UK calendar day (Europe/London, so it follows British Summer Time; resets at midnight UK time): logged out **10** (`Reels:DailyPlays:Anonymous`), Free **25** (`Reels:DailyPlays:Free`), Premium and Premium + unlimited. A page is never longer than the plays left. Video in the main feed isn't counted yet (the apps can call the play endpoint for it later).
+- **Who is counted.** Signed-in users by their id. Logged-out viewers by the **`X-Viewer-Id`** header (8–128 letters, digits, `-_.:`): the web app's BFF sets a signed, httpOnly cookie and forwards its id; the mobile app sends its install id. Without one, the **IP address** is a weak fallback (shared addresses share a count; the host must apply forwarded headers so it's the viewer's address, e.g. Cloudflare's `CF-Connecting-IP`). The API can't verify the header, so a determined logged-out caller can reset their count; the limit is a nudge to sign up, not a paywall. Viewer ids and IPs are stored only as a hash (HMAC-SHA256 with `Reels:ViewerKeySecret`; set it in deployed environments).
+- **Ranking: recent and popular.** `score = (1 + reactions + 2 × comments) / (age in hours + 2)^1.5` (`ReelRanking`), stored on `posts.Posts.ReelScore` and **recomputed every 10 minutes** (`Reels:RankingRefreshInterval`) by a background job in the API host, for video posts from the last 30 days (`Reels:RankingWindow`; older ones get 0 and come after). Why a refreshed column rather than computing in each request: a score that decays with time can't be indexed, so every request would score every video; with the column, a page is an index seek on the filtered indexes `IX_Posts_Reels` and `IX_Posts_Reels_Category` (public video posts only, ordered by score and time), whatever the archive's size, and the refresh is one set-based statement over the last 30 days' videos. New videos start with the top score for no engagement, so they appear straight away. Cursors are the last reel's score and time; a refresh between pages can occasionally repeat or skip a reel, so the apps skip ids they already have. The refresh bumps those posts' row versions, so an edit saved in the same instant can get the usual concurrency error.
+- **Sensitive posts are skipped** unless the caller is age-verified (`age_verified` claim) or a moderator; authors always see their own.
+- **Blocking:** reels by people the caller blocked, or who blocked the caller, are left out (`IBlockDirectory.GetBlockedEitherWayAsync`).
+- **Plays** are stored in `posts.ReelPlays` (key: viewer, UK day, post), with a daily total per post in `posts.ReelPlayDailyCounts` (kept with the post, for stats). Signed-in viewers' plays are kept **35 days** (`Reels:PlayRetention`), logged-out viewers' **2 days** (`Reels:AnonymousPlayRetention`); the same background job sweeps them hourly (`Reels:PlaySweepInterval`). A user's plays are in "Download my data" and deleted with the account.
+- **Existing video posts:** the migration marks them (`HasVideo`) with a one-off read of `media.Media` in the same database; it's skipped if that table isn't there.
+
+### Incident heat map
+
+Aggregated and privacy-safe: counts per grid cell built **only from the stored, rounded (~500 m) pins** of public posts (published, media ready, author active; never hidden or held ones). Sensitive posts are counted (counts reveal nothing about them). Signed-in users only (logged out: **401**).
+
+| Endpoint | Access |
+|---|---|
+| `GET /api/heatmap?bbox=minLon,minLat,maxLon,maxLat&zoom=&from=&to=&categories=&hours=&days=` | `cells` (centre, bounds, `count`), `cellLatitudeSize`, `cellLongitudeSize`, `minCellCount`, `maxCount`, `truncated`, `access` |
+| `GET /api/heatmap/area?bbox=…&from=&to=` (+ the same filters) | `suppressed`, `total`, `changePercent` (vs the same number of days just before), `busiestHour` (UK hour starting the busiest one-hour band), `topCategories` (category, count, percent), `topPlaces` (place name, count), `placeName`, `previousFrom`, `previousTo`, `access` |
+| `GET /api/heatmap/export.csv` (same parameters as the map) | Premium + only (403 otherwise): the cells as CSV, aggregated counts only |
+
+- **Dates** are UK calendar days, inclusive. **Filters:** `categories` (comma-separated names), `hours` (UK time of day, `7-10`, or `22-6` across midnight), `days` (`All`, `Weekdays`, `Weekends`, UK time).
+- **Entitlements** (`access` in every response says what was applied): **Free** the last 7 days, filters ignored (`filtersIgnored`), the national teaser; **Premium** 12 months and filters; **Premium +** 5 years, filters and CSV export (`Heatmap:HistoryDays:Free|Premium|PremiumPlus`, 7/365/1826). A `from` earlier than the plan allows is moved later (`historyCapped`).
+- **Grid:** fixed latitude/longitude cells on a worldwide grid (stable as the map pans), sized by zoom: about 500 m from zoom 14 (the pins' own rounding), 1 km at 13, 2 km at 12, 4 km at 11, 5 km at 10, 10 km at 9 and below. A cell's longitude size is 1.6 × its latitude size, roughly square across the UK (`HeatmapGrid`). The box is widened to whole cells so edge cells count everything in them.
+- **Suppression:** cells with fewer than **3** incidents (`Heatmap:MinCellCount`, at least 2) are left out. In area figures, everything is hidden below 3; categories, places and the busiest hour are shown only with at least 3 each; the change is shown only if the previous period had at least 3.
+- **Top roads:** posts store a place name (e.g. "A57 Warrington Road, Prescot"), so `topPlaces` lists the most common ones; the apps show them as "Top roads".
+- **Performance: an index, not an aggregate table.** The pins are already rounded to a 500 m grid and incident times are spread out, so a daily aggregate table (day × pin × category × hour) would have about as many rows as posts and need a refresh job and backfills, for little gain. Instead the filtered covering index `IX_Posts_Heatmap` (public posts by `IncidentAt`, including latitude, longitude, category and place name) turns any period into one range seek with no lookups; the grouping is done in SQL. Queries are raw SQL with the index's filter written as literals, so SQL Server can match it. Revisit (a nightly aggregate per cell and day) if national 5-year queries become slow at millions of posts.
+- Not built yet: area alerts, saved searches and Premium + monthly reports (in the plan matrix); a spatial index (the bounding box is a residual filter after the time seek).
 
 ### Online safety
 

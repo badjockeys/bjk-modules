@@ -17,7 +17,7 @@ internal sealed class PostsUserLifecycleHandler(IPostRepository posts) : IUserLi
     };
 }
 
-/// <summary>The user's posts (including hidden and deleted ones still held), comments, reactions and reports.</summary>
+/// <summary>The user's posts (including hidden and deleted ones still held), comments, reactions, reports and reel plays.</summary>
 internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDataExporter
 {
     public string Section => "posts";
@@ -80,6 +80,13 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(a => new { a.Id, a.TargetType, a.TargetId, a.PostId, a.Statement, a.ContactEmail, a.Status, a.CreatedAt, a.DecidedAt })
             .ToListAsync(cancellationToken);
 
-        return new { posts, comments, reactions, commentReactions, reportsMade = reports, appeals };
+        // Reels watched (kept 35 days), for the daily limit.
+        var reelPlays = await db.ReelPlays.AsNoTracking()
+            .Where(p => p.ViewerKey == userId && !p.IsAnonymous)
+            .OrderBy(p => p.PlayedAt)
+            .Select(p => new { p.PostId, p.Day, p.PlayedAt })
+            .ToListAsync(cancellationToken);
+
+        return new { posts, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
     }
 }

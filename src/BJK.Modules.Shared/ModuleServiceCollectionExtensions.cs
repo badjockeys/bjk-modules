@@ -80,6 +80,7 @@ public static class ModuleServiceCollectionExtensions
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSafetyOptions(configuration);
+        services.AddPlans(configuration);
 
         // MediatR is registered once for all modules so pipeline behaviours aren't duplicated.
         services.AddMediatR(cfg =>

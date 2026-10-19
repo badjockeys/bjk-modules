@@ -28,6 +28,12 @@ public interface IBlockDirectory
     /// <summary>Everyone the user has blocked. Their posts and comments are hidden from the user.</summary>
     Task<IReadOnlyCollection<Guid>> GetBlockedIdsAsync(Guid blockerId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Everyone who has blocked the user, and everyone the user has blocked: people whose content is left out of the
+    /// user's reels either way.
+    /// </summary>
+    Task<IReadOnlyCollection<Guid>> GetBlockedEitherWayAsync(Guid userId, CancellationToken cancellationToken);
+
     /// <summary>True if <paramref name="blockerId"/> has blocked <paramref name="blockedId"/>.</summary>
     Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken);
 }

@@ -267,6 +267,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(5000)
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("HasVideo")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset?>("HiddenAt")
                         .HasColumnType("datetimeoffset");
 
@@ -313,6 +316,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<string>("PlaceName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<double>("ReelScore")
+                        .HasColumnType("float");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
                         .HasColumnType("datetimeoffset");
@@ -379,6 +385,20 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
                     b.HasIndex("IsFlagged", "Status", "CreatedAt");
 
+                    b.HasIndex("IncidentAt")
+                        .HasDatabaseName("IX_Posts_Heatmap")
+                        .HasFilter("[Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "PlaceName" });
+
+                    b.HasIndex("ReelScore", "CreatedAt")
+                        .HasDatabaseName("IX_Posts_Reels")
+                        .HasFilter("[HasVideo] = 1 AND [Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
+
+                    b.HasIndex("Category", "ReelScore", "CreatedAt")
+                        .HasDatabaseName("IX_Posts_Reels_Category")
+                        .HasFilter("[HasVideo] = 1 AND [Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
+
                     b.ToTable("Posts", "posts");
                 });
 
@@ -422,6 +442,48 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("Reactions", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.ReelPlay", b =>
+                {
+                    b.Property<Guid>("ViewerKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsAnonymous")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("PlayedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("ViewerKey", "Day", "PostId");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("Day", "IsAnonymous");
+
+                    b.ToTable("ReelPlays", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.ReelPlayDailyCount", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Plays")
+                        .HasColumnType("int");
+
+                    b.HasKey("PostId", "Day");
+
+                    b.ToTable("ReelPlayDailyCounts", "posts");
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Report", b =>
@@ -555,6 +617,24 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Reaction", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.ReelPlay", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.ReelPlayDailyCount", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
                         .WithMany()
