@@ -113,7 +113,8 @@ public sealed record SaveDraftCommand(
         ReportedToPolice,
         MediaIds ?? []);
 
-    internal bool IsEmpty =>
+    /// <summary>True if there's nothing in it to save. A method, so it isn't part of the request's JSON.</summary>
+    internal bool HasNothing() =>
         string.IsNullOrWhiteSpace(Title)
         && string.IsNullOrWhiteSpace(Description)
         && Types is not { Count: > 0 }
@@ -132,7 +133,7 @@ public sealed class SaveDraftCommandValidator : AbstractValidator<SaveDraftComma
 
     public SaveDraftCommandValidator()
     {
-        RuleFor(c => c).Must(c => !c.IsEmpty).OverridePropertyName("Draft").WithMessage(EmptyMessage);
+        RuleFor(c => c).Must(c => !c.HasNothing()).OverridePropertyName("Draft").WithMessage(EmptyMessage);
         RuleFor(c => c.Title).MaximumLength(Post.TitleMaxLength);
         RuleFor(c => c.Description).MaximumLength(Post.DescriptionInputMaxLength);
         RuleFor(c => c.PlaceName).MaximumLength(Post.PlaceNameMaxLength);
