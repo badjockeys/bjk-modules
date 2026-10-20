@@ -10,6 +10,8 @@ namespace BJK.Modules.Notifications.Infrastructure;
 /// <summary>A UK place for a home area: a town or village, or a postcode area. Kept to about 1 km.</summary>
 /// <param name="Name">What to call it, e.g. "Rainhill" or "WA10".</param>
 /// <param name="Detail">Where it is, e.g. "St. Helens, North West".</param>
+/// <param name="Latitude">Rounded to 2 decimal places (about 1 km).</param>
+/// <param name="Longitude">Rounded to 2 decimal places.</param>
 public sealed record PlaceDto(string Name, string? Detail, decimal Latitude, decimal Longitude);
 
 /// <summary>Finds UK places by name or postcode.</summary>
