@@ -335,12 +335,12 @@ public sealed class MediaItem
         UpdatedAt = now;
     }
 
-    /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
-    /// <param name="now">The time.</param>
     /// <summary>The unused-uploads sweep found it in use: it isn't checked again.</summary>
     /// <param name="now">The time.</param>
     public void MarkInUse(DateTimeOffset now) => UsageCheckedAt ??= now;
 
+    /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
+    /// <param name="now">The time.</param>
     public void MarkOriginalDeleted(DateTimeOffset now)
     {
         OriginalDeletedAt ??= now;
