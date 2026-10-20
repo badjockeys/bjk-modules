@@ -134,6 +134,42 @@ public sealed class SegmentedVideoTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// The video containers added on 21 Oct 2026 go through the same split, blur and join as MP4: a 6-second clip in
+    /// two segments comes out as 180 frames of H.264 MP4 with no frame lost at the join.
+    /// </summary>
+    [Theory]
+    [InlineData("clip.webm", new[] { "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8" })]
+    [InlineData("clip.mkv", new[] { "-c:v", "libx264", "-preset", "ultrafast" })]
+    [InlineData("clip.avi", new[] { "-c:v", "mpeg4", "-q:v", "3" })]
+    [InlineData("clip.m4v", new[] { "-f", "mp4", "-c:v", "libx264", "-preset", "ultrafast" })]
+    public async Task Newly_accepted_video_containers_are_split_blurred_and_joined(string name, string[] encode)
+    {
+        RequireFfmpeg();
+        var clip = Make(
+            Path.Combine(_folder, name),
+            ["-f", "lavfi", "-i", $"color=c=gray:s=640x360:r={Fps}:d=6,format=yuv420p,{Checkerboard}[bg];" +
+                $"color=c=0x00FF00:s=16x16:r={Fps}:d=6[g];[bg][g]overlay=x='mod(n*4,560)':y=8", .. encode]);
+        var probe = await Transcoder().ProbeAsync(clip, Ct);
+        Assert.True(probe.HasVideo);
+        var plan = VideoSegmentPlan.For((double)probe.DurationSeconds!.Value, MediaRedactor.OutputFrameRate(probe.FrameRate), probe.StartSeconds ?? 0, 5, 1.0);
+        Assert.Equal(2, plan.SegmentCount);
+
+        var (joined, _) = await SplitBlurAndJoin(clip, plan);
+
+        Assert.Equal(180, await CountFrames(joined));
+        var info = await Ffprobe(joined);
+        Assert.Contains("codec_name=h264", info);
+        int[] indices = [0, 149, 150, 151, 179];
+        var frames = await FramesAt(joined, indices);
+        var origin = GreenCentre(frames[0]);
+        for (var k = 0; k < indices.Length; k++)
+        {
+            var expected = origin + ((indices[k] * 4) % 560);
+            Assert.InRange(GreenCentre(frames[k]), expected - 1.5, expected + 1.5);
+        }
+    }
+
     [Fact]
     public async Task Blurs_continue_across_a_join_thanks_to_the_overlap()
     {

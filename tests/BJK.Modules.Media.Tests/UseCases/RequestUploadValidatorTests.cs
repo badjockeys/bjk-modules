@@ -17,6 +17,22 @@ public sealed class RequestUploadValidatorTests
     }
 
     [Theory]
+    [InlineData("video/x-m4v")]
+    [InlineData("video/webm")]
+    [InlineData("video/x-matroska")]
+    [InlineData("video/x-msvideo")]
+    [InlineData("video/avi")]
+    [InlineData("image/avif")]
+    [InlineData("image/gif")]
+    [InlineData("image/tiff")]
+    [InlineData("image/bmp")]
+    [InlineData("image/x-ms-bmp")]
+    public void Types_added_on_21_October_are_accepted(string type)
+    {
+        Assert.True(_validator.Validate(new RequestUploadCommand("file", type, 1024)).IsValid);
+    }
+
+    [Theory]
     [InlineData("clip.mp4", "video/mp4", 150L * 1024 * 1024 + 1)]
     [InlineData("parking.jpg", "image/jpeg", 25L * 1024 * 1024 + 1)]
     [InlineData("clip.mp4", "video/mp4", 0)]
@@ -61,7 +77,8 @@ public sealed class RequestUploadValidatorTests
 
     [Theory]
     [InlineData("application/pdf")]
-    [InlineData("image/gif")]
+    [InlineData("image/svg+xml")]
+    [InlineData("video/x-flv")]
     [InlineData("")]
     public void Unsupported_types_are_rejected(string type)
     {

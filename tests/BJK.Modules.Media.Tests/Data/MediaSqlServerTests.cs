@@ -156,6 +156,41 @@ public sealed class MediaSqlServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Unused_upload_candidates_are_old_finished_or_abandoned_and_not_yet_found_in_use()
+    {
+        await using (var db = Context())
+        {
+            MediaItem Uploaded(string name, DateTimeOffset at)
+            {
+                var m = MediaItem.Create(UserId, name, "video/mp4", at);
+                m.MarkUploaded(10, at, TimeSpan.FromHours(24));
+                db.Media.Add(m);
+                return m;
+            }
+
+            var readyOld = Uploaded("ready-old.mp4", Now.AddHours(-30));
+            readyOld.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-30));
+            var failedOld = Uploaded("failed-old.mp4", Now.AddHours(-25));
+            failedOld.MarkFailed("Processing failed.", Now.AddHours(-25));
+            var abandoned = MediaItem.Create(UserId, "abandoned.mp4", "video/mp4", Now.AddHours(-26));
+            db.Media.Add(abandoned);
+            var checkedOld = Uploaded("in-a-post.mp4", Now.AddHours(-40));
+            checkedOld.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-40));
+            checkedOld.MarkInUse(Now.AddHours(-10));
+            var deletedOld = Uploaded("deleted.mp4", Now.AddHours(-50));
+            deletedOld.Delete(Now.AddHours(-49));
+            Uploaded("stuck-processing.mp4", Now.AddDays(-3));
+            var readyNew = Uploaded("ready-new.mp4", Now.AddHours(-2));
+            readyNew.MarkReady(10, 10m, 1280, 720, null, Now.AddHours(-2));
+            await db.SaveChangesAsync(Ct);
+
+            var candidates = await new MediaRepository(db).ListUnusedCandidatesAsync(Now.AddHours(-24), 50, Ct);
+
+            Assert.Equal(new[] { readyOld.Id, abandoned.Id, failedOld.Id }, candidates.Select(m => m.Id));
+        }
+    }
+
+    [Fact]
     public async Task Restricted_state_and_scores_are_saved()
     {
         var saved = await SavedProcessingVideo();

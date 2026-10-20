@@ -31,7 +31,7 @@ public sealed class RequestUploadCommandValidator : AbstractValidator<RequestUpl
         RuleFor(c => c.ContentType)
             .NotEmpty()
             .Must(type => MediaFormats.TryGet(type, out _, out _))
-            .WithMessage($"Upload a video (MP4, MOV, 3GP) or a photo (JPEG, PNG, HEIC, WebP). Supported types: {string.Join(", ", MediaFormats.ContentTypes)}.");
+            .WithMessage($"Upload a video (MP4, MOV, M4V, 3GP, WebM, MKV, AVI) or a photo (JPEG, PNG, HEIC, WebP, AVIF, GIF, TIFF, BMP). Supported types: {string.Join(", ", MediaFormats.ContentTypes)}.");
 
         RuleFor(c => c.SizeBytes)
             .GreaterThan(0)

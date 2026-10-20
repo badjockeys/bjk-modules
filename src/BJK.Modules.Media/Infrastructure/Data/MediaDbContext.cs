@@ -104,6 +104,11 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
 
         // Clean-up jobs, e.g. uploads abandoned in the Uploading state.
         builder.HasIndex(m => new { m.Status, m.CreatedAt });
+
+        // The unused-uploads sweep: uploads not yet found in use, oldest first.
+        builder.HasIndex(m => m.CreatedAt)
+            .HasDatabaseName("IX_Media_UnusedUploads")
+            .HasFilter("[UsageCheckedAt] IS NULL AND [Status] <> 'Deleted'");
     }
 }
 

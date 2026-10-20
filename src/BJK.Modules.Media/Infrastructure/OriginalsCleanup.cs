@@ -80,7 +80,10 @@ internal sealed class OriginalsCleanup(
     }
 }
 
-/// <summary>Runs <see cref="OriginalsCleanup.SweepAsync"/> every <c>Media:OriginalSweepInterval</c> (1 hour) in the API host.</summary>
+/// <summary>
+/// Runs <see cref="OriginalsCleanup.SweepAsync"/>, then <see cref="UnusedMediaCleanup.SweepAsync"/>, every
+/// <c>Media:OriginalSweepInterval</c> (1 hour) in the API host.
+/// </summary>
 internal sealed class OriginalsSweeper(IServiceScopeFactory scopes, IOptions<MediaOptions> options, ILogger<OriginalsSweeper> logger)
     : BackgroundService
 {
@@ -102,6 +105,17 @@ internal sealed class OriginalsSweeper(IServiceScopeFactory scopes, IOptions<Med
                         break;
                     }
                 }
+
+                // Then uploads nothing uses (not in a post, draft or avatar) after the same 24 hours.
+                for (var batch = 0; batch < 10; batch++)
+                {
+                    await using var scope = scopes.CreateAsyncScope();
+                    var unused = scope.ServiceProvider.GetRequiredService<UnusedMediaCleanup>();
+                    if (await unused.SweepAsync(stoppingToken) < UnusedMediaCleanup.SweepBatchSize)
+                    {
+                        break;
+                    }
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -109,7 +123,7 @@ internal sealed class OriginalsSweeper(IServiceScopeFactory scopes, IOptions<Med
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Sweeping unused originals failed; trying again at the next interval.");
+                logger.LogError(ex, "Sweeping unused originals and uploads failed; trying again at the next interval.");
             }
 
             await Task.Delay(options.Value.OriginalSweepInterval, stoppingToken).ContinueWith(_ => { }, TaskScheduler.Default);

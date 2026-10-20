@@ -16,6 +16,7 @@ using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Uploads;
 using BJK.Modules.Shared.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -74,6 +75,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<PostsOptions>, PostsOptionsValidator>();
         services.AddScoped<IPostRepository, PostRepository>();
+        services.AddMediaUsage<PostsMediaUsage>();
         services.AddScoped<IReactionRepository, ReactionRepository>();
         services.AddScoped<ICommentRepository, CommentRepository>();
         services.AddScoped<ICommentReactionRepository, CommentReactionRepository>();

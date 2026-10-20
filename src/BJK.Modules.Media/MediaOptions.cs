@@ -83,11 +83,12 @@ public sealed class MediaOptions
     /// Originals are deleted as soon as they're no longer needed: when the post using the media is published (or the
     /// media is deleted). This is the most they're kept otherwise, counted from upload: failed media (until the user
     /// uploads again), media never posted, and abandoned uploads. Media still processing or waiting for a moderator
-    /// keeps its original. Replaces the 90-day retention (owner's decision, 19 Oct 2026).
+    /// keeps its original. Replaces the 90-day retention (owner's decision, 19 Oct 2026). Since 21 Oct 2026 it's also
+    /// how long an upload nothing uses (not in a post, draft or avatar) is kept before it's deleted altogether.
     /// </summary>
     public TimeSpan UnusedOriginalRetention { get; set; } = TimeSpan.FromHours(24);
 
-    /// <summary>How often the API host's sweeper deletes originals past <see cref="UnusedOriginalRetention"/>.</summary>
+    /// <summary>How often the API host's sweeper deletes originals, and uploads nothing uses, past <see cref="UnusedOriginalRetention"/>.</summary>
     public TimeSpan OriginalSweepInterval { get; set; } = TimeSpan.FromHours(1);
 
     public long MaxBytesFor(Domain.MediaType type) =>

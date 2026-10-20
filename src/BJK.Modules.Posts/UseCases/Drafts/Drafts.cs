@@ -163,6 +163,7 @@ public sealed class SaveDraftCommandHandler(
     IPostRepository posts,
     IMediaDirectory media,
     DraftViews views,
+    DraftDeletion deletion,
     ICurrentUser caller,
     TimeProvider clock)
     : IRequestHandler<SaveDraftCommand, DraftDto>
@@ -191,9 +192,11 @@ public sealed class SaveDraftCommandHandler(
 
         var now = clock.GetUtcNow();
         PostDraft draft;
+        IReadOnlyList<Guid> removed = [];
         if (request.DraftId is { } draftId)
         {
             draft = await GetOwnAsync(drafts, caller, draftId, cancellationToken);
+            removed = draft.Media.Select(m => m.MediaId).Except(mediaIds).ToList();
             draft.Update(request.ToContent() with { MediaIds = mediaIds }, now);
         }
         else
@@ -208,6 +211,9 @@ public sealed class SaveDraftCommandHandler(
         }
 
         await drafts.SaveChangesAsync(cancellationToken);
+
+        // Photos and videos taken out of the draft go too, unless a post or another draft uses them.
+        await deletion.DeleteUnusedMediaAsync(removed, [draft.Id], cancellationToken);
         return (await views.BuildAsync([draft], cancellationToken))[0];
     }
 
@@ -274,7 +280,43 @@ public sealed class DraftDeletion(
     {
         var deleting = items.Select(d => d.Id).ToList();
         var ids = items.SelectMany(d => d.Media.Select(m => m.MediaId)).Distinct().ToList();
-        var inOtherDrafts = await drafts.MediaInOtherDraftsAsync(ids, deleting, cancellationToken);
+        var orphans = await UnusedAsync(ids, deleting, cancellationToken);
+
+        foreach (var draft in items)
+        {
+            drafts.Remove(draft);
+        }
+
+        await drafts.SaveChangesAsync(cancellationToken);
+        await DeleteMediaAsync(orphans, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes (best effort) those of these photos and videos that no post and no other draft uses. Called after
+    /// they're taken out of a draft. Anything missed is caught by the Media module's sweep of unused uploads.
+    /// </summary>
+    /// <param name="mediaIds">Media taken out of a draft.</param>
+    /// <param name="exceptDraftIds">The drafts they were taken out of.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    public async Task DeleteUnusedMediaAsync(
+        IReadOnlyCollection<Guid> mediaIds,
+        IReadOnlyCollection<Guid> exceptDraftIds,
+        CancellationToken cancellationToken)
+    {
+        if (mediaIds.Count == 0)
+        {
+            return;
+        }
+
+        await DeleteMediaAsync(await UnusedAsync(mediaIds, exceptDraftIds, cancellationToken), cancellationToken);
+    }
+
+    private async Task<List<Guid>> UnusedAsync(
+        IReadOnlyCollection<Guid> ids,
+        IReadOnlyCollection<Guid> exceptDraftIds,
+        CancellationToken cancellationToken)
+    {
+        var inOtherDrafts = await drafts.MediaInOtherDraftsAsync(ids, exceptDraftIds, cancellationToken);
         var orphans = new List<Guid>();
         foreach (var id in ids.Where(id => !inOtherDrafts.Contains(id)))
         {
@@ -284,12 +326,11 @@ public sealed class DraftDeletion(
             }
         }
 
-        foreach (var draft in items)
-        {
-            drafts.Remove(draft);
-        }
+        return orphans;
+    }
 
-        await drafts.SaveChangesAsync(cancellationToken);
+    private async Task DeleteMediaAsync(List<Guid> orphans, CancellationToken cancellationToken)
+    {
         if (orphans.Count == 0)
         {
             return;
@@ -301,7 +342,7 @@ public sealed class DraftDeletion(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Drafts were deleted but their media {MediaIds} could not be removed.", orphans);
+            logger.LogWarning(ex, "Drafts were changed but their media {MediaIds} could not be removed.", orphans);
         }
     }
 }

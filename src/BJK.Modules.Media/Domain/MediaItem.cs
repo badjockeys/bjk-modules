@@ -60,6 +60,13 @@ public sealed class MediaItem
     public DateTimeOffset? OriginalDeletedAt { get; private set; }
 
     /// <summary>
+    /// When the unused-uploads sweep found this media in a post, a draft or an avatar (24 hours or more after upload).
+    /// It's never checked again: from then on whatever removes it from its post, draft or avatar deletes it. Null until
+    /// checked; media nothing uses is deleted instead.
+    /// </summary>
+    public DateTimeOffset? UsageCheckedAt { get; private set; }
+
+    /// <summary>
     /// While re-processing after a moderator added blur regions: the copy of the processed file to work from (in the
     /// originals bucket, <see cref="MediaKeys.ReworkSource"/>), instead of the original. Null for a first processing.
     /// </summary>
@@ -330,6 +337,10 @@ public sealed class MediaItem
 
     /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
     /// <param name="now">The time.</param>
+    /// <summary>The unused-uploads sweep found it in use: it isn't checked again.</summary>
+    /// <param name="now">The time.</param>
+    public void MarkInUse(DateTimeOffset now) => UsageCheckedAt ??= now;
+
     public void MarkOriginalDeleted(DateTimeOffset now)
     {
         OriginalDeletedAt ??= now;
