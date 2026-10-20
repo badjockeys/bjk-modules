@@ -283,6 +283,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<bool>("IsAuthorDeactivated")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("IsDark")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsFlagged")
                         .HasColumnType("bit");
 
@@ -319,6 +322,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
 
                     b.Property<double>("ReelScore")
                         .HasColumnType("float");
+
+                    b.Property<bool?>("ReportedToPolice")
+                        .HasColumnType("bit");
 
                     b.Property<DateTimeOffset?>("ReviewedAt")
                         .HasColumnType("datetimeoffset");
@@ -374,13 +380,29 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("VehicleColour")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("VehicleMake")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("VehicleModel")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("VehicleType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IncidentAt")
                         .HasDatabaseName("IX_Posts_Heatmap")
                         .HasFilter("[Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "PlaceName" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "PlaceName", "VehicleType", "VehicleMake", "VehicleModel", "VehicleColour", "IsDark", "ReportedToPolice", "HasVideo" });
 
                     b.HasIndex("AuthorId", "CreatedAt");
 

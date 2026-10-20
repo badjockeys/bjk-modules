@@ -51,6 +51,26 @@ public sealed class Post
     /// <summary>Every type the author chose, the main one first.</summary>
     public IReadOnlyList<IncidentCategory> Types => IncidentTypeFlags.ToList(TypeFlags, Category);
 
+    /// <summary>The kind of vehicle driven badly, if the author said. Required once any vehicle detail is given.</summary>
+    public VehicleType? VehicleType { get; private set; }
+
+    /// <summary>A make from <see cref="VehicleCatalogue"/>, if given.</summary>
+    public string? VehicleMake { get; private set; }
+
+    /// <summary>A model of <see cref="VehicleMake"/> from <see cref="VehicleCatalogue"/>, if given.</summary>
+    public string? VehicleModel { get; private set; }
+
+    public VehicleColour? VehicleColour { get; private set; }
+
+    /// <summary>The author reported it to the police (true), didn't (false), or didn't say (null).</summary>
+    public bool? ReportedToPolice { get; private set; }
+
+    /// <summary>
+    /// The sun was down at the incident's time and place (<see cref="Daylight"/>). Worked out when the details are
+    /// saved; null for posts saved before it existed.
+    /// </summary>
+    public bool? IsDark { get; private set; }
+
     /// <summary>When the incident happened, which may be well before the post was created.</summary>
     public DateTimeOffset IncidentAt { get; private set; }
 
@@ -455,9 +475,26 @@ public sealed class Post
 
         Category = types[0];
         TypeFlags = IncidentTypeFlags.From(types);
+
+        var vehicle = details.Vehicle ?? VehicleDetails.None;
+        var make = vehicle.Make is null ? null : VehicleCatalogue.Make(vehicle.Make)
+            ?? throw new ArgumentException("Unknown make.", nameof(details));
+        var model = vehicle.Model is null ? null : VehicleCatalogue.Model(make, vehicle.Model)
+            ?? throw new ArgumentException("Unknown model for that make.", nameof(details));
+        if (vehicle.Type is null && (make is not null || model is not null || vehicle.Colour is not null))
+        {
+            throw new ArgumentException("Choose the type of vehicle.", nameof(details));
+        }
+
+        VehicleType = vehicle.Type;
+        VehicleMake = make;
+        VehicleModel = model;
+        VehicleColour = vehicle.Colour;
+        ReportedToPolice = details.ReportedToPolice;
         IncidentAt = details.IncidentAt;
         (Latitude, Longitude) = PinRounding.Round(details.Latitude, details.Longitude);
         PlaceName = string.IsNullOrWhiteSpace(details.PlaceName) ? null : Limit(details.PlaceName.Trim(), PlaceNameMaxLength);
+        IsDark = Daylight.IsDark(details.IncidentAt, details.Latitude, details.Longitude);
     }
 
     private void EnsureNotDeleted()
@@ -532,7 +569,18 @@ public sealed record PostDetails(
     decimal Latitude,
     decimal Longitude,
     string? PlaceName,
-    IReadOnlyList<IncidentCategory>? Types = null);
+    IReadOnlyList<IncidentCategory>? Types = null,
+    VehicleDetails? Vehicle = null,
+    bool? ReportedToPolice = null);
+
+/// <summary>
+/// The vehicle driven badly: all optional, but the type is needed once anything else is given. Make and model come
+/// from <see cref="VehicleCatalogue"/>; never the registration.
+/// </summary>
+public sealed record VehicleDetails(VehicleType? Type, string? Make = null, string? Model = null, VehicleColour? Colour = null)
+{
+    public static readonly VehicleDetails None = new(Type: null);
+}
 
 /// <summary>One photo or video (from the Media module) in a post.</summary>
 public sealed class PostMedia

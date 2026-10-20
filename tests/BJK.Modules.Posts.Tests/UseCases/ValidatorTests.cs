@@ -193,4 +193,13 @@ public sealed class ValidatorTests
         Assert.True(_create.Validate(Command() with { Description = new string('a', 500) }).IsValid);
         Assert.Contains(_create.Validate(Command() with { Description = new string('a', 501) }).Errors, e => e.PropertyName == "Description");
     }
+
+    [Fact]
+    public void Vehicle_details_are_chosen_from_lists_and_need_a_type()
+    {
+        Assert.True(_create.Validate(Command() with { VehicleType = VehicleType.Car, VehicleMake = "Audi", VehicleModel = "A3", VehicleColour = VehicleColour.Black }).IsValid);
+        Assert.Contains(_create.Validate(Command() with { VehicleMake = "Audi" }).Errors, e => e.ErrorMessage == "Choose the type of vehicle.");
+        Assert.Contains(_create.Validate(Command() with { VehicleType = VehicleType.Car, VehicleMake = "AB12 CDE" }).Errors, e => e.PropertyName == "VehicleMake");
+        Assert.Contains(_create.Validate(Command() with { VehicleType = VehicleType.Car, VehicleMake = "Audi", VehicleModel = "Corsa" }).Errors, e => e.PropertyName == "VehicleModel");
+    }
 }

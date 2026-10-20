@@ -137,7 +137,12 @@ public sealed class PostsController(ISender sender) : ControllerBase
                 request.PlaceName,
                 request.IsSensitive,
                 request.Types,
-                request.Passengers),
+                request.Passengers,
+                request.VehicleType,
+                request.VehicleMake,
+                request.VehicleModel,
+                request.VehicleColour,
+                request.ReportedToPolice),
             cancellationToken);
 
     /// <summary>Delete your post and its photos and videos.</summary>
@@ -327,7 +332,12 @@ public sealed record UpdatePostRequest(
     string? PlaceName,
     bool? IsSensitive = null,
     IReadOnlyList<IncidentCategory>? Types = null,
-    IReadOnlyList<string>? Passengers = null);
+    IReadOnlyList<string>? Passengers = null,
+    VehicleType? VehicleType = null,
+    string? VehicleMake = null,
+    string? VehicleModel = null,
+    VehicleColour? VehicleColour = null,
+    bool? ReportedToPolice = null);
 
 /// <summary>Accept or decline being tagged as a passenger.</summary>
 public sealed record TagResponseRequest(bool Accept);

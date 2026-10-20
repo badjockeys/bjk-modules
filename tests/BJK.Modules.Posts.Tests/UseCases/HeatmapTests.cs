@@ -190,4 +190,52 @@ public sealed class HeatmapTests
         Assert.Contains(new GetHeatmapQueryValidator().Validate(new GetHeatmapQuery(new HeatmapRequest("nope"), 6)).Errors, e => e.PropertyName == "bbox");
         Assert.True(new GetHeatmapQueryValidator().Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, Categories: "Tailgating", Hours: "7-10"), 12)).IsValid);
     }
+
+    [Fact]
+    public async Task Vehicle_filters_raise_the_threshold_to_5()
+    {
+        var (_, applied) = Access(SubscriptionPlan.Premium).Resolve(new HeatmapRequest(Prescot, VehicleTypes: "Van", Colours: "White"));
+        _heatmap.CountCellsAsync(Arg.Any<HeatmapFilter>(), Arg.Any<decimal>(), Arg.Any<decimal>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<HeatmapCellRow> { new() { CellY = 11867, CellX = -396, Count = 4 } });
+
+        var dto = await new GetHeatmapQueryHandler(_heatmap, Access(SubscriptionPlan.Premium), _options)
+            .Handle(new GetHeatmapQuery(new HeatmapRequest(Prescot, VehicleTypes: "Van", Colours: "White"), 12), Ct);
+
+        Assert.True(applied.HasVehicleFilters);
+        Assert.Equal(5, dto.MinCellCount);
+        Assert.Empty(dto.Cells);
+        await _heatmap.Received().CountCellsAsync(
+            Arg.Is<HeatmapFilter>(f => f.VehicleTypes!.Single() == VehicleType.Van && f.Colours!.Single() == VehicleColour.White),
+            Arg.Any<decimal>(),
+            Arg.Any<decimal>(),
+            Arg.Is(5),
+            Arg.Any<int>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void The_model_filter_only_applies_at_town_level_or_wider()
+    {
+        // Prescot's box is about 6.6 km wide: too close for a model.
+        var (narrow, appliedNarrow) = Access(SubscriptionPlan.Premium).Resolve(new HeatmapRequest(Prescot, Make: "ford", Model: "transit"));
+        Assert.True(narrow.ModelFilterIgnored);
+        Assert.Null(appliedNarrow.Model);
+        Assert.Equal("Ford", HeatmapAccess.Filter(appliedNarrow, HeatmapRequest.ParseBox(Prescot)!).Make);
+
+        var region = "-3.2,53.2,-2.4,53.7";
+        var (wide, appliedWide) = Access(SubscriptionPlan.Premium).Resolve(new HeatmapRequest(region, Make: "ford", Model: "transit"));
+        Assert.False(wide.ModelFilterIgnored);
+        Assert.Equal("Transit", HeatmapAccess.Filter(appliedWide, HeatmapRequest.ParseBox(region)!).Model);
+    }
+
+    [Fact]
+    public void Vehicle_filter_values_must_come_from_the_lists()
+    {
+        var validator = new GetHeatmapQueryValidator();
+
+        Assert.True(validator.Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, VehicleTypes: "Car,van", Make: "BMW", Model: "3 series", Light: HeatmapLight.Dark), 10)).IsValid);
+        Assert.False(validator.Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, VehicleTypes: "Spaceship"), 10)).IsValid);
+        Assert.False(validator.Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, Make: "AB12CDE"), 10)).IsValid);
+        Assert.False(validator.Validate(new GetHeatmapQuery(new HeatmapRequest(Prescot, Make: "BMW", Model: "Transit"), 10)).IsValid);
+    }
 }

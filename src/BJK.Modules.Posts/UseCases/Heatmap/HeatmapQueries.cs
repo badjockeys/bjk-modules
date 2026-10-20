@@ -14,6 +14,10 @@ namespace BJK.Modules.Posts.UseCases.Heatmap;
 /// The filters a heat map request asked for, as sent: <c>bbox</c> = <c>minLon,minLat,maxLon,maxLat</c>; dates are UK
 /// calendar days (inclusive); <c>categories</c> comma-separated names; <c>hours</c> a UK time-of-day range such as
 /// <c>7-10</c> (from 7:00 to 10:00) or <c>22-6</c>; <c>days</c> All, Weekdays or Weekends.
+/// Premium also has: <c>vehicleTypes</c> and <c>colours</c> (comma-separated), <c>make</c> and <c>model</c> (from
+/// <c>GET /api/vehicles</c>; the model only applies at town level or wider), <c>light</c> (Daylight or Dark),
+/// <c>schoolRun</c> (weekdays 08:00–09:15 and 14:45–16:00), <c>reported</c> (reported to the police) and
+/// <c>videoOnly</c>. With any vehicle filter, cells need at least <c>Heatmap:VehicleMinCellCount</c> (5) incidents.
 /// </summary>
 public sealed record HeatmapRequest(
     string? Bbox,
@@ -21,11 +25,48 @@ public sealed record HeatmapRequest(
     DateOnly? To = null,
     string? Categories = null,
     string? Hours = null,
-    HeatmapDays? Days = null)
+    HeatmapDays? Days = null,
+    string? VehicleTypes = null,
+    string? Make = null,
+    string? Model = null,
+    string? Colours = null,
+    HeatmapLight? Light = null,
+    bool? SchoolRun = null,
+    bool? Reported = null,
+    bool? VideoOnly = null)
 {
     /// <summary>True if any filter beyond the area and dates was given.</summary>
     public bool HasFilters =>
-        !string.IsNullOrWhiteSpace(Categories) || !string.IsNullOrWhiteSpace(Hours) || Days is { } d && d != HeatmapDays.All;
+        !string.IsNullOrWhiteSpace(Categories) || !string.IsNullOrWhiteSpace(Hours) || Days is { } d && d != HeatmapDays.All
+        || HasVehicleFilters || Light is { } l && l != HeatmapLight.All || SchoolRun == true || Reported == true || VideoOnly == true;
+
+    /// <summary>A vehicle filter (type, make, model or colour) was given: the threshold goes up.</summary>
+    public bool HasVehicleFilters =>
+        !string.IsNullOrWhiteSpace(VehicleTypes) || !string.IsNullOrWhiteSpace(Make)
+        || !string.IsNullOrWhiteSpace(Model) || !string.IsNullOrWhiteSpace(Colours);
+
+    /// <summary>Reads comma-separated enum names (any case). Empty if none; null if one isn't valid.</summary>
+    public static IReadOnlyList<T>? ParseList<T>(string? value)
+        where T : struct, Enum
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var result = new List<T>();
+        foreach (var name in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!Enum.TryParse<T>(name, ignoreCase: true, out var item) || !Enum.IsDefined(item) || int.TryParse(name, out _))
+            {
+                return null;
+            }
+
+            result.Add(item);
+        }
+
+        return result.Distinct().ToList();
+    }
 
     /// <summary>Reads <c>minLon,minLat,maxLon,maxLat</c>. Null if missing or not valid.</summary>
     public static GeoBox? ParseBox(string? bbox)
@@ -93,6 +134,23 @@ public static class HeatmapRequestRules
             .OverridePropertyName("hours")
             .WithMessage("Give hours as a UK time range, e.g. 7-10 or 22-6.");
         validator.RuleFor(q => request(q).Days).IsInEnum().OverridePropertyName("days");
+        validator.RuleFor(q => request(q).VehicleTypes)
+            .Must(v => HeatmapRequest.ParseList<VehicleType>(v) is not null)
+            .OverridePropertyName("vehicleTypes")
+            .WithMessage("Give vehicle types as comma-separated names, e.g. Car,Van.");
+        validator.RuleFor(q => request(q).Colours)
+            .Must(v => HeatmapRequest.ParseList<VehicleColour>(v) is not null)
+            .OverridePropertyName("colours")
+            .WithMessage("Give colours as comma-separated names, e.g. White,Silver.");
+        validator.RuleFor(q => request(q).Make)
+            .Must(m => string.IsNullOrWhiteSpace(m) || VehicleCatalogue.Make(m) is not null)
+            .OverridePropertyName("make")
+            .WithMessage("Choose a make from /api/vehicles.");
+        validator.RuleFor(q => request(q))
+            .Must(r => string.IsNullOrWhiteSpace(r.Model) || VehicleCatalogue.Model(r.Make, r.Model) is not null)
+            .OverridePropertyName("model")
+            .WithMessage("Choose a model of the chosen make from /api/vehicles.");
+        validator.RuleFor(q => request(q).Light).IsInEnum().OverridePropertyName("light");
         validator.RuleFor(q => request(q))
             .Must(r => r.From is null || r.To is null || r.From <= r.To)
             .OverridePropertyName("from")
@@ -113,7 +171,8 @@ public sealed record HeatmapAccessDto(
     DateOnly From,
     DateOnly To,
     bool HistoryCapped,
-    bool FiltersIgnored);
+    bool FiltersIgnored,
+    bool ModelFilterIgnored = false);
 
 /// <summary>
 /// The heat map's entitlements by plan: Free the last <c>Heatmap:HistoryDays:Free</c> (7) days with no filters;
@@ -165,9 +224,29 @@ public sealed class HeatmapAccess(IPlanResolver plans, IOptions<HeatmapOptions> 
         var applied = filtersAllowed
             ? request with { From = from, To = to }
             : new HeatmapRequest(request.Bbox, from, to);
+
+        // A model is specific enough to point at someone's car on a street: only at town level or wider.
+        var modelIgnored = false;
+        if (!string.IsNullOrWhiteSpace(applied.Model) && HeatmapRequest.ParseBox(applied.Bbox) is { } box
+            && !WideEnough(box, options.Value.ModelFilterMinSpanKm))
+        {
+            applied = applied with { Model = null };
+            modelIgnored = true;
+        }
+
         return (
-            new HeatmapAccessDto(plan, historyDays, filtersAllowed, plan == SubscriptionPlan.PremiumPlus, from, to, capped, !filtersAllowed && request.HasFilters),
+            new HeatmapAccessDto(plan, historyDays, filtersAllowed, plan == SubscriptionPlan.PremiumPlus, from, to, capped, !filtersAllowed && request.HasFilters, modelIgnored),
             applied);
+    }
+
+    /// <summary>True if the box is at least <paramref name="km"/> km each way.</summary>
+    private static bool WideEnough(GeoBox box, int km)
+    {
+        const double KmPerDegree = 111.32;
+        var middle = (double)(box.MinLatitude + box.MaxLatitude) / 2 * Math.PI / 180;
+        var height = (double)(box.MaxLatitude - box.MinLatitude) * KmPerDegree;
+        var width = (double)(box.MaxLongitude - box.MinLongitude) * KmPerDegree * Math.Cos(middle);
+        return height >= km && width >= km;
     }
 
     /// <summary>The repository filter for an applied request, over a box.</summary>
@@ -186,7 +265,15 @@ public sealed class HeatmapAccess(IPlanResolver plans, IOptions<HeatmapOptions> 
         UkCalendar.StartOf(to.AddDays(1)),
         HeatmapRequest.ParseCategories(applied.Categories) ?? [],
         HourRange.Parse(applied.Hours),
-        applied.Days ?? HeatmapDays.All);
+        applied.Days ?? HeatmapDays.All,
+        HeatmapRequest.ParseList<VehicleType>(applied.VehicleTypes) ?? [],
+        VehicleCatalogue.Make(applied.Make),
+        VehicleCatalogue.Model(applied.Make, applied.Model),
+        HeatmapRequest.ParseList<VehicleColour>(applied.Colours) ?? [],
+        applied.Light switch { HeatmapLight.Dark => true, HeatmapLight.Daylight => false, _ => null },
+        applied.SchoolRun == true,
+        applied.Reported == true,
+        applied.VideoOnly == true);
 }
 
 /// <summary>One cell: its centre, bounds and incident count (always at least <c>Heatmap:MinCellCount</c>).</summary>
@@ -241,7 +328,7 @@ public sealed class GetHeatmapQueryHandler(IHeatmapRepository heatmap, HeatmapAc
             cells.Cells,
             HeatmapGrid.LatitudeSize(request.Zoom),
             HeatmapGrid.LongitudeSize(request.Zoom),
-            settings.MinCellCount,
+            settings.MinCountFor(applied),
             cells.Cells.Count == 0 ? 0 : cells.Cells.Max(c => c.Count),
             cells.Truncated,
             allowed);
@@ -309,12 +396,12 @@ internal static class HeatmapCells
             HeatmapAccess.Filter(applied, snapped),
             latSize,
             lngSize,
-            settings.MinCellCount,
+            settings.MinCountFor(applied),
             settings.MaxCells + 1,
             cancellationToken);
         var cells = rows
             .Take(settings.MaxCells)
-            .Where(r => r.Count >= settings.MinCellCount)
+            .Where(r => r.Count >= settings.MinCountFor(applied))
             .Select(r =>
             {
                 var (minLat, maxLat) = HeatmapGrid.Bounds(r.CellY, latSize);
@@ -377,7 +464,7 @@ public sealed class GetAreaStatsQueryHandler(IHeatmapRepository heatmap, Heatmap
     public async Task<AreaStatsDto> Handle(GetAreaStatsQuery request, CancellationToken cancellationToken)
     {
         var (allowed, applied) = access.Resolve(request.Request);
-        var min = options.Value.MinCellCount;
+        var min = options.Value.MinCountFor(applied);
         var box = HeatmapRequest.ParseBox(applied.Bbox)!;
         var length = allowed.To.DayNumber - allowed.From.DayNumber + 1;
         var previousTo = allowed.From.AddDays(-1);

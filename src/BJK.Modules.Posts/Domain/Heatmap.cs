@@ -58,6 +58,18 @@ public enum HeatmapDays
     Weekends,
 }
 
+/// <summary>Light at the time: from the sun's position at each incident's time and place.</summary>
+public enum HeatmapLight
+{
+    All,
+
+    /// <summary>Between sunrise and sunset.</summary>
+    Daylight,
+
+    /// <summary>Between sunset and sunrise.</summary>
+    Dark,
+}
+
 /// <summary>
 /// A time-of-day filter: incidents from <see cref="FromHour"/> (inclusive) to <see cref="ToHour"/> (exclusive), UK
 /// time. Wraps past midnight when <see cref="FromHour"/> is later than <see cref="ToHour"/> (e.g. 22–6).

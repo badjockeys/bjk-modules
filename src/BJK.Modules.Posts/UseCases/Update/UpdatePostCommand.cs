@@ -29,7 +29,12 @@ public sealed record UpdatePostCommand(
     string? PlaceName,
     bool? IsSensitive = null,
     IReadOnlyList<IncidentCategory>? Types = null,
-    IReadOnlyList<string>? Passengers = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    IReadOnlyList<string>? Passengers = null,
+    VehicleType? VehicleType = null,
+    string? VehicleMake = null,
+    string? VehicleModel = null,
+    VehicleColour? VehicleColour = null,
+    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class UpdatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
     : PostDetailsValidator<UpdatePostCommand>(clock, options);

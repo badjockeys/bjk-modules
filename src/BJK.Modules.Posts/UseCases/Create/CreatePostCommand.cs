@@ -41,7 +41,12 @@ public sealed record CreatePostCommand(
     IReadOnlyList<Guid> MediaIds,
     bool IsSensitive = false,
     IReadOnlyList<IncidentCategory>? Types = null,
-    IReadOnlyList<string>? Passengers = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    IReadOnlyList<string>? Passengers = null,
+    VehicleType? VehicleType = null,
+    string? VehicleMake = null,
+    string? VehicleModel = null,
+    VehicleColour? VehicleColour = null,
+    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
