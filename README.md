@@ -53,8 +53,9 @@ src/
     UseCases/
       Create/  Update/  Get/     Create, edit, change @handle, set avatar; read by handle
       Blocks/                    Block, unblock, list my blocks
+      Follows/                   Follow, unfollow, followers and following, Who to follow
       Moderation/                Admin: look up any profile, reset an offensive profile (audited)
-    Contracts/                   IProfileDirectory (author names and avatars), IBlockDirectory, IProfileModeration
+    Contracts/                   IProfileDirectory (author names and avatars), IBlockDirectory, IFollowDirectory, IProfileModeration
     Infrastructure/Data/         ProfilesDbContext (schema: profiles) and Migrations/
     Domain/                      Profile, Handle rules
     ProfilesModule.cs            Module entry point
@@ -572,11 +573,16 @@ Each user's public profile, in `profiles.Profiles`. The profile's id is the user
 | `GET /api/profiles/{handle}` | Anyone, including anonymous callers |
 | `GET /api/profiles/handles/{handle}/availability` | Anyone: check a handle as the user types |
 | `GET /api/profiles/me/blocks`, `PUT` / `DELETE /api/profiles/me/blocks/{handle or user id}` | Signed-in user: list, block, unblock |
+| `PUT` / `DELETE /api/profiles/me/following/{handle or user id}` | Signed-in user with a profile: follow, unfollow (returns `following` and `followerCount`) |
+| `GET /api/profiles/{handle}/followers`, `GET /api/profiles/{handle}/following` (`?page=&pageSize=`) | Anyone: someone's followers, or who they follow, most recent first |
+| `GET /api/profiles/me/suggestions?limit=3` | Signed-in user: Who to follow (`people`, `hasHomeArea`) |
 | `POST /api/profiles/{handle}/reports` | Signed-in user: report a profile (served by the Posts module, which owns the reports queue) |
 | `GET /api/admin/profiles/{handle}`, `POST /api/admin/profiles/{handle}/reset` | Moderator (`bjk.profiles.manage`): any profile; reset an offensive profile (reason required, audited) |
 
 - **No personal details**: display names, bios and locations can't contain number plates, phone numbers, email addresses, street addresses or social handles (see "Online safety").
 - **Blocking**: up to 1,000 people per user, in `profiles.Blocks`. The Posts module hides blocked users' posts and comments from the blocker and stops blocked users commenting on or reacting to the blocker's posts. Blocks go when either account is deleted.
+- **Following** (UI overhaul step 6, 20 Oct 2026): up to 5,000 people per user, in `profiles.Follows`. Profiles show `followerCount` and `followingCount` (active profiles only), and to a signed-in viewer `isFollowing` and `followsYou`. Following needs your own profile; the person followed gets a **NewFollower** notification (in the bell; email off by default). **Blocking either way removes follows and prevents new ones.** Follower and following lists are public, like X. Follows go when either account is deleted, and are in Download my data.
+- **Who to follow**: people whose **home area** (chosen on the area alerts page, stored by the Notifications module, read through `IHomeAreas`) is within 25 km of yours (or your radius if larger), nearest first, leaving out you, people you follow and people blocked either way. **Only adults are ever suggested** (profiles whose token last said 18 or over; unknown counts as not), and **under-18s get no suggestions**. Without a home area there are none (`hasHomeArea: false`, so the app can ask for one). Contact-book suggestions come with the mobile app.
 - **Moderation reset**: the display name goes back to the handle and the bio, location and avatar are removed (the avatar's files are deleted). The handle itself isn't changed.
 
 Configuration: `ConnectionStrings:<name>`, the name passed to `new ProfilesModule(...)`. Its tables are in the `profiles` schema of `badjockeys`. It needs the Media module registered too.
@@ -595,10 +601,14 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 - **Edit history**: every edit keeps the earlier text in `posts.CommentEdits` (deleted with the comment). Edited comments carry `editedAt`, and anyone who can see the comment can read every version, newest first (`GET .../comments/{commentId}/history`). Saving the same text changes nothing.
 - **The post's author controls comments** (UI overhaul, 20 Oct 2026):
   - **Hide a comment or reply** on their post (`PUT .../comments/{commentId}/hidden` with `{"hidden": true}`, or `false` to show it again; not their own). Everyone else gets it as a placeholder (`isHiddenByPostAuthor: true`, no author, empty body, no replies) and the replies to a hidden comment are hidden too. The commenter and the post's author still see it, marked hidden. Only the post's author can reply to it. It's left off the commenter's profile Replies tab for others.
-  - **Who can comment** (`PUT /api/posts/{id}/comment-setting` with `{"setting": "Everyone"}` or `"Off"`; `PostDto.commentSetting`). With comments off, nobody but the author can add comments or replies (403); the ones already there stay. "People I follow" comes with following.
+  - **Who can comment** (`PUT /api/posts/{id}/comment-setting` with `{"setting": "Everyone"}`, `"Following"` or `"Off"`; `PostDto.commentSetting`). With comments off, nobody but the author can add comments or replies (403); with **Following** ("People I follow"), only people the author follows can (403 for others, "Only people the author follows can comment on this post."); the ones already there stay.
 - **Comment reactions**: one per user per comment or reply (Like, Angry, Shocked, Laugh), changeable and removable, in `posts.CommentReactions`. Comments show counts per type and the viewer's own reaction.
 - **Reports**: signed-in users can report a post, comment, reply or profile once, with a reason (DangerousOrIllegal, PersonalInformation, HarassmentOrHate, Spam, NotADrivingIncident, IllegalContent, Threat, InThisClip, Copyright, Other; and for profiles only, Impersonation and UnderThirteen). Anyone can use the public form. **Every new report is also emailed to `Posts:ReportsInbox`** (support@badjockeys.com) with its reference, reason, the reporter's words and a link to the content; a failed send is logged and never stops the report. Moderators work through the queue, urgent first. **Dismiss** leaves the content up. **HideContent** hides it (or resets a profile) and closes every open report about it. A hidden post looks missing to everyone except its author and moderators. See "Online safety" for priorities, emails and appeals.
-- **Feed**: newest first, filterable by category, author's @handle, and area (a point plus a radius of up to 200 km).
+- **Feed**: newest first, filterable by category, author's @handle, hashtag, and area (a point plus a radius of up to 200 km).
+- **Home timelines** (UI overhaul step 6):
+  - **For you** (anyone): public posts from the last `Reels:RankingWindow` (30 days) ranked by the same "recent and popular" score as reels ((1 + reactions + 2 × comments) / (age in hours + 2)^1.5, refreshed every 10 minutes, now for every post), with posts near the signed-in user's home area ranked 3 times higher (within its radius) or 1.5 times (within four times it); then older posts, newest first, so it never runs out. People blocked either way are left out.
+  - **Following**: posts by the people you follow, and your own, newest first.
+  - **Custom timelines** (`posts.Timelines`): a name (30 characters), one or more types of bad driving, and optionally a place and radius (2, 5, 10, 25 or 50 km). Named, reordered and deleted by their owner. **Free 1, Premium 5, Premium + 10** (`Timeline.LimitFor`); more is refused with a 400 naming the plan's limit. Their posts: any of the types, within the radius, newest first. Deleted with the account; in Download my data.
 
 | Endpoint | Access |
 |---|---|
@@ -614,6 +624,9 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 | `POST /api/posts/{id}/reports`, `POST /api/posts/{id}/comments/{commentId}/reports`, `POST /api/profiles/{handle}/reports` | Signed-in user |
 | `POST /api/posts/{id}/appeal`, `POST /api/posts/{id}/comments/{commentId}/appeal` | Signed-in author, once per decision |
 | `POST /api/reports/public` | Anyone, with a Turnstile token in `X-Captcha-Token` |
+| `GET /api/timelines/for-you` | Anyone (`?page=&pageSize=`) |
+| `GET /api/timelines/following` | Signed-in user |
+| `GET /api/timelines`, `POST /api/timelines`, `PUT /api/timelines/order` `{ "ids": [...] }`, `PUT` / `DELETE /api/timelines/{id}`, `GET /api/timelines/{id}/posts` | Signed-in user: their custom timelines (`timelines`, `limit`, `plan`) |
 | `GET /api/admin/reports`, `POST /api/admin/reports/{id}/resolve` | Moderator (`bjk.posts.manage`): the queue, urgent first; resolve (note required) |
 | `GET /api/admin/appeals`, `POST /api/admin/appeals/{id}/decide` | Moderator: appeals queue; uphold or overturn (note required) |
 | `GET /api/admin/screening/posts`, `GET /api/admin/screening/comments` (`?queue=Held` or `Flagged`), `POST .../screening/posts/{id}`, `POST .../screening/comments/{commentId}` | Moderator: held and flagged content; approve or remove (reason required) |
@@ -717,6 +730,8 @@ A module never reads another module's tables. Each module that others depend on 
 | `IMediaDirectory` (Media) | Profiles, Posts | Checking media is the user's own and Ready, getting its URLs (signed links to sensitive media for allowed callers), marking it sensitive when its post is tagged, deleting it with a post or old avatar |
 | `IProfileDirectory` (Profiles) | Posts | Authors' handles, names, avatars and profile age; does the user have a profile |
 | `IBlockDirectory` (Profiles) | Posts | Who the viewer has blocked; has the author blocked this user |
+| `IFollowDirectory` (Profiles) | Posts | Who the viewer follows (Following timeline); does the author follow the commenter ("People I follow") |
+| `IHomeAreas` (Shared, stored by Notifications) | Posts, Profiles | The viewer's home area (For you), people near it (Who to follow) |
 | `IProfileModeration` (Profiles) | Posts | Resetting a reported profile |
 | `IModerationAuditLog` (Shared, stored by Posts) | Profiles, Media, Posts | Recording moderation actions |
 | `media.ready` / `media.failed` events (Media, topic `bjk.media`) | Posts | Publishing (or failing) posts made while their media were processing |

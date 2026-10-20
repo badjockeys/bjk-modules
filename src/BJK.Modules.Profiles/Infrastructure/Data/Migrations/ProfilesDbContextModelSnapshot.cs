@@ -41,6 +41,24 @@ namespace BJK.Modules.Profiles.Infrastructure.Data.Migrations
                     b.ToTable("Blocks", "profiles");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Profiles.Domain.Follow", b =>
+                {
+                    b.Property<Guid>("FollowerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FolloweeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("FollowerId", "FolloweeId");
+
+                    b.HasIndex("FolloweeId", "CreatedAt");
+
+                    b.ToTable("Follows", "profiles");
+                });
+
             modelBuilder.Entity("BJK.Modules.Profiles.Domain.Profile", b =>
                 {
                     b.Property<Guid>("Id")

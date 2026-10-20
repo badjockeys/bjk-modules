@@ -859,6 +859,53 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Reports", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.Timeline", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("PlaceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RadiusKm")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TypeFlags")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Position");
+
+                    b.ToTable("Timelines", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Appeal", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
