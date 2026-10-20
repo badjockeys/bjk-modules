@@ -63,6 +63,7 @@ src/
                                  AdminPostsController (/api/admin), ReelsController (/api/reels),
                                  HeatmapController (/api/heatmap)
                                  TrendsController (/api/trends)
+                                 HashtagsController (/api/hashtags)
     UseCases/
       Create/  Update/  Delete/  Publish, edit and delete posts
       Get/                       One post, the public feed, my posts
@@ -138,6 +139,7 @@ app.MapControllers();
 | `Plans:Overrides:<user id>` | `free`, `premium` or `premium_plus`, for testing paid features before billing exists. See [Plans](#plans-and-entitlements). |
 | `Reels:*` | Daily plays and the ranking job. bjk-core only. See [Reels](#reels). |
 | `Heatmap:*` | Suppression threshold and history by plan. bjk-core only. See [Incident heat map](#incident-heat-map). |
+| `Hashtags:*` | Trending's minimums (`TrendingMinPosts` 3, `TrendingMinAuthors` 3), how many it shows (`TrendingTags` 10, `TrendingPlaces` 5), `BaselineDays` (7), `RebuildInterval` (5 minutes), `HourlyRetention` (90 days) and a `Blocklist` of extra tags never recorded. All optional. bjk-core only. See [Hashtags and Trending](#hashtags-and-trending). |
 | `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
 
 `user-secrets.template.json` lists these with local development values.
@@ -670,6 +672,23 @@ Aggregated and privacy-safe: counts per grid cell built **only from the stored, 
 - **Top roads:** posts store a place name (e.g. "A57 Warrington Road, Prescot"), so `topPlaces` lists the most common ones; the apps show them as "Top roads".
 - **Performance: an index, not an aggregate table.** The pins are already rounded to a 500 m grid and incident times are spread out, so a daily aggregate table (day × pin × category × hour) would have about as many rows as posts and need a refresh job and backfills, for little gain. Instead the filtered covering index `IX_Posts_Heatmap` (public posts by `IncidentAt`, including latitude, longitude, category and place name) turns any period into one range seek with no lookups; the grouping is done in SQL. Queries are raw SQL with the index's filter written as literals, so SQL Server can match it. Revisit (a nightly aggregate per cell and day) if national 5-year queries become slow at millions of posts.
 - Not built yet: area alerts, saved searches and Premium + monthly reports (in the plan matrix); a spatial index (the bounding box is a residual filter after the time seek).
+
+### Hashtags and Trending
+
+UI overhaul step 5 (decided 20 Oct 2026).
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/trends` (anyone) | `hashtags` (up to 10: `tag` as first written, `posts` in the last 24 hours) and `places` (up to 5 towns: `name`, e.g. "Prescot", and `posts`) |
+| `GET /api/hashtags?prefix=m6&limit=8` (anyone) | Suggestions as `#` is typed: tags starting with the prefix (any case), most used first: `tag`, `uses` |
+| `GET /api/hashtags/{tag}` (anyone) | A tag's page: `tag`, `key`, `uses`, `firstUsedAt`; 404 if no post has used it |
+| `GET /api/posts?hashtag=M62` | The feed, only posts with that tag (with or without the #, any case) |
+| `PUT /api/admin/hashtags/{tag}/trending` `{ "hidden": true, "reason": "..." }` | Moderators: hide a tag from Trending and suggestions, or show it again (audited as `HideHashtag` / `ShowHashtag`) |
+
+- **Where tags come from:** posts' titles and descriptions only, never comments. A tag is `#`, a letter, then up to 49 letters, digits or underscores, at the start of the text or after a space or punctuation (not inside a word or a link, so `C#` and `page#section` aren't tags). At most 10 per post. Tags are the same whatever the case (`key` is lower case); the first way a tag was written is how it's shown.
+- **Tables:** `Hashtags` (one row per tag: key, display form, first used, total uses, hidden from Trending), `PostHashtags` (post, tag, author, when posted) and `HashtagHourlyCounts` (public posts and distinct authors per tag per UTC hour). Links are updated when a post is created or edited (`HashtagSync`), in the same save.
+- **Trending** compares each tag's public posts in the last 24 hours with its daily average over the 7 days before (from the hourly counts): score = posts today ÷ (usual per day + 1), highest first. A tag needs at least 3 posts from at least 3 different people, so one person can't make a trend. Hidden, held and deleted posts and deactivated authors never count: the last 48 hours of hourly counts are rebuilt every 5 minutes from public posts (`HashtagMaintenance`, in the API), and counts are kept 90 days. **Places** trend the same way, by town: the part of posts' place names after the last comma.
+- **Safety:** number plates can't be tags (the same `TextSafety` check as post text); tags that are, start or end with a threat, slur or flagged insult from the screening list are never recorded (`ScreeningKeywords.IsOffensiveTag`; words of four letters or fewer only as the whole tag, so Scunthorpe and Pakistan are fine); `Hashtags:Blocklist` adds more; and moderators can hide any tag from Trending and suggestions. Posts keep their tags.
 
 ### Online safety
 
