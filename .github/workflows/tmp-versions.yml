@@ -1,0 +1,28 @@
+# Temporary: looks up package versions. Removed before review.
+name: tmp-versions
+on:
+  push:
+    branches: [feature/observability]
+permissions:
+  contents: write
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: |
+          for p in OpenTelemetry OpenTelemetry.Extensions.Hosting OpenTelemetry.Exporter.OpenTelemetryProtocol OpenTelemetry.Instrumentation.AspNetCore OpenTelemetry.Instrumentation.Http OpenTelemetry.Instrumentation.Runtime OpenTelemetry.Instrumentation.SqlClient OpenTelemetry.Instrumentation.EntityFrameworkCore Rebus.OpenTelemetry; do
+            echo "== $p" >> versions.txt
+            dotnet package search "$p" --exact-match --format json --source https://api.nuget.org/v3/index.json \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); vs=[v['version'] for r in d['searchResult'] for p in r['packages'] for v in [p]]; print(vs[-6:])" >> versions.txt 2>&1 || true
+          done
+          for p in @vercel/otel @opentelemetry/api @opentelemetry/api-logs @opentelemetry/sdk-logs @opentelemetry/instrumentation @opentelemetry/exporter-logs-otlp-http @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http; do
+            echo "== $p $(npm view $p version) $(npm view $p time --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[max(d, key=lambda k: d[k] if k not in ("created","modified") else "")] if False else d.get("modified"))')" >> versions.txt
+            npm view $p time --json | python3 -c "import json,sys; d=json.load(sys.stdin); [d.pop(k,None) for k in ('created','modified')]; print(sorted(d.items(), key=lambda kv: kv[1])[-4:])" >> versions.txt
+          done
+          git add -f versions.txt
+          git -c user.name=ci -c user.email=ci@example.com commit -m versions
+          git push origin HEAD:refs/heads/tmp/versions --force
