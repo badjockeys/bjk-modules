@@ -1,5 +1,7 @@
+using System.Globalization;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases.Heatmap;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -245,6 +247,40 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
 
         var types = await heatmap.CountByCategoryAsync(Filter(), Ct);
         Assert.Equal(new[] { ("Speeding", 4), ("MobilePhoneUse", 3) }, types.Select(t => (t.Key, t.Count)));
+    }
+
+    [Fact]
+    public async Task Category_trends_count_each_type_by_UK_day_week_and_month()
+    {
+        // 23:30 UTC on Sunday 11 October is 00:30 on Monday 12 October in the UK (British Summer Time).
+        var lateSunday = new DateTimeOffset(2026, 10, 11, 23, 30, 0, TimeSpan.Zero);
+        var tuesday = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(1));
+        var september = new DateTimeOffset(2026, 9, 30, 9, 0, 0, TimeSpan.FromHours(1));
+        await SaveAsync(
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, lateSunday) with { Types = [IncidentCategory.Speeding, IncidentCategory.Tailgating] }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, tuesday, IncidentCategory.Speeding), [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, september, IncidentCategory.Speeding), [Guid.NewGuid()], Now));
+
+        var everywhere = new GeoBox(-90m, 90m, -180m, 180m);
+        var filter = new HeatmapFilter(everywhere, UkCalendar.StartOf(new DateOnly(2026, 9, 1)), UkCalendar.StartOf(new DateOnly(2026, 10, 19)), [], null, HeatmapDays.All);
+
+        await using var db = Context();
+        var heatmap = new HeatmapRepository(db);
+
+        var days = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Day, Ct);
+        Assert.Equal(
+            new[] { ("Speeding", "2026-09-30", 1), ("Speeding", "2026-10-12", 1), ("Tailgating", "2026-10-12", 1), ("Speeding", "2026-10-13", 1) },
+            days.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
+
+        var weeks = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Week, Ct);
+        Assert.Equal(
+            new[] { ("Speeding", "2026-09-28", 1), ("Speeding", "2026-10-12", 2), ("Tailgating", "2026-10-12", 1) },
+            weeks.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
+
+        var months = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Month, Ct);
+        Assert.Equal(
+            new[] { ("Speeding", "2026-09-01", 1), ("Speeding", "2026-10-01", 2), ("Tailgating", "2026-10-01", 1) },
+            months.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
     }
 
     [Fact]

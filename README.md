@@ -62,6 +62,7 @@ src/
     API/Controllers/             PostsController (/api/posts), ReportsController (public form, profile reports),
                                  AdminPostsController (/api/admin), ReelsController (/api/reels),
                                  HeatmapController (/api/heatmap)
+                                 TrendsController (/api/trends)
     UseCases/
       Create/  Update/  Delete/  Publish, edit and delete posts
       Get/                       One post, the public feed, my posts
@@ -72,7 +73,7 @@ src/
       Safety/                    New-account limits
       Publishing/                Post now, publish when ready: PostMediaPublisher
       Reels/                     Reels: list (ranked, daily allowance by plan), record a play
-      Heatmap/                   Incident heat map: cells, area figures, CSV export (entitlements by plan)
+      Heatmap/                   Incident heat map: cells, area figures, CSV export (entitlements by plan); category trends
     Infrastructure/              Moderation audit log (stored for every module), media event handler, lifecycle
                                  and data export, ReelsMaintenance (reels ranking refresh, play retention)
     Infrastructure/Data/         PostsDbContext (schema: posts) and Migrations/
@@ -659,10 +660,12 @@ Aggregated and privacy-safe: counts per grid cell built **only from the stored, 
 | `GET /api/heatmap?bbox=minLon,minLat,maxLon,maxLat&zoom=&from=&to=&categories=&hours=&days=` | `cells` (centre, bounds, `count`), `cellLatitudeSize`, `cellLongitudeSize`, `minCellCount`, `maxCount`, `truncated`, `access` |
 | `GET /api/heatmap/area?bbox=…&from=&to=` (+ the same filters) | `suppressed`, `total`, `changePercent` (vs the same number of days just before), `busiestHour` (UK hour starting the busiest one-hour band), `topCategories` (category, count, percent), `topPlaces` (place name, count), `placeName`, `previousFrom`, `previousTo`, `access` |
 | `GET /api/heatmap/export.csv` (same parameters as the map) | Premium + only (403 otherwise): the cells as CSV, aggregated counts only |
+| `GET /api/trends/categories?from=&to=&bbox=` (anyone, signed out too) | The right panel's **category trends**: `categories` (every type, busiest first: `category`, `suppressed`, `total`, `previousTotal`, `changePercent`, `points`), `period` (`Day`, `Week` or `Month`), `periods` (each point's first UK day), `previousFrom`, `previousTo`, `areaAllowed`, `areaIgnored`, `access` |
 
 - **Dates** are UK calendar days, inclusive. **Filters:** `categories` (comma-separated names), `hours` (UK time of day, `7-10`, or `22-6` across midnight), `days` (`All`, `Weekdays`, `Weekends`, UK time).
 - **Entitlements** (`access` in every response says what was applied): **Free** the last 7 days, filters ignored (`filtersIgnored`), the national teaser; **Premium** 12 months and filters; **Premium +** 5 years, filters and CSV export (`Heatmap:HistoryDays:Free|Premium|PremiumPlus`, 7/365/1826). A `from` earlier than the plan allows is moved later (`historyCapped`).
 - **Grid:** fixed latitude/longitude cells on a worldwide grid (stable as the map pans), sized by zoom: about 500 m from zoom 14 (the pins' own rounding), 1 km at 13, 2 km at 12, 4 km at 11, 5 km at 10, 10 km at 9 and below. A cell's longitude size is 1.6 × its latitude size, roughly square across the UK (`HeatmapGrid`). The box is widened to whole cells so edge cells count everything in them.
+- **Category trends** use the same plan limits for dates (Free and signed-out: the last 7 days; Premium 12 months; Premium + 5 years). Everyone sees the **whole UK**; Premium and Premium + can pass `bbox` for an area (others get the whole UK and `areaIgnored`). Points are per UK day up to 92 days, per week (from Monday) up to two years, then per month. A post counts under each of its types. A type with fewer than 3 incidents in the range is `suppressed` (no figures); the change is shown only if the previous period had at least 3.
 - **Suppression:** cells with fewer than **3** incidents (`Heatmap:MinCellCount`, at least 2) are left out. In area figures, everything is hidden below 3; categories, places and the busiest hour are shown only with at least 3 each; the change is shown only if the previous period had at least 3.
 - **Top roads:** posts store a place name (e.g. "A57 Warrington Road, Prescot"), so `topPlaces` lists the most common ones; the apps show them as "Top roads".
 - **Performance: an index, not an aggregate table.** The pins are already rounded to a 500 m grid and incident times are spread out, so a daily aggregate table (day × pin × category × hour) would have about as many rows as posts and need a refresh job and backfills, for little gain. Instead the filtered covering index `IX_Posts_Heatmap` (public posts by `IncidentAt`, including latitude, longitude, category and place name) turns any period into one range seek with no lookups; the grouping is done in SQL. Queries are raw SQL with the index's filter written as literals, so SQL Server can match it. Revisit (a nightly aggregate per cell and day) if national 5-year queries become slow at millions of posts.
