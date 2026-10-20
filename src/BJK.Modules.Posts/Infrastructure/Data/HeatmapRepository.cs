@@ -47,6 +47,16 @@ public sealed class HeatmapCellRow
     public int Count { get; set; }
 }
 
+/// <summary>A type of bad driving's count in one period (its first UK day, at midnight).</summary>
+public sealed class HeatmapTrendRow
+{
+    public string Key { get; set; } = string.Empty;
+
+    public DateTime Period { get; set; }
+
+    public int Count { get; set; }
+}
+
 /// <summary>A count by key (hour, category or place name).</summary>
 public sealed class HeatmapCountRow
 {
@@ -83,6 +93,15 @@ public interface IHeatmapRepository
 
     /// <summary>The most common place names, busiest first (posts without one are left out).</summary>
     Task<IReadOnlyList<HeatmapCountRow>> CountByPlaceAsync(HeatmapFilter filter, int top, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Counts by type of bad driving and UK period (a day, a week from Monday, or a month), for the category trends. A
+    /// post with several types counts once for each. Periods with no incidents aren't returned.
+    /// </summary>
+    Task<IReadOnlyList<HeatmapTrendRow>> CountByCategoryAndPeriodAsync(
+        HeatmapFilter filter,
+        UseCases.Heatmap.TrendPeriod period,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -137,10 +156,7 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
     public async Task<IReadOnlyList<HeatmapCountRow>> CountByCategoryAsync(HeatmapFilter filter, CancellationToken cancellationToken)
     {
         var (where, parameters) = Where(filter);
-
-        // One row per type with its bit, from the enum (names and bits are code, not user input).
-        var types = string.Join(", ", Enum.GetValues<IncidentCategory>()
-            .Select(t => $"(N'{t}', {IncidentTypeFlags.Bit(t)})"));
+        var types = TypeRows();
         var sql = $"""
             SELECT [t].[Name] AS [Key], COUNT(*) AS [Count]
             FROM (SELECT [TypeFlags] FROM [posts].[Posts] WHERE {where}) AS [x]
@@ -149,6 +165,31 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
             ORDER BY COUNT(*) DESC, [t].[Name]
             """;
         return await db.Database.SqlQueryRaw<HeatmapCountRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HeatmapTrendRow>> CountByCategoryAndPeriodAsync(
+        HeatmapFilter filter,
+        UseCases.Heatmap.TrendPeriod period,
+        CancellationToken cancellationToken)
+    {
+        var (where, parameters) = Where(filter);
+        var types = TypeRows();
+        const string Day = $"CAST({UkTime} AS date)";
+        var start = period switch
+        {
+            // Days since Monday 1 January 1900, modulo 7, is 0 on a Monday (independent of DATEFIRST).
+            UseCases.Heatmap.TrendPeriod.Week => $"DATEADD(day, -(DATEDIFF(day, CAST('19000101' AS date), {Day}) % 7), {Day})",
+            UseCases.Heatmap.TrendPeriod.Month => $"DATEFROMPARTS(YEAR({Day}), MONTH({Day}), 1)",
+            _ => Day,
+        };
+        var sql = $"""
+            SELECT [t].[Name] AS [Key], CAST([x].[Period] AS datetime2) AS [Period], COUNT(*) AS [Count]
+            FROM (SELECT [TypeFlags], {start} AS [Period] FROM [posts].[Posts] WHERE {where}) AS [x]
+            JOIN (VALUES {types}) AS [t]([Name], [Bit]) ON ([x].[TypeFlags] & [t].[Bit]) <> 0
+            GROUP BY [t].[Name], [x].[Period]
+            ORDER BY [x].[Period], [t].[Name]
+            """;
+        return await db.Database.SqlQueryRaw<HeatmapTrendRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
     }
 
     public Task<IReadOnlyList<HeatmapCountRow>> CountByPlaceAsync(HeatmapFilter filter, int top, CancellationToken cancellationToken) =>
@@ -274,6 +315,10 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
 
         sql.Append(" AND ").Append(column).Append(" IN (").Append(string.Join(", ", names)).Append(')');
     }
+
+    /// <summary>One row per type with its bit, from the enum (names and bits are code, not user input).</summary>
+    private static string TypeRows() => string.Join(", ", Enum.GetValues<IncidentCategory>()
+        .Select(t => $"(N'{t}', {IncidentTypeFlags.Bit(t)})"));
 
     private static SqlParameter Decimal(string name, decimal value) =>
         new(name, SqlDbType.Decimal) { Value = value, Precision = 18, Scale = 6 };
