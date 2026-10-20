@@ -140,7 +140,7 @@ internal sealed partial class MediaProcessor(
         var sha256 = await DownloadOriginalAsync(item, original, cancellationToken);
 
         // Exact copies of known images are stopped before any processing.
-        if (MatchFile(item, sha256, await Md5Async(item, original, cancellationToken)) is { } fileMatch)
+        if (MatchFile(item, sha256, knownImages is null ? null : await Md5Async(item, original, cancellationToken)) is { } fileMatch)
         {
             return await BlockAsync(item, fileMatch, sha256, cancellationToken);
         }
