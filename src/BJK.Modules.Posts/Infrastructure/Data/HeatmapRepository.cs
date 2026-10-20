@@ -13,13 +13,29 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="Categories">Only incidents with any of these types of bad driving (empty = all).</param>
 /// <param name="Hours">Only this time of day, UK time.</param>
 /// <param name="Days">Weekdays, weekends or all, UK time.</param>
+/// <param name="VehicleTypes">Only these kinds of vehicle (empty = all).</param>
+/// <param name="Make">Only this make.</param>
+/// <param name="Model">Only this model.</param>
+/// <param name="Colours">Only these colours (empty = all).</param>
+/// <param name="Dark">True: after dark only; false: daylight only; null: both (and posts from before it was recorded).</param>
+/// <param name="SchoolRun">Weekdays 08:00–09:15 and 14:45–16:00, UK time.</param>
+/// <param name="ReportedOnly">Only incidents reported to the police.</param>
+/// <param name="VideoOnly">Only video posts.</param>
 public sealed record HeatmapFilter(
     GeoBox Area,
     DateTimeOffset From,
     DateTimeOffset To,
     IReadOnlyCollection<IncidentCategory> Categories,
     HourRange? Hours,
-    HeatmapDays Days);
+    HeatmapDays Days,
+    IReadOnlyCollection<VehicleType>? VehicleTypes = null,
+    string? Make = null,
+    string? Model = null,
+    IReadOnlyCollection<VehicleColour>? Colours = null,
+    bool? Dark = null,
+    bool SchoolRun = false,
+    bool ReportedOnly = false,
+    bool VideoOnly = false);
 
 /// <summary>A grid cell (indexes on <see cref="HeatmapGrid"/>) and its incident count.</summary>
 public sealed class HeatmapCellRow
@@ -191,6 +207,42 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
 
         // Days since Monday 1 January 1900, modulo 7: 0 is Monday, 5 Saturday, 6 Sunday (independent of DATEFIRST).
         var weekday = $"(DATEDIFF(day, CAST('19000101' AS date), CAST({UkTime} AS date)) % 7)";
+
+        AddIn(sql, parameters, "[VehicleType]", "@vt", filter.VehicleTypes?.Select(t => t.ToString()));
+        AddIn(sql, parameters, "[VehicleColour]", "@vc", filter.Colours?.Select(c => c.ToString()));
+        if (filter.Make is { } make)
+        {
+            parameters.Add(new SqlParameter("@make", SqlDbType.NVarChar, VehicleCatalogue.NameMaxLength) { Value = make });
+            sql.Append(" AND [VehicleMake] = @make");
+        }
+
+        if (filter.Model is { } model)
+        {
+            parameters.Add(new SqlParameter("@model", SqlDbType.NVarChar, VehicleCatalogue.NameMaxLength) { Value = model });
+            sql.Append(" AND [VehicleModel] = @model");
+        }
+
+        if (filter.Dark is { } dark)
+        {
+            sql.Append(dark ? " AND [IsDark] = 1" : " AND [IsDark] = 0");
+        }
+
+        if (filter.ReportedOnly)
+        {
+            sql.Append(" AND [ReportedToPolice] = 1");
+        }
+
+        if (filter.VideoOnly)
+        {
+            sql.Append(" AND [HasVideo] = 1");
+        }
+
+        if (filter.SchoolRun)
+        {
+            // Minutes since UK midnight: 08:00–09:15 is 480–555, 14:45–16:00 is 885–960.
+            var minutes = $"(DATEPART(hour, {UkTime}) * 60 + DATEPART(minute, {UkTime}))";
+            sql.Append($" AND {weekday} < 5 AND (({minutes} >= 480 AND {minutes} < 555) OR ({minutes} >= 885 AND {minutes} < 960))");
+        }
         switch (filter.Days)
         {
             case HeatmapDays.Weekdays:
@@ -202,6 +254,25 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
         }
 
         return (sql.ToString(), parameters);
+    }
+
+    /// <summary>Adds "AND column IN (@p0, @p1...)" for a non-empty list.</summary>
+    private static void AddIn(StringBuilder sql, List<SqlParameter> parameters, string column, string prefix, IEnumerable<string>? values)
+    {
+        var list = values?.Distinct().ToList();
+        if (list is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var names = new List<string>();
+        for (var i = 0; i < list.Count; i++)
+        {
+            names.Add(prefix + i);
+            parameters.Add(new SqlParameter(prefix + i, SqlDbType.NVarChar, 20) { Value = list[i] });
+        }
+
+        sql.Append(" AND ").Append(column).Append(" IN (").Append(string.Join(", ", names)).Append(')');
     }
 
     private static SqlParameter Decimal(string name, decimal value) =>

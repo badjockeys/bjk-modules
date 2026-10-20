@@ -111,8 +111,24 @@ public sealed class HeatmapOptions
     /// <summary>Cells (and area figures) with fewer incidents than this are hidden. Default 3; at least 2.</summary>
     public int MinCellCount { get; set; } = 3;
 
+    /// <summary>
+    /// The threshold when vehicle filters are used (type, make, model or colour), which narrow counts enough to risk
+    /// pointing at one person's car. Default 5; never lower than <see cref="MinCellCount"/>.
+    /// </summary>
+    public int VehicleMinCellCount { get; set; } = 5;
+
+    /// <summary>
+    /// The model filter only applies when the map shows at least this many km each way (a town or wider). Default 10.
+    /// </summary>
+    public int ModelFilterMinSpanKm { get; set; } = 10;
+
     /// <summary>How far back each plan can look, in days.</summary>
     public HeatmapHistoryDays HistoryDays { get; set; } = new();
+
+    /// <summary>The threshold for a request: higher with vehicle filters.</summary>
+    /// <param name="request">The applied request.</param>
+    public int MinCountFor(UseCases.Heatmap.HeatmapRequest request) =>
+        request.HasVehicleFilters ? Math.Max(MinCellCount, VehicleMinCellCount) : MinCellCount;
 
     /// <summary>The most cells one response returns (the busiest). Default 10,000.</summary>
     public int MaxCells { get; set; } = 10_000;

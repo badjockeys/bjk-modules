@@ -25,6 +25,9 @@ public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri?
 /// </summary>
 public sealed record PassengerDto(AuthorDto Person, PassengerTagStatus Status);
 
+/// <summary>The vehicle driven badly, as the author described it (from lists; never the registration).</summary>
+public sealed record VehicleDto(VehicleType Type, string? Make, string? Model, VehicleColour? Colour);
+
 /// <summary>Where it happened: the map pin, rounded to about 500 m when the post was saved, and the place name.</summary>
 public sealed record LocationDto(decimal Latitude, decimal Longitude, string? PlaceName);
 
@@ -86,7 +89,9 @@ public sealed record PostDto(
     bool RequiresAgeVerification = false,
     PostSensitiveSource SensitiveSource = PostSensitiveSource.None,
     IReadOnlyList<IncidentCategory>? Types = null,
-    IReadOnlyList<PassengerDto>? Passengers = null)
+    IReadOnlyList<PassengerDto>? Passengers = null,
+    VehicleDto? Vehicle = null,
+    bool? ReportedToPolice = null)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -282,7 +287,9 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 RequiresAgeVerification: blurred.Contains(p.Id),
                 SensitiveSource: p.SensitiveSource,
                 Types: p.Types,
-                Passengers: PassengersFor(p, tags[p.Id], authors, viewerId));
+                Passengers: PassengersFor(p, tags[p.Id], authors, viewerId),
+                Vehicle: p.VehicleType is { } type ? new VehicleDto(type, p.VehicleMake, p.VehicleModel, p.VehicleColour) : null,
+                ReportedToPolice: p.ReportedToPolice);
         }).ToList();
     }
 

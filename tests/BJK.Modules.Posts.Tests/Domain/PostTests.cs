@@ -185,4 +185,32 @@ public sealed class PostTests
         Assert.False(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.BadParking));
         Assert.True(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.Tailgating));
     }
+
+    [Fact]
+    public void Vehicle_details_come_from_the_lists_and_need_a_type()
+    {
+        var post = Post.Create(UserId, Details() with { Vehicle = new VehicleDetails(VehicleType.Van, "ford", "TRANSIT custom", VehicleColour.White), ReportedToPolice = true }, [Guid.NewGuid()], Now);
+
+        Assert.Equal(VehicleType.Van, post.VehicleType);
+        Assert.Equal("Ford", post.VehicleMake);
+        Assert.Equal("Transit Custom", post.VehicleModel);
+        Assert.Equal(VehicleColour.White, post.VehicleColour);
+        Assert.True(post.ReportedToPolice);
+
+        Assert.Throws<ArgumentException>(() => Post.Create(UserId, Details() with { Vehicle = new VehicleDetails(null, "Ford") }, [Guid.NewGuid()], Now));
+        Assert.Throws<ArgumentException>(() => Post.Create(UserId, Details() with { Vehicle = new VehicleDetails(VehicleType.Car, "Ford", "Golf") }, [Guid.NewGuid()], Now));
+        Assert.Throws<ArgumentException>(() => Post.Create(UserId, Details() with { Vehicle = new VehicleDetails(VehicleType.Car, "AB12 CDE") }, [Guid.NewGuid()], Now));
+
+        Assert.Equal("Other", VehicleCatalogue.Model("Other", "other"));
+    }
+
+    [Theory]
+    [InlineData("2026-06-21T12:00:00Z", 51.5, -0.12, false)] // London, midsummer noon
+    [InlineData("2026-12-21T18:00:00Z", 51.5, -0.12, true)] // London, winter evening
+    [InlineData("2026-06-21T20:15:00Z", 57.15, -2.1, false)] // Aberdeen, 21:15 BST in June: still light
+    [InlineData("2026-12-21T07:00:00Z", 53.48, -2.24, true)] // Manchester, 07:00 in December: before sunrise
+    public void Daylight_follows_the_sun(string at, double lat, double lng, bool dark)
+    {
+        Assert.Equal(dark, Daylight.IsDark(DateTimeOffset.Parse(at, System.Globalization.CultureInfo.InvariantCulture), (decimal)lat, (decimal)lng));
+    }
 }
