@@ -57,6 +57,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.SensitiveSource).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.SensitiveReview).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.RowVersion).IsRowVersion();
+        builder.Ignore(p => p.Types);
         builder.Ignore(p => p.IsMediaPending);
         builder.Ignore(p => p.AuthorMayRemoveSensitive);
 
@@ -92,7 +93,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.HasIndex(p => p.IncidentAt)
             .HasDatabaseName("IX_Posts_Heatmap")
             .HasFilter(PublicFilter)
-            .IncludeProperties(p => new { p.Latitude, p.Longitude, p.Category, p.PlaceName });
+            .IncludeProperties(p => new { p.Latitude, p.Longitude, p.Category, p.TypeFlags, p.PlaceName });
     }
 
     /// <summary>Published, media ready, author active: what everyone can see.</summary>

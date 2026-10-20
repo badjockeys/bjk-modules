@@ -12,7 +12,11 @@ public interface IPostDetails
 
     string? Description { get; }
 
-    IncidentCategory Category { get; }
+    /// <summary>The one type of bad driving, from clients that send a single category. Ignored when <see cref="Types"/> has any.</summary>
+    IncidentCategory? Category { get; }
+
+    /// <summary>Every type of bad driving that applies, the main one first. At least one (or a <see cref="Category"/>).</summary>
+    IReadOnlyList<IncidentCategory>? Types { get; }
 
     DateTimeOffset IncidentAt { get; }
 
@@ -35,6 +39,9 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
     /// <summary>Shown when the pin is outside the allowed regions.</summary>
     public const string OutsideServiceAreaMessage = "Bad Jockeys only accepts incidents in the UK for now.";
 
+    /// <summary>Shown when no type of bad driving was chosen.</summary>
+    public const string ChooseATypeMessage = "Choose at least one type of bad driving.";
+
     protected PostDetailsValidator(TimeProvider clock, IOptions<PostsOptions> options)
     {
         var regions = options.Value.EffectiveRegions;
@@ -43,9 +50,14 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
             .Must(t => t is null || t.Trim().Length <= Post.TitleMaxLength)
             .WithMessage($"Titles are {Post.TitleMaxLength} characters or fewer.");
         RuleFor(x => x.Description)
-            .Must(d => d is null || d.Trim().Length <= Post.DescriptionMaxLength)
-            .WithMessage($"Descriptions are {Post.DescriptionMaxLength} characters or fewer.");
-        RuleFor(x => x.Category).IsInEnum();
+            .Must(d => d is null || d.Trim().Length <= Post.DescriptionInputMaxLength)
+            .WithMessage($"Descriptions are {Post.DescriptionInputMaxLength} characters or fewer.");
+        RuleFor(x => x.Category).IsInEnum().When(x => x.Category is not null);
+        RuleFor(x => x)
+            .Must(x => IncidentTypeFlags.Normalise(x.Types, x.Category).Count > 0)
+            .OverridePropertyName(nameof(IPostDetails.Types))
+            .WithMessage(ChooseATypeMessage);
+        RuleForEach(x => x.Types).IsInEnum().OverridePropertyName(nameof(IPostDetails.Types));
         RuleFor(x => x.IncidentAt)
             .Must(at => at <= clock.GetUtcNow() + ClockSkew)
             .WithMessage("The incident can't be in the future.")
@@ -73,6 +85,9 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
 
 internal static class PostDetailsExtensions
 {
-    public static PostDetails ToDetails(this IPostDetails d) =>
-        new(d.Title, d.Description, d.Category, d.IncidentAt, d.Latitude, d.Longitude, d.PlaceName);
+    public static PostDetails ToDetails(this IPostDetails d)
+    {
+        var types = IncidentTypeFlags.Normalise(d.Types, d.Category);
+        return new(d.Title, d.Description, types[0], d.IncidentAt, d.Latitude, d.Longitude, d.PlaceName, types);
+    }
 }

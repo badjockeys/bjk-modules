@@ -160,4 +160,37 @@ public sealed class ValidatorTests
         Assert.Equal(ServiceRegions.UnitedKingdom, ServiceRegions.RegionOf(54.8273m, -7.4633m));
         Assert.Null(ServiceRegions.RegionOf(54.8320m, -7.4860m));
     }
+
+    [Fact]
+    public void Several_types_can_be_sent_without_a_category()
+    {
+        var command = Command() with { Category = null, Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage] };
+
+        Assert.True(_create.Validate(command).IsValid);
+    }
+
+    [Fact]
+    public void At_least_one_type_is_needed()
+    {
+        var result = _create.Validate(Command() with { Category = null, Types = [] });
+
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("Types", error.PropertyName);
+        Assert.Equal("Choose at least one type of bad driving.", error.ErrorMessage);
+    }
+
+    [Fact]
+    public void Unknown_types_are_refused()
+    {
+        var result = _create.Validate(Command() with { Types = [(IncidentCategory)99] });
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void What_happened_is_500_characters_or_fewer()
+    {
+        Assert.True(_create.Validate(Command() with { Description = new string('a', 500) }).IsValid);
+        Assert.Contains(_create.Validate(Command() with { Description = new string('a', 501) }).Errors, e => e.PropertyName == "Description");
+    }
 }

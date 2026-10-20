@@ -5,7 +5,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 
 /// <summary>Which posts to list. Deleted posts are never included.</summary>
 /// <param name="AuthorId">Only this author's posts.</param>
-/// <param name="Category">Only this kind of incident.</param>
+/// <param name="Category">Only posts with this type of bad driving (among their types).</param>
 /// <param name="Area">Only incidents inside this box.</param>
 /// <param name="IncludeHidden">Include hidden and held posts, and ones still waiting for their media (for an author's own list).</param>
 /// <param name="ExcludeSensitive">Leave out sensitive posts. (The public feed no longer does: they show blurred.)</param>
@@ -146,7 +146,8 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 
         if (search.Category is { } category)
         {
-            query = query.Where(p => p.Category == category);
+            var bit = IncidentTypeFlags.Bit(category);
+            query = query.Where(p => (p.TypeFlags & bit) != 0);
         }
 
         if (search.Area is { } area)

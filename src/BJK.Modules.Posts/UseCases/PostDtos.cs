@@ -51,6 +51,7 @@ public sealed record PostMediaDto(
 /// <c>Status</c> is HeldForReview or Hidden only for the author (and moderators). <c>MediaState</c> is Pending while
 /// the photos or video are still processing (show a "processing" badge; <c>Media</c> lists only the ready ones) and
 /// Failed, with <c>MediaFailureReason</c>, if the post can't be published; others only ever see Ready posts.
+/// <c>Types</c> are every type of bad driving on the post, shown as tags, the main one (<c>Category</c>) first.
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -73,7 +74,8 @@ public sealed record PostDto(
     PostMediaState MediaState = PostMediaState.Ready,
     string? MediaFailureReason = null,
     bool RequiresAgeVerification = false,
-    PostSensitiveSource SensitiveSource = PostSensitiveSource.None)
+    PostSensitiveSource SensitiveSource = PostSensitiveSource.None,
+    IReadOnlyList<IncidentCategory>? Types = null)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -265,7 +267,8 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 MediaState: p.MediaState,
                 MediaFailureReason: p.MediaFailureReason,
                 RequiresAgeVerification: blurred.Contains(p.Id),
-                SensitiveSource: p.SensitiveSource);
+                SensitiveSource: p.SensitiveSource,
+                Types: p.Types);
         }).ToList();
     }
 

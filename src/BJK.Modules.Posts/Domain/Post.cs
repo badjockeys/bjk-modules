@@ -13,6 +13,12 @@ public sealed class Post
 {
     public const int TitleMaxLength = 120;
     public const int DescriptionMaxLength = 5000;
+
+    /// <summary>
+    /// The most a new or edited description may hold (the composer's counter). Older posts can be longer, up to
+    /// <see cref="DescriptionMaxLength"/>, and keep their text.
+    /// </summary>
+    public const int DescriptionInputMaxLength = 500;
     public const int PlaceNameMaxLength = 200;
     public const int HiddenReasonMaxLength = 500;
     public const int MediaFailureReasonMaxLength = 500;
@@ -35,7 +41,14 @@ public sealed class Post
 
     public string? Description { get; private set; }
 
+    /// <summary>The main type of bad driving: the first one the author chose. See <see cref="Types"/> for all of them.</summary>
     public IncidentCategory Category { get; private set; }
+
+    /// <summary>Every type the author chose, as bits (see <see cref="IncidentTypeFlags"/>).</summary>
+    public int TypeFlags { get; private set; }
+
+    /// <summary>Every type the author chose, the main one first.</summary>
+    public IReadOnlyList<IncidentCategory> Types => IncidentTypeFlags.ToList(TypeFlags, Category);
 
     /// <summary>When the incident happened, which may be well before the post was created.</summary>
     public DateTimeOffset IncidentAt { get; private set; }
@@ -428,7 +441,14 @@ public sealed class Post
 
         Title = Limit(details.Title.Trim(), TitleMaxLength);
         Description = string.IsNullOrWhiteSpace(details.Description) ? null : Limit(details.Description.Trim(), DescriptionMaxLength);
-        Category = details.Category;
+        var types = IncidentTypeFlags.Normalise(details.Types, details.Category);
+        if (types.Any(t => !Enum.IsDefined(t)))
+        {
+            throw new ArgumentException("Unknown type of bad driving.", nameof(details));
+        }
+
+        Category = types[0];
+        TypeFlags = IncidentTypeFlags.From(types);
         IncidentAt = details.IncidentAt;
         (Latitude, Longitude) = PinRounding.Round(details.Latitude, details.Longitude);
         PlaceName = string.IsNullOrWhiteSpace(details.PlaceName) ? null : Limit(details.PlaceName.Trim(), PlaceNameMaxLength);
@@ -494,7 +514,10 @@ internal static class ScreeningText
     }
 }
 
-/// <summary>The parts of a post its author writes and can later edit.</summary>
+/// <summary>
+/// The parts of a post its author writes and can later edit. <c>Types</c> are every type of bad driving the author
+/// chose (the first is the main one); when null or empty the post has just <c>Category</c>.
+/// </summary>
 public sealed record PostDetails(
     string Title,
     string? Description,
@@ -502,7 +525,8 @@ public sealed record PostDetails(
     DateTimeOffset IncidentAt,
     decimal Latitude,
     decimal Longitude,
-    string? PlaceName);
+    string? PlaceName,
+    IReadOnlyList<IncidentCategory>? Types = null);
 
 /// <summary>One photo or video (from the Media module) in a post.</summary>
 public sealed class PostMedia

@@ -1,3 +1,4 @@
+using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
@@ -33,6 +34,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
                 p.Title,
                 p.Description,
                 p.Category,
+                p.TypeFlags,
                 p.IncidentAt,
                 p.Latitude,
                 p.Longitude,
@@ -87,6 +89,9 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(p => new { p.PostId, p.Day, p.PlayedAt })
             .ToListAsync(cancellationToken);
 
-        return new { posts, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
+        // Every type of bad driving on each post, by name.
+        var postTypes = posts.Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(p.TypeFlags, p.Category) }).ToList();
+
+        return new { posts, postTypes, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
     }
 }

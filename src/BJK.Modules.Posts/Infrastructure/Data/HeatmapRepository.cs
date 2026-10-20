@@ -10,7 +10,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="Area">The box (already snapped to whole cells by the caller, for the cell counts).</param>
 /// <param name="From">Incidents from this instant (inclusive).</param>
 /// <param name="To">Up to this instant (exclusive).</param>
-/// <param name="Categories">Only these kinds of incident (empty = all).</param>
+/// <param name="Categories">Only incidents with any of these types of bad driving (empty = all).</param>
 /// <param name="Hours">Only this time of day, UK time.</param>
 /// <param name="Days">Weekdays, weekends or all, UK time.</param>
 public sealed record HeatmapFilter(
@@ -59,7 +59,10 @@ public interface IHeatmapRepository
     /// <summary>Counts by UK hour of day (keys "0" to "23").</summary>
     Task<IReadOnlyList<HeatmapCountRow>> CountByHourAsync(HeatmapFilter filter, CancellationToken cancellationToken);
 
-    /// <summary>Counts by category (keys are category names).</summary>
+    /// <summary>
+    /// Counts by type of bad driving (keys are type names). A post with several types counts once for each, so these
+    /// can add up to more than <see cref="CountAsync"/>.
+    /// </summary>
     Task<IReadOnlyList<HeatmapCountRow>> CountByCategoryAsync(HeatmapFilter filter, CancellationToken cancellationToken);
 
     /// <summary>The most common place names, busiest first (posts without one are left out).</summary>
@@ -68,7 +71,7 @@ public interface IHeatmapRepository
 
 /// <summary>
 /// The heat map's queries, in SQL. Every query starts from the filtered index <c>IX_Posts_Heatmap</c> (public posts by
-/// incident time, including the pin, category and place name), with exactly its filter written out as literals so SQL
+/// incident time, including the pin, types and place name), with exactly its filter written out as literals so SQL
 /// Server can use it: a period is one range seek and nothing else is read. Time of day and weekday are worked out in
 /// UK time (<c>AT TIME ZONE 'GMT Standard Time'</c>, which follows British Summer Time).
 /// </summary>
@@ -115,8 +118,22 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
     public Task<IReadOnlyList<HeatmapCountRow>> CountByHourAsync(HeatmapFilter filter, CancellationToken cancellationToken) =>
         CountByAsync(filter, $"CAST(DATEPART(hour, {UkTime}) AS nvarchar(40))", top: null, cancellationToken);
 
-    public Task<IReadOnlyList<HeatmapCountRow>> CountByCategoryAsync(HeatmapFilter filter, CancellationToken cancellationToken) =>
-        CountByAsync(filter, "[Category]", top: null, cancellationToken);
+    public async Task<IReadOnlyList<HeatmapCountRow>> CountByCategoryAsync(HeatmapFilter filter, CancellationToken cancellationToken)
+    {
+        var (where, parameters) = Where(filter);
+
+        // One row per type with its bit, from the enum (names and bits are code, not user input).
+        var types = string.Join(", ", Enum.GetValues<IncidentCategory>()
+            .Select(t => $"(N'{t}', {IncidentTypeFlags.Bit(t)})"));
+        var sql = $"""
+            SELECT [t].[Name] AS [Key], COUNT(*) AS [Count]
+            FROM (SELECT [TypeFlags] FROM [posts].[Posts] WHERE {where}) AS [x]
+            JOIN (VALUES {types}) AS [t]([Name], [Bit]) ON ([x].[TypeFlags] & [t].[Bit]) <> 0
+            GROUP BY [t].[Name]
+            ORDER BY COUNT(*) DESC, [t].[Name]
+            """;
+        return await db.Database.SqlQueryRaw<HeatmapCountRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+    }
 
     public Task<IReadOnlyList<HeatmapCountRow>> CountByPlaceAsync(HeatmapFilter filter, int top, CancellationToken cancellationToken) =>
         CountByAsync(filter, "[PlaceName]", top, cancellationToken);
@@ -158,16 +175,9 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
 
         if (filter.Categories.Count > 0)
         {
-            var names = new List<string>();
-            var i = 0;
-            foreach (var category in filter.Categories.Distinct())
-            {
-                var name = "@c" + i++;
-                names.Add(name);
-                parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, 40) { Value = category.ToString() });
-            }
-
-            sql.Append(" AND [Category] IN (").Append(string.Join(", ", names)).Append(')');
+            // Any of the chosen types: one bitwise test on the post's TypeFlags.
+            parameters.Add(new SqlParameter("@types", SqlDbType.Int) { Value = IncidentTypeFlags.From(filter.Categories) });
+            sql.Append(" AND ([TypeFlags] & @types) <> 0");
         }
 
         if (filter.Hours is { } hours)

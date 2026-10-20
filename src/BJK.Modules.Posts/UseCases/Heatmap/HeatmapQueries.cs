@@ -333,7 +333,10 @@ internal static class HeatmapCells
     }
 }
 
-/// <summary>A category's share of an area's incidents.</summary>
+/// <summary>
+/// How many of an area's incidents have this type of bad driving, and what percentage that is. A post can have several
+/// types, so the percentages can add up to more than 100.
+/// </summary>
 public sealed record CategoryShareDto(IncidentCategory Category, int Count, int Percent);
 
 /// <summary>A place name (usually a road and town, e.g. "A57 Warrington Road, Prescot") and its incidents.</summary>

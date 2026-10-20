@@ -368,36 +368,39 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
+                    b.Property<int>("TypeFlags")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AuthorId", "CreatedAt");
-
-                    b.HasIndex("Latitude", "Longitude");
-
-                    b.HasIndex("SensitiveReview", "CreatedAt");
-
-                    b.HasIndex("Status", "CreatedAt");
-
-                    b.HasIndex("Category", "Status", "CreatedAt");
-
-                    b.HasIndex("IsFlagged", "Status", "CreatedAt");
-
                     b.HasIndex("IncidentAt")
                         .HasDatabaseName("IX_Posts_Heatmap")
                         .HasFilter("[Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "PlaceName" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "PlaceName" });
+
+                    b.HasIndex("AuthorId", "CreatedAt");
+
+                    b.HasIndex("Latitude", "Longitude");
 
                     b.HasIndex("ReelScore", "CreatedAt")
                         .HasDatabaseName("IX_Posts_Reels")
                         .HasFilter("[HasVideo] = 1 AND [Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
 
+                    b.HasIndex("SensitiveReview", "CreatedAt");
+
+                    b.HasIndex("Status", "CreatedAt");
+
                     b.HasIndex("Category", "ReelScore", "CreatedAt")
                         .HasDatabaseName("IX_Posts_Reels_Category")
                         .HasFilter("[HasVideo] = 1 AND [Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
+
+                    b.HasIndex("Category", "Status", "CreatedAt");
+
+                    b.HasIndex("IsFlagged", "Status", "CreatedAt");
 
                     b.ToTable("Posts", "posts");
                 });
