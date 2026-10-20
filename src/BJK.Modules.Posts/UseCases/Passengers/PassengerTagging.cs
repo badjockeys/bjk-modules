@@ -1,6 +1,7 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Profiles.Contracts;
+using BJK.Modules.Shared.Notifications;
 
 namespace BJK.Modules.Posts.UseCases.Passengers;
 
@@ -110,6 +111,29 @@ public sealed class PassengerTagging(
             {
                 posts.RemovePassenger(tag);
             }
+        }
+    }
+
+    /// <summary>
+    /// Asks each newly tagged person to accept, if the post is public. A post still processing its media is announced
+    /// to them by <see cref="Publishing.PostMediaPublisher"/> when it's published, so the link always opens.
+    /// </summary>
+    public static async Task NotifyTaggedAsync(
+        INotificationSender? notifications,
+        Post post,
+        IReadOnlyList<Guid> tagged,
+        CancellationToken cancellationToken)
+    {
+        if (notifications is null || !post.IsPublic)
+        {
+            return;
+        }
+
+        foreach (var userId in tagged)
+        {
+            await notifications.NotifyAsync(
+                new NotificationRequest(userId, NotificationType.PassengerTagged, post.AuthorId, post.Id, PostTitle: post.Title),
+                cancellationToken);
         }
     }
 

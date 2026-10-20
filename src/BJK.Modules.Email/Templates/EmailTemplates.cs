@@ -121,6 +121,28 @@ public static class EmailTemplates
             .Paragraph("Nobody else can see the post. You can delete it from My posts, then upload the photos or video again and post it once more.")
             .Note("You're getting this email because you posted on Bad Jockeys before your photos or video had finished processing."));
 
+    /// <summary>
+    /// A notification by email (passenger tags, comments, area alerts...). The words come from the Notifications
+    /// module; <paramref name="link"/> opens the post, and the footer says how to turn these emails off.
+    /// </summary>
+    /// <param name="subject">The subject line.</param>
+    /// <param name="sentence">What happened, e.g. "Sam J tagged you as a passenger on “...”".</param>
+    /// <param name="link">The post in the web app, if known.</param>
+    /// <param name="settingsLink">The notification settings page, if known.</param>
+    public static EmailTemplate Notification(string subject, string sentence, Uri? link, Uri? settingsLink)
+    {
+        var body = BrandedEmail.Create(subject).Paragraph(sentence);
+        if (link is not null)
+        {
+            body = body.Button("Open Bad Jockeys", link.ToString());
+        }
+
+        body = body.Footer(settingsLink is null
+            ? "You're getting this email because of your Bad Jockeys notification settings. You can change them under Account, Notifications."
+            : $"You're getting this email because of your Bad Jockeys notification settings. Change them at {settingsLink}.");
+        return new EmailTemplate(subject, body);
+    }
+
     private const string ReportFooter = "You're getting this email because you reported content on Bad Jockeys.";
 
     private static string Hours(TimeSpan duration)

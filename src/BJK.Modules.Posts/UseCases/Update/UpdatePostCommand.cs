@@ -4,6 +4,7 @@ using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using MediatR;
 using Microsoft.Extensions.Options;
 
@@ -40,7 +41,8 @@ public sealed class UpdatePostCommandHandler(
     IMediaDirectory media,
     ICurrentUser caller,
     TimeProvider clock,
-    PassengerTagging? passengers = null)
+    PassengerTagging? passengers = null,
+    INotificationSender? notifications = null)
     : IRequestHandler<UpdatePostCommand, PostDto>
 {
     public async Task<PostDto> Handle(UpdatePostCommand request, CancellationToken cancellationToken)
@@ -62,6 +64,7 @@ public sealed class UpdatePostCommandHandler(
             ? null
             : await passengers.ResolveAsync(post.AuthorId, request.Passengers, details.Types!, cancellationToken);
         post.Update(details, now);
+        IReadOnlyList<Guid> tagged = [];
         if (passengers is not null)
         {
             if (!PostPassenger.AllowedFor(post.Types))
@@ -70,7 +73,7 @@ public sealed class UpdatePostCommandHandler(
             }
             else if (passengerIds is not null)
             {
-                await passengers.ApplyAsync(post, passengerIds, cancellationToken);
+                tagged = await passengers.ApplyAsync(post, passengerIds, cancellationToken);
             }
         }
         if (request.IsSensitive is { } sensitive)
@@ -80,6 +83,7 @@ public sealed class UpdatePostCommandHandler(
 
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         await posts.SaveChangesAsync(cancellationToken);
+        await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
 
         if (request.IsSensitive is not null)
         {

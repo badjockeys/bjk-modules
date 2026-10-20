@@ -7,6 +7,7 @@ using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using FluentValidation;
 using MediatR;
 
@@ -37,7 +38,8 @@ public sealed class AddCommentCommandHandler(
     IContentScreener screener,
     NewAccountLimits limits,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<AddCommentCommand, CommentDto>
 {
     public async Task<CommentDto> Handle(AddCommentCommand request, CancellationToken cancellationToken)
@@ -84,6 +86,15 @@ public sealed class AddCommentCommandHandler(
         comment.ApplyScreening(await screener.ScreenAsync(comment.Body, cancellationToken));
         comments.Add(comment);
         await comments.SaveChangesAsync(cancellationToken);
+
+        // Tell the post's author (or, for a reply, the comment's author), unless it's held for a moderator.
+        if (notifications is not null && comment.Status == CommentStatus.Visible)
+        {
+            var notice = parent is null
+                ? new NotificationRequest(post.AuthorId, NotificationType.CommentOnPost, userId, post.Id, comment.Id, post.Title)
+                : new NotificationRequest(parent.AuthorId, NotificationType.ReplyToComment, userId, post.Id, comment.Id, post.Title);
+            await notifications.NotifyAsync(notice, cancellationToken);
+        }
 
         return CommentViews.From(comment, author);
     }

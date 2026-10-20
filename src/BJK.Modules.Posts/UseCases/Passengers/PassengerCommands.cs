@@ -3,6 +3,7 @@ using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using FluentValidation;
 using MediatR;
 
@@ -47,7 +48,8 @@ public sealed class RespondToTagCommandHandler(
     IPostRepository posts,
     PostViews views,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<RespondToTagCommand, PostDto>
 {
     public async Task<PostDto> Handle(RespondToTagCommand request, CancellationToken cancellationToken)
@@ -62,6 +64,14 @@ public sealed class RespondToTagCommandHandler(
         if (tag.Respond(request.Accept, clock.GetUtcNow()))
         {
             await posts.SaveChangesAsync(cancellationToken);
+
+            // The author hears about acceptances only (a decline just quietly removes the name).
+            if (request.Accept && notifications is not null)
+            {
+                await notifications.NotifyAsync(
+                    new NotificationRequest(post.AuthorId, NotificationType.PassengerAccepted, userId, post.Id, PostTitle: post.Title),
+                    cancellationToken);
+            }
         }
 
         return await views.BuildAsync(post, userId, cancellationToken);

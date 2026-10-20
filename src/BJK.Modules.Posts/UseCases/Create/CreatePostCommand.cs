@@ -8,6 +8,7 @@ using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -69,7 +70,8 @@ public sealed class CreatePostCommandHandler(
     PostMediaPublisher publisher,
     ICurrentUser caller,
     TimeProvider clock,
-    PassengerTagging? passengers = null)
+    PassengerTagging? passengers = null,
+    INotificationSender? notifications = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -149,12 +151,14 @@ public sealed class CreatePostCommandHandler(
         }
 
         posts.Add(post);
+        IReadOnlyList<Guid> tagged = [];
         if (passengers is not null && passengerIds.Count > 0)
         {
-            await passengers.ApplyAsync(post, passengerIds, cancellationToken);
+            tagged = await passengers.ApplyAsync(post, passengerIds, cancellationToken);
         }
 
         await posts.SaveChangesAsync(cancellationToken);
+        await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
         if (autoTagged)
         {
             await publisher.RecordAutomaticTagAsync(post, cancellationToken);

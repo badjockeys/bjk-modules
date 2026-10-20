@@ -6,6 +6,7 @@ using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Shared.Moderation;
+using BJK.Modules.Shared.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -26,7 +27,8 @@ public sealed class PostMediaPublisher(
     ModerationNotifications notifications,
     TimeProvider clock,
     ILogger<PostMediaPublisher> logger,
-    IModerationAuditLog audit)
+    IModerationAuditLog audit,
+    INotificationSender? notifier = null)
 {
     /// <summary>
     /// Publishes or fails the post if its media allow; does nothing while any are still processing or if the post
@@ -88,6 +90,13 @@ public sealed class PostMediaPublisher(
                 }
 
                 await ReleaseOriginalsAsync(post, cancellationToken);
+
+                // Passengers tagged while it was processing are asked now that they can open it.
+                var waiting = (await posts.GetPassengersAsync([post.Id], cancellationToken))
+                    .Where(t => t.Status == PassengerTagStatus.Pending)
+                    .Select(t => t.UserId)
+                    .ToList();
+                await Passengers.PassengerTagging.NotifyTaggedAsync(notifier, post, waiting, cancellationToken);
             }
         }
 
