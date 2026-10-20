@@ -99,6 +99,25 @@ public sealed class PostsController(ISender sender) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// One person's comments and replies, newest first, with the post each is on: the Replies tab on their profile.
+    /// Only comments on posts everyone can see.
+    /// </summary>
+    /// <param name="author">The profile's @handle.</param>
+    /// <param name="page">Page number, from 1.</param>
+    /// <param name="pageSize">Comments per page, up to 50.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    [HttpGet("replies")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PagedResult<ProfileReplyDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<PagedResult<ProfileReplyDto>> ListProfileReplies(
+        [FromQuery] string author,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListProfileRepliesQuery(author, page, pageSize), cancellationToken);
+
     /// <summary>One post. Anyone can call this; sensitive posts are 404 for logged-out callers.</summary>
     [HttpGet("{id:guid}")]
     [Authorize(Policy = PostsModule.ReadPolicy)]
@@ -262,6 +281,44 @@ public sealed class PostsController(ISender sender) : ControllerBase
         CancellationToken cancellationToken) =>
         await sender.Send(new EditCommentCommand(id, commentId, request.Body), cancellationToken);
 
+    /// <summary>A comment's text now and before each edit, newest first ("Edited").</summary>
+    [HttpGet("{id:guid}/comments/{commentId:guid}/history")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<IReadOnlyList<CommentVersionDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IReadOnlyList<CommentVersionDto>> GetCommentHistory(Guid id, Guid commentId, CancellationToken cancellationToken) =>
+        await sender.Send(new GetCommentHistoryQuery(id, commentId), cancellationToken);
+
+    /// <summary>
+    /// On your own post: hide someone's comment or reply from everyone else (they still see it, marked hidden), or
+    /// show it again. A hidden comment's replies are hidden too.
+    /// </summary>
+    [HttpPut("{id:guid}/comments/{commentId:guid}/hidden")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<CommentDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<CommentDto> SetCommentHidden(
+        Guid id,
+        Guid commentId,
+        HideCommentRequest request,
+        CancellationToken cancellationToken) =>
+        await sender.Send(new SetCommentHiddenByPostAuthorCommand(id, commentId, request.Hidden), cancellationToken);
+
+    /// <summary>On your own post: who can comment (everyone, or nobody). Comments already there stay.</summary>
+    [HttpPut("{id:guid}/comment-setting")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetCommentSetting(Guid id, CommentSettingRequest request, CancellationToken cancellationToken)
+    {
+        await sender.Send(new SetCommentSettingCommand(id, request.Setting), cancellationToken);
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}/comments/{commentId:guid}")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -345,6 +402,12 @@ public sealed record TagResponseRequest(bool Accept);
 public sealed record ReactRequest(ReactionType Type);
 
 public sealed record CommentRequest(string Body);
+
+/// <summary>Hide a comment on your post from everyone else (true), or show it again (false).</summary>
+public sealed record HideCommentRequest(bool Hidden);
+
+/// <summary>Who can comment on your post.</summary>
+public sealed record CommentSettingRequest(CommentSetting Setting);
 
 public sealed record ReportRequest(ReportReason Reason, string? Details);
 

@@ -130,6 +130,8 @@ app.MapControllers();
 | `Safety:RequireAgeVerification` | Default **`false`** (since 19 Oct 2026): posting, commenting and reacting no longer need the age check. `true` makes posting, editing posts, commenting, reacting and reporting need the `age_verified` claim again; kept for future use. |
 | `Safety:NewAccounts:Period`, `:MaxPosts`, `:MaxComments` | New-account limits. Defaults `1.00:00:00`, 3, 20. bjk-core only. |
 | `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
+| `Posts:ReportsInbox` | Where every new report is emailed, as well as going to the moderation queue (until there's a ticketing system). Default `support@badjockeys.com`; empty turns it off. Must be a valid address. bjk-core only. |
+| `Posts:AppUrl` | The web app's address (e.g. `https://badjockeys.com`), for the "Open it on Bad Jockeys" link in report emails. Optional. bjk-core only. |
 | `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
 | `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
 | `Plans:Overrides:<user id>` | `free`, `premium` or `premium_plus`, for testing paid features before billing exists. See [Plans](#plans-and-entitlements). |
@@ -138,6 +140,25 @@ app.MapControllers();
 | `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
 
 `user-secrets.template.json` lists these with local development values.
+
+### Deployed environments refuse to start without every setting
+
+Outside Development (DEV, QA, Staging and Live alike), a host refuses to start until every setting it needs has a live value, and the error lists **all** the problems at once. Modules declare their own with `services.RequireWhenDeployed(key, requirement, isValid)` (`BJK.Modules.Shared.Configuration`); hosts add theirs the same way. A value still in the template's `<...>` placeholder form fails too, required or not.
+
+| Setting | Required outside Development | From |
+|---|---|---|
+| `MediatR:LicenseKey` | Set | Every host |
+| `Email:Provider` | `SendGrid` (`Log`, the default, sends nothing; use SendGrid's `SandboxMode` on test servers) | Email module |
+| `SMS:Provider` | `Twilio` (`Log` sends nothing) | SMS module |
+| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | `Turnstile` (or unset); a real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
+| `Notifications:AppUrl` | An https address | Notifications module |
+| `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
+| `Media:Storage:SensitiveBucket` | Set | Media module |
+| `Media:Redaction:FaceModelPath`, `PlateModelPath` | Set | Media worker |
+
+The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
+
+**`--check-settings`:** a host started with this argument builds its services, runs every startup settings check, prints the result and exits (0 when ready, 1 with every problem listed) without touching the database. `SettingsCheck.Requested(args)` and `SettingsCheck.Run(app.Services)` do it. Deploy pipelines run each image with the environment's settings and `--check-settings` before rolling it out, so a missing setting fails the pipeline rather than the release.
 
 ### One id per person, one copy of each fact
 
@@ -555,7 +576,7 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new ProfilesModul
 
 ## Posts module
 
-Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `CommentReactions`, `Reports`, `Appeals`, `ModerationAuditLog`.
+Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reactions`, `Comments`, `CommentEdits`, `CommentReactions`, `Reports`, `Appeals`, `ModerationAuditLog`.
 
 - **Deactivated authors**: while an author's account is deactivated, their posts and comments are hidden from everyone (feed, post pages, comment lists and counts). Their reactions still count.
 - **A post** has a title (up to 120 characters), an optional description (5,000), a category, when the incident happened (not in the future), a map pin (latitude/longitude, optional place name), and **1 to 10 photos or one video** (a video can't be mixed with anything else: "A post can have 1 to 10 photos or one video, not both. Post the video on its own.").
@@ -564,8 +585,12 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 - **Editing**: the author (or an admin) can change the details but not the media. Deleting a post also deletes its photos and videos. The row is kept, marked Deleted.
 - **Reactions**: one per user per post (Like, Angry, Shocked, Laugh). Reacting again changes it. Posts show counts per reaction and the viewer's own reaction.
 - **Comments and replies**: up to 2,000 characters. Replies go **one level deep**: a reply points to a top-level comment on the same post, and replying to a reply is refused with a 400 ("You can't reply to a reply..."). The author can edit; the author or a moderator can delete. Commenting needs a profile. Comment lists return top-level comments, oldest first, each with its reply count and first 3 replies; the rest come from the replies endpoint. A hidden or deleted top-level comment that still has replies is shown as a placeholder (`isRemoved: true`, no author, empty body) with its replies underneath. The post's comment count includes replies.
+- **Edit history**: every edit keeps the earlier text in `posts.CommentEdits` (deleted with the comment). Edited comments carry `editedAt`, and anyone who can see the comment can read every version, newest first (`GET .../comments/{commentId}/history`). Saving the same text changes nothing.
+- **The post's author controls comments** (UI overhaul, 20 Oct 2026):
+  - **Hide a comment or reply** on their post (`PUT .../comments/{commentId}/hidden` with `{"hidden": true}`, or `false` to show it again; not their own). Everyone else gets it as a placeholder (`isHiddenByPostAuthor: true`, no author, empty body, no replies) and the replies to a hidden comment are hidden too. The commenter and the post's author still see it, marked hidden. Only the post's author can reply to it. It's left off the commenter's profile Replies tab for others.
+  - **Who can comment** (`PUT /api/posts/{id}/comment-setting` with `{"setting": "Everyone"}` or `"Off"`; `PostDto.commentSetting`). With comments off, nobody but the author can add comments or replies (403); the ones already there stay. "People I follow" comes with following.
 - **Comment reactions**: one per user per comment or reply (Like, Angry, Shocked, Laugh), changeable and removable, in `posts.CommentReactions`. Comments show counts per type and the viewer's own reaction.
-- **Reports**: signed-in users can report a post, comment, reply or profile once, with a reason (DangerousOrIllegal, PersonalInformation, HarassmentOrHate, Spam, NotADrivingIncident, IllegalContent, Threat, InThisClip, Copyright, Other). Anyone can use the public form. Moderators work through the queue, urgent first. **Dismiss** leaves the content up. **HideContent** hides it (or resets a profile) and closes every open report about it. A hidden post looks missing to everyone except its author and moderators. See "Online safety" for priorities, emails and appeals.
+- **Reports**: signed-in users can report a post, comment, reply or profile once, with a reason (DangerousOrIllegal, PersonalInformation, HarassmentOrHate, Spam, NotADrivingIncident, IllegalContent, Threat, InThisClip, Copyright, Other; and for profiles only, Impersonation and UnderThirteen). Anyone can use the public form. **Every new report is also emailed to `Posts:ReportsInbox`** (support@badjockeys.com) with its reference, reason, the reporter's words and a link to the content; a failed send is logged and never stops the report. Moderators work through the queue, urgent first. **Dismiss** leaves the content up. **HideContent** hides it (or resets a profile) and closes every open report about it. A hidden post looks missing to everyone except its author and moderators. See "Online safety" for priorities, emails and appeals.
 - **Feed**: newest first, filterable by category, author's @handle, and area (a point plus a radius of up to 200 km).
 
 | Endpoint | Access |
@@ -577,6 +602,8 @@ Posts of driving incidents, in the `posts` schema: `Posts`, `PostMedia`, `Reacti
 | `GET /api/posts/{id}/comments`, `GET /api/posts/{id}/comments/{commentId}/replies` | Signed-in user (logged-out viewers see no comments) |
 | `POST /api/posts/{id}/comments`, `POST /api/posts/{id}/comments/{commentId}/replies`, `PUT` / `DELETE /api/posts/{id}/comments/{commentId}` | Signed-in user |
 | `PUT` / `DELETE /api/posts/{id}/comments/{commentId}/reaction` | Signed-in user |
+| `GET /api/posts/{id}/comments/{commentId}/history` | Signed-in user who can see the comment |
+| `PUT /api/posts/{id}/comments/{commentId}/hidden`, `PUT /api/posts/{id}/comment-setting` | The post's author |
 | `POST /api/posts/{id}/reports`, `POST /api/posts/{id}/comments/{commentId}/reports`, `POST /api/profiles/{handle}/reports` | Signed-in user |
 | `POST /api/posts/{id}/appeal`, `POST /api/posts/{id}/comments/{commentId}/appeal` | Signed-in author, once per decision |
 | `POST /api/reports/public` | Anyone, with a Turnstile token in `X-Captcha-Token` |

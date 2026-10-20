@@ -69,6 +69,47 @@ public static class EmailTemplates
         return new EmailTemplate($"We've received your report ({reference})", body);
     }
 
+    /// <summary>
+    /// Sent to the support inbox for every new report (until there's a ticketing system), as well as it going to the
+    /// moderation queue.
+    /// </summary>
+    /// <param name="reference">The report's reference.</param>
+    /// <param name="what">What was reported, e.g. "A comment".</param>
+    /// <param name="reason">Why, in words.</param>
+    /// <param name="urgent">Illegal content or a threat.</param>
+    /// <param name="dueAt">When a decision is due.</param>
+    /// <param name="details">What the reporter wrote, if anything.</param>
+    /// <param name="reporter">Who reported it, e.g. "A signed-in member" or a name and email from the public form.</param>
+    /// <param name="link">The reported content in the web app, if known.</param>
+    public static EmailTemplate ReportForModerators(
+        string reference,
+        string what,
+        string reason,
+        bool urgent,
+        DateTimeOffset dueAt,
+        string? details,
+        string reporter,
+        string? link)
+    {
+        var body = BrandedEmail.Create(urgent ? $"Urgent report: {what}" : $"New report: {what}")
+            .Code("Reference", reference)
+            .Paragraph($"Reason: {reason}")
+            .Paragraph($"Reported by: {reporter}")
+            .Paragraph($"Decision due by {dueAt.ToUniversalTime():d MMM yyyy HH:mm} UTC.");
+        if (!string.IsNullOrWhiteSpace(details))
+        {
+            body.Paragraph($"Their words: {details.Trim()}");
+        }
+
+        if (link is not null)
+        {
+            body.Button("Open it on Bad Jockeys", link);
+        }
+
+        body.Note("Decide it in the moderation queue so the reporter gets the outcome email.");
+        return new EmailTemplate($"{(urgent ? "URGENT " : string.Empty)}Report {reference}: {what}, {reason}", body);
+    }
+
     /// <summary>Sent when a moderator has decided what to do about a report.</summary>
     /// <param name="reference">The report's reference.</param>
     /// <param name="contentRemoved">True if the content was taken down or changed; false if it was left up.</param>
