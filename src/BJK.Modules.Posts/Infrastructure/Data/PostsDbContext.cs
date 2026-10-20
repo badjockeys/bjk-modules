@@ -32,6 +32,12 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<PostDraft> PostDrafts => Set<PostDraft>();
 
+    public DbSet<Hashtag> Hashtags => Set<Hashtag>();
+
+    public DbSet<PostHashtag> PostHashtags => Set<PostHashtag>();
+
+    public DbSet<HashtagHourlyCount> HashtagHourlyCounts => Set<HashtagHourlyCount>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -151,6 +157,47 @@ internal sealed class ReelPlayDailyCountConfiguration : IEntityTypeConfiguration
         builder.ToTable("ReelPlayDailyCounts");
         builder.HasKey(c => new { c.PostId, c.Day });
         builder.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class HashtagConfiguration : IEntityTypeConfiguration<Hashtag>
+{
+    public void Configure(EntityTypeBuilder<Hashtag> builder)
+    {
+        builder.ToTable("Hashtags");
+        builder.HasKey(h => h.Id);
+        builder.Property(h => h.Id).ValueGeneratedNever();
+        builder.Property(h => h.Key).HasMaxLength(Hashtag.MaxLength).IsRequired();
+        builder.Property(h => h.Display).HasMaxLength(Hashtag.MaxLength).IsRequired();
+
+        // Suggestions: a prefix seek on Key, most used first.
+        builder.HasIndex(h => h.Key).IsUnique().IncludeProperties(h => new { h.Display, h.TotalUses, h.IsHiddenFromTrends });
+    }
+}
+
+internal sealed class PostHashtagConfiguration : IEntityTypeConfiguration<PostHashtag>
+{
+    public void Configure(EntityTypeBuilder<PostHashtag> builder)
+    {
+        builder.ToTable("PostHashtags");
+        builder.HasKey(t => new { t.PostId, t.HashtagId });
+        builder.HasOne<Post>().WithMany().HasForeignKey(t => t.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Hashtag>().WithMany().HasForeignKey(t => t.HashtagId).OnDelete(DeleteBehavior.Restrict);
+
+        // A tag's posts (the tag page), and the last day's uses for Trending.
+        builder.HasIndex(t => new { t.HashtagId, t.PostedAt });
+        builder.HasIndex(t => t.PostedAt).IncludeProperties(t => new { t.HashtagId, t.AuthorId });
+    }
+}
+
+internal sealed class HashtagHourlyCountConfiguration : IEntityTypeConfiguration<HashtagHourlyCount>
+{
+    public void Configure(EntityTypeBuilder<HashtagHourlyCount> builder)
+    {
+        builder.ToTable("HashtagHourlyCounts");
+        builder.HasKey(c => new { c.HashtagId, c.Hour });
+        builder.HasOne<Hashtag>().WithMany().HasForeignKey(c => c.HashtagId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(c => c.Hour).IncludeProperties(c => new { c.HashtagId, c.Posts });
     }
 }
 

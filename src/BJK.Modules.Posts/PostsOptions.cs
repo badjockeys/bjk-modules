@@ -156,6 +156,65 @@ public sealed class HeatmapOptions
     public int MaxCells { get; set; } = 10_000;
 }
 
+/// <summary>Hashtags and Trending (section <c>Hashtags</c>).</summary>
+public sealed class HashtagOptions
+{
+    public const string SectionName = "Hashtags";
+
+    /// <summary>A tag or place trends only with at least this many public posts in the last 24 hours. Default 3.</summary>
+    public int TrendingMinPosts { get; set; } = 3;
+
+    /// <summary>...and at least this many different authors, so one person can't make a trend. Default 3.</summary>
+    public int TrendingMinAuthors { get; set; } = 3;
+
+    /// <summary>How many tags Trending shows. Default 10.</summary>
+    public int TrendingTags { get; set; } = 10;
+
+    /// <summary>How many places Trending shows. Default 5.</summary>
+    public int TrendingPlaces { get; set; } = 5;
+
+    /// <summary>The usual level is the daily average over this many days before the last 24 hours. Default 7.</summary>
+    public int BaselineDays { get; set; } = 7;
+
+    /// <summary>How often the hourly counts for the last two days are rebuilt. Default 5 minutes.</summary>
+    public TimeSpan RebuildInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long hourly counts are kept. Default 90 days.</summary>
+    public TimeSpan HourlyRetention { get; set; } = TimeSpan.FromDays(90);
+
+    /// <summary>Extra tags that are never recorded, linked or suggested (lower case, without the #).</summary>
+    public List<string> Blocklist { get; set; } = [];
+}
+
+internal sealed class HashtagOptionsValidator : IValidateOptions<HashtagOptions>
+{
+    public ValidateOptionsResult Validate(string? name, HashtagOptions options)
+    {
+        var errors = new List<string>();
+        if (options.TrendingMinAuthors < 2 || options.TrendingMinPosts < options.TrendingMinAuthors)
+        {
+            errors.Add("Hashtags:TrendingMinAuthors must be at least 2, and TrendingMinPosts at least as many.");
+        }
+
+        if (options.TrendingTags is < 1 or > 50 || options.TrendingPlaces is < 0 or > 20)
+        {
+            errors.Add("Hashtags:TrendingTags must be 1 to 50 and TrendingPlaces 0 to 20.");
+        }
+
+        if (options.BaselineDays is < 1 or > 60 || options.HourlyRetention < TimeSpan.FromDays(options.BaselineDays + 2))
+        {
+            errors.Add("Hashtags:BaselineDays must be 1 to 60, and HourlyRetention longer than BaselineDays plus 2 days.");
+        }
+
+        if (options.RebuildInterval < TimeSpan.FromSeconds(30))
+        {
+            errors.Add("Hashtags:RebuildInterval must be at least 30 seconds.");
+        }
+
+        return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+}
+
 /// <summary>History by plan, in days. Section <c>Heatmap:HistoryDays</c>.</summary>
 public sealed class HeatmapHistoryDays
 {

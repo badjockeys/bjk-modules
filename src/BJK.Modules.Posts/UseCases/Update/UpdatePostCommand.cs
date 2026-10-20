@@ -47,7 +47,8 @@ public sealed class UpdatePostCommandHandler(
     ICurrentUser caller,
     TimeProvider clock,
     PassengerTagging? passengers = null,
-    INotificationSender? notifications = null)
+    INotificationSender? notifications = null,
+    Hashtags.HashtagSync? hashtags = null)
     : IRequestHandler<UpdatePostCommand, PostDto>
 {
     public async Task<PostDto> Handle(UpdatePostCommand request, CancellationToken cancellationToken)
@@ -87,6 +88,11 @@ public sealed class UpdatePostCommandHandler(
         }
 
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
+        if (hashtags is not null)
+        {
+            await hashtags.SyncAsync(post, cancellationToken);
+        }
+
         await posts.SaveChangesAsync(cancellationToken);
         await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
 

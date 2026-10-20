@@ -37,6 +37,8 @@ public static class ModerationActions
     public const string ResolveReport = "ResolveReport";
     public const string HidePost = "HidePost";
     public const string UnhidePost = "UnhidePost";
+    public const string HideHashtag = "HideHashtag";
+    public const string ShowHashtag = "ShowHashtag";
     public const string DeletePost = "DeletePost";
     public const string ApprovePost = "ApprovePost";
     public const string SetPostSensitive = "SetPostSensitive";

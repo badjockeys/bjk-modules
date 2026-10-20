@@ -80,7 +80,8 @@ public sealed class CreatePostCommandHandler(
     PassengerTagging? passengers = null,
     INotificationSender? notifications = null,
     IAreaAlerts? areaAlerts = null,
-    IDraftRepository? drafts = null)
+    IDraftRepository? drafts = null,
+    Hashtags.HashtagSync? hashtags = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -165,6 +166,11 @@ public sealed class CreatePostCommandHandler(
         }
 
         posts.Add(post);
+        if (hashtags is not null)
+        {
+            await hashtags.SyncAsync(post, cancellationToken);
+        }
+
         if (draft is not null)
         {
             drafts!.Remove(draft);

@@ -4,6 +4,7 @@ using BJK.Modules.Posts.UseCases.Appeals;
 using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Delete;
 using BJK.Modules.Posts.UseCases.Get;
+using BJK.Modules.Posts.UseCases.Hashtags;
 using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Shared;
@@ -174,6 +175,20 @@ public sealed class AdminPostsController(ISender sender) : ControllerBase
     }
 
     /// <summary>
+    /// Hide a hashtag from Trending and from suggestions (<c>hidden: true</c>), or show it again. Posts keep the tag and
+    /// its page still works. A reason is required.
+    /// </summary>
+    /// <param name="tag">The tag, with or without the # (any case).</param>
+    /// <param name="request">Hidden or not, and why.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    [HttpPut("hashtags/{tag}/trending")]
+    [ProducesResponseType<HashtagDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<HashtagDto> SetHashtagHidden(string tag, HashtagTrendingRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new SetHashtagHiddenCommand(tag, request.Hidden, request.Reason), cancellationToken);
+
+    /// <summary>
     /// The moderation audit log for Posts, Profiles and Media, newest first. Admins only. Filter by actor, module,
     /// action, target and time (<c>from</c> inclusive, <c>to</c> exclusive).
     /// </summary>
@@ -193,3 +208,6 @@ public sealed class AdminPostsController(ISender sender) : ControllerBase
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListAuditLogQuery(actorId, module, auditAction, targetType, targetId, from, to, page, pageSize), cancellationToken);
 }
+
+/// <summary>Hide a hashtag from Trending (or show it again), and why.</summary>
+public sealed record HashtagTrendingRequest(bool Hidden, string? Reason);
