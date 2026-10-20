@@ -160,6 +160,10 @@ The modules' other checks (SendGrid or Twilio keys once chosen, the age check pr
 
 **`--check-settings`:** a host started with this argument builds its services, runs every startup settings check, prints the result and exits (0 when ready, 1 with every problem listed) without touching the database. `SettingsCheck.Requested(args)` and `SettingsCheck.Run(app.Services)` do it. Deploy pipelines run each image with the environment's settings and `--check-settings` before rolling it out, so a missing setting fails the pipeline rather than the release.
 
+### Logs, traces and metrics (OpenTelemetry)
+
+Every host calls `builder.AddBjkObservability("<service name>")` (`BJK.Modules.Shared.Observability`): ASP.NET Core requests (not `/health`), outgoing HTTP calls and SQL Server calls are traced, request, HTTP client and .NET runtime metrics are recorded, and logs go out with them. Everything is sent over OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT` (with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`): locally bjk-core's `otel-lgtm` container (`http://localhost:4318`), when deployed Grafana Cloud's OTLP address with `OTEL_EXPORTER_OTLP_HEADERS` for its key. Only those settings change between them. Without an address nothing is exported; outside Development an https address is required. No personal data: query string values are redacted, SQL text isn't recorded, nothing identifies the user, and log messages never contain emails, names or IP addresses.
+
 ### One id per person, one copy of each fact
 
 A user's id is the same GUID everywhere: the sign-in account (`auth.AspNetUsers`), the account record (`users.Accounts`), the core profile and every post, comment and media item. It's the `sub` claim in every token, so no module ever needs to look up another id.
