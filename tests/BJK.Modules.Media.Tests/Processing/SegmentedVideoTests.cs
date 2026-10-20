@@ -135,8 +135,8 @@ public sealed class SegmentedVideoTests : IDisposable
     }
 
     /// <summary>
-    /// The video containers added on 21 Oct 2026 go through the same split, blur and join as MP4: a 6-second clip in
-    /// two segments comes out as 180 frames of H.264 MP4 with no frame lost at the join.
+    /// The video containers added on 21 Oct 2026 go through the same split, blur and join as MP4: a 12-second clip in
+    /// three segments comes out as 360 frames of H.264 MP4 with no frame lost at the join.
     /// </summary>
     [Theory]
     [InlineData("clip.webm", new[] { "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8" })]
@@ -148,19 +148,19 @@ public sealed class SegmentedVideoTests : IDisposable
         RequireFfmpeg();
         var clip = Make(
             Path.Combine(_folder, name),
-            ["-f", "lavfi", "-i", $"color=c=gray:s=640x360:r={Fps}:d=6,format=yuv420p,{Checkerboard}[bg];" +
-                $"color=c=0x00FF00:s=16x16:r={Fps}:d=6[g];[bg][g]overlay=x='mod(n*4,560)':y=8", .. encode]);
+            ["-f", "lavfi", "-i", $"color=c=gray:s=640x360:r={Fps}:d=12,format=yuv420p,{Checkerboard}[bg];" +
+                $"color=c=0x00FF00:s=16x16:r={Fps}:d=12[g];[bg][g]overlay=x='mod(n*4,560)':y=8", .. encode]);
         var probe = await Transcoder().ProbeAsync(clip, Ct);
         Assert.True(probe.HasVideo);
         var plan = VideoSegmentPlan.For((double)probe.DurationSeconds!.Value, MediaRedactor.OutputFrameRate(probe.FrameRate), probe.StartSeconds ?? 0, 5, 1.0);
-        Assert.Equal(2, plan.SegmentCount);
+        Assert.Equal(3, plan.SegmentCount);
 
         var (joined, _) = await SplitBlurAndJoin(clip, plan);
 
-        Assert.Equal(180, await CountFrames(joined));
+        Assert.Equal(360, await CountFrames(joined));
         var info = await Ffprobe(joined);
         Assert.Contains("codec_name=h264", info);
-        int[] indices = [0, 149, 150, 151, 179];
+        int[] indices = [0, 149, 150, 151, 299, 300, 359];
         var frames = await FramesAt(joined, indices);
         var origin = GreenCentre(frames[0]);
         for (var k = 0; k < indices.Length; k++)
