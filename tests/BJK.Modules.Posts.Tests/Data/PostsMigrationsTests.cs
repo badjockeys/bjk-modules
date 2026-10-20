@@ -35,6 +35,8 @@ public sealed class PostsMigrationsTests
     [InlineData(typeof(Report), "Reports")]
     [InlineData(typeof(CommentReaction), "CommentReactions")]
     [InlineData(typeof(Appeal), "Appeals")]
+    [InlineData(typeof(PostDraft), "Drafts")]
+    [InlineData(typeof(DraftMedia), "DraftMedia")]
     [InlineData(typeof(ModerationAuditRecord), "ModerationAuditLog")]
     public void Tables_live_in_the_posts_schema(Type entityType, string table)
     {

@@ -28,6 +28,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<PostPassenger> PostPassengers => Set<PostPassenger>();
 
+    public DbSet<PostDraft> PostDrafts => Set<PostDraft>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
