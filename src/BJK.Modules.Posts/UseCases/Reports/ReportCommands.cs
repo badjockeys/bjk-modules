@@ -463,31 +463,3 @@ internal static class ReportRules
             .Must(d => d is null || d.Trim().Length <= Report.DetailsMaxLength)
             .WithMessage($"Details are {Report.DetailsMaxLength} characters or fewer.");
 }
-
-/// <summary>Report reasons in words, and which are only for accounts.</summary>
-public static class ReportReasons
-{
-    /// <summary>Reasons only an account (profile) can be reported for.</summary>
-    public static readonly IReadOnlySet<ReportReason> AccountOnly = new HashSet<ReportReason>
-    {
-        ReportReason.Impersonation,
-        ReportReason.UnderThirteen,
-    };
-
-    /// <summary>The reason as people would say it, for emails.</summary>
-    public static string Describe(ReportReason reason) => reason switch
-    {
-        ReportReason.DangerousOrIllegal => "dangerous or illegal",
-        ReportReason.PersonalInformation => "personal information",
-        ReportReason.HarassmentOrHate => "harassment or hate",
-        ReportReason.Spam => "spam",
-        ReportReason.NotADrivingIncident => "not a driving incident",
-        ReportReason.IllegalContent => "illegal content",
-        ReportReason.Threat => "a threat",
-        ReportReason.InThisClip => "I'm in this clip",
-        ReportReason.Copyright => "copyright",
-        ReportReason.Impersonation => "impersonation",
-        ReportReason.UnderThirteen => "under 13",
-        _ => "something else",
-    };
-}

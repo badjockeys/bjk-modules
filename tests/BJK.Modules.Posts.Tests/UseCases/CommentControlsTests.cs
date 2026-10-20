@@ -100,7 +100,7 @@ public sealed class CommentControlsTests
         var history = await new GetCommentHistoryQueryHandler(_posts, _comments, _blocks, _caller)
             .Handle(new GetCommentHistoryQuery(post.Id, comment.Id), Ct);
 
-        Assert.Equal(["Third go.", "Second go.", "First go."], history.Select(v => v.Body));
+        Assert.Equal(new[] { "Third go.", "Second go.", "First go." }, history.Select(v => v.Body));
         Assert.True(history[0].IsCurrent);
         Assert.Equal(Now.AddHours(-2), history[2].WrittenAt);
     }
