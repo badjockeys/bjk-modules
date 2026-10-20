@@ -424,6 +424,32 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("PostMedia", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostPassenger", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("RespondedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("TaggedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "UserId");
+
+                    b.HasIndex("UserId", "Status", "TaggedAt");
+
+                    b.ToTable("PostPassengers", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Reaction", b =>
                 {
                     b.Property<Guid>("PostId")
@@ -614,6 +640,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
                         .WithMany("Media")
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostPassenger", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
