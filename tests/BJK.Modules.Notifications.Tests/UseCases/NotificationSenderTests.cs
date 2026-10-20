@@ -53,7 +53,7 @@ public sealed class NotificationSenderTests
 
         var saved = Assert.Single(_added);
         Assert.Equal(NotificationType.CommentOnPost, saved.Type);
-        await _email.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
+        await _email.DidNotReceive().SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class NotificationSenderTests
         await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.PassengerTagged, SamId, PostId), Ct);
 
         Assert.Single(_added);
-        await _email.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
+        await _email.DidNotReceive().SendAsync(Arg.Any<EmailMessage>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
