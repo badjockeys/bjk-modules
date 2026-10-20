@@ -5,6 +5,7 @@ using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -45,6 +46,8 @@ public static class MediaServices
             .Validate(o => o.FaceConfidentAt >= o.FaceMinConfidence, "Media:Redaction:FaceConfidentAt must be at least FaceMinConfidence.")
             .Validate(o => o.PlateConfidentAt >= o.PlateMinConfidence, "Media:Redaction:PlateConfidentAt must be at least PlateMinConfidence.")
             .ValidateOnStart();
+        services.RequireWhenDeployed("Media:Redaction:FaceModelPath", "the face detection model's path in the worker image");
+        services.RequireWhenDeployed("Media:Redaction:PlateModelPath", "the number plate detection model's path in the worker image");
         services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
         services.TryAddScoped<IVideoJobStore, VideoJobStore>();
         services.AddSingleton<IMediaTranscoder, FfmpegTranscoder>();
@@ -76,6 +79,9 @@ public static class MediaServices
     {
         var connectionString = configuration.GetConnectionString(connectionStringName)
             ?? throw new InvalidOperationException($"Connection string '{connectionStringName}' is not configured.");
+        services.RequireWhenDeployed(
+            "Media:Storage:SensitiveBucket",
+            "the private bucket for sensitive media (without it they'd go in the originals bucket and its 90-day deletion rule)");
 
         services.AddDbContext<MediaDbContext>(options => options.UseSqlServer(
             connectionString,

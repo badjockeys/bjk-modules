@@ -1,5 +1,6 @@
 using BJK.Modules.Email.Contracts;
 using BJK.Modules.Email.Infrastructure;
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Delivery;
 using Microsoft.Extensions.Configuration;
@@ -32,6 +33,10 @@ public sealed class EmailModule : IModule
             .Bind(configuration.GetSection(EmailOptions.SectionName))
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<EmailOptions>, EmailOptionsValidator>());
+        services.RequireWhenDeployed(
+            "Email:Provider",
+            $"{EmailOptions.SendGridProvider} (the default, {EmailOptions.LogProvider}, sends nothing)",
+            v => v == EmailOptions.SendGridProvider);
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(sp => new ProviderRetry(sp.GetRequiredService<TimeProvider>()));

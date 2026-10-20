@@ -1,3 +1,4 @@
+using BJK.Modules.Shared.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -53,6 +54,15 @@ public static class SafetyServiceCollectionExtensions
             .Bind(configuration.GetSection(CaptchaOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<CaptchaOptions>, CaptchaOptionsValidator>();
+        services.RequireWhenDeployed(
+            "Captcha:Provider",
+            "Turnstile (AlwaysPass checks nothing)",
+            v => v == CaptchaOptions.TurnstileProvider,
+            allowMissing: true);
+        services.RequireWhenDeployed(
+            "Captcha:TurnstileSecretKey",
+            "the real Turnstile secret key, not one of Cloudflare's test keys",
+            v => !TurnstileTestKeys.IsTestKey(v));
 
         var provider = configuration[$"{CaptchaOptions.SectionName}:{nameof(CaptchaOptions.Provider)}"] ?? CaptchaOptions.TurnstileProvider;
         if (provider == CaptchaOptions.AlwaysPassProvider)

@@ -8,6 +8,7 @@ using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Reels;
 using BJK.Modules.Posts.UseCases.Safety;
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
 using BJK.Modules.Shared.Moderation;
@@ -99,6 +100,8 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddAreaAlertsFallback();
 
         // Reels (daily plays by plan, ranking refreshed in the background) and the incident heat map.
+        services.RequireWhenDeployed("Reels:ViewerKeySecret", "a long random secret for hashing logged-out viewers");
+        services.RequireWhenDeployed("Posts:AppUrl", "the web app's https address, for links in report emails", DeployedSettingChecks.IsHttps);
         services.AddOptions<ReelsOptions>()
             .Bind(configuration.GetSection(ReelsOptions.SectionName))
             .ValidateOnStart();
