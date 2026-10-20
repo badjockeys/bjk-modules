@@ -15,7 +15,7 @@ namespace BJK.Modules.Shared;
 
 public static class ModuleServiceCollectionExtensions
 {
-    /// <summary>Configuration key for the MediatR licence key (store the value in Key Vault).</summary>
+    /// <summary>Configuration key for the MediatR licence key (a secret: user secrets locally, a container secret when deployed).</summary>
     public const string MediatRLicenseKeySetting = "MediatR:LicenseKey";
 
     /// <summary>

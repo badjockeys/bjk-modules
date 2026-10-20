@@ -125,7 +125,7 @@ app.MapControllers();
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `AgeAssurance:*` | Identity server only. The age check for sensitive posts: see [Age policy](#age-policy-13-and-the-age-check-for-sensitive-posts). |
-| `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). Store it in Key Vault. |
+| `MediatR:LicenseKey` | MediatR 13+ needs a licence key (free Community licence under $5M revenue). A secret: user secrets locally, a container secret when deployed. |
 | `Database:AllowDestructiveMigrations` | Default `false`. See below. |
 | `Safety:RequireAgeVerification` | Default **`false`** (since 19 Oct 2026): posting, commenting and reacting no longer need the age check. `true` makes posting, editing posts, commenting, reacting and reporting need the `age_verified` claim again; kept for future use. |
 | `Safety:NewAccounts:Period`, `:MaxPosts`, `:MaxComments` | New-account limits. Defaults `1.00:00:00`, 3, 20. bjk-core only. |
@@ -283,10 +283,10 @@ Each queue row has `id`, `priority`, `visible` (hidden until then: delays and re
 That connection uses its own database user in `badjockeys`, allowed to read the subscriptions and add rows to the queue tables, and nothing else (no access to bjk-core's data, no deletes, no schema changes):
 
 ```sql
--- In the badjockeys database. Azure: the identity server's managed identity (Entra ID authentication).
-CREATE USER [bjk-identity-server] FROM EXTERNAL PROVIDER;
--- Locally / SQL authentication instead: CREATE LOGIN bjk_idsrv_messaging WITH PASSWORD = '...'; (in master), then
--- CREATE USER bjk_idsrv_messaging FOR LOGIN bjk_idsrv_messaging;
+-- In master: a SQL login, its password a container secret (plain SQL logins work the same on any cloud).
+CREATE LOGIN [bjk-identity-server-messaging] WITH PASSWORD = '<a long random password>';
+-- Then in the badjockeys database:
+CREATE USER [bjk-identity-server] FOR LOGIN [bjk-identity-server-messaging];
 GRANT SELECT ON OBJECT::[messaging].[subscriptions] TO [bjk-identity-server];
 GRANT INSERT ON SCHEMA::[messaging] TO [bjk-identity-server];
 ```
@@ -367,7 +367,7 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 
 Storage is Cloudflare R2. R2 speaks the S3 API and Cloudflare has no .NET SDK of its own, so the module uses the `AWSSDK.S3` client pointed at the R2 endpoint, as Cloudflare's R2 docs recommend. Nothing is sent to AWS and no AWS account is needed. The storage code sits behind `IMediaStorage`, so any S3-compatible store works by changing configuration.
 
-Configuration (user secrets locally, Key Vault in Azure):
+Configuration (user secrets locally, container settings and secrets when deployed):
 
 | Key | Notes |
 |---|---|

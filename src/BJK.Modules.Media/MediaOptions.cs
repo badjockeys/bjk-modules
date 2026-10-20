@@ -106,7 +106,7 @@ public sealed class MediaStorageOptions
     [Required]
     public string? AccessKeyId { get; set; }
 
-    /// <summary>Secret: user secrets locally, Key Vault in Azure.</summary>
+    /// <summary>Secret: user secrets locally, a container secret when deployed.</summary>
     [Required]
     public string? SecretAccessKey { get; set; }
 

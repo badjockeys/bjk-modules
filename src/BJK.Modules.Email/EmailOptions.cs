@@ -1,6 +1,6 @@
 namespace BJK.Modules.Email;
 
-/// <summary>Email settings. Section <c>Email</c>. Secrets (the API key) go in user secrets locally and Key Vault in Azure.</summary>
+/// <summary>Email settings. Section <c>Email</c>. Secrets (the API key) go in user secrets locally and container secrets when deployed.</summary>
 public sealed class EmailOptions
 {
     public const string SectionName = "Email";
