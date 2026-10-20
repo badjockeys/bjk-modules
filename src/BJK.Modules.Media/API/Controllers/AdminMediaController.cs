@@ -1,6 +1,7 @@
 using BJK.Modules.Media.UseCases;
 using BJK.Modules.Media.UseCases.Delete;
 using BJK.Modules.Media.UseCases.Get;
+using BJK.Modules.Media.UseCases.KnownImages;
 using BJK.Modules.Media.UseCases.Review;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Security;
@@ -95,7 +96,25 @@ public sealed class AdminMediaController(ISender sender) : ControllerBase
         var result = await sender.Send(new AddManualRedactionsCommand(id, request.Regions ?? []), cancellationToken);
         return Accepted(result);
     }
+
+    /// <summary>
+    /// Block copies of this media: its file hash and perceptual hashes go on the known-image list, so the same picture
+    /// (or a resized or recompressed copy) is blocked if it's uploaded again. Use after removing it. Returns how many
+    /// hashes were added.
+    /// </summary>
+    [HttpPost("{id:guid}/block-copies")]
+    [ProducesResponseType<BlockCopiesResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<BlockCopiesResult> BlockCopies(Guid id, BlockCopiesRequest request, CancellationToken cancellationToken) =>
+        new(await sender.Send(new BlockMediaCopiesCommand(id, request.Reason), cancellationToken));
 }
+
+/// <param name="Reason">Why, for the audit log.</param>
+public sealed record BlockCopiesRequest(string Reason);
+
+/// <param name="HashesAdded">Hashes added to the known-image list.</param>
+public sealed record BlockCopiesResult(int HashesAdded);
 
 /// <param name="Reason">Shown to the uploader.</param>
 public sealed record RejectMediaRequest(string Reason);

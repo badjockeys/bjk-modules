@@ -40,6 +40,9 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<Timeline> Timelines => Set<Timeline>();
 
+    /// <summary>Web addresses that mustn't be shared (<c>posts.BlockedUrls</c>).</summary>
+    public DbSet<BlockedUrl> BlockedUrls => Set<BlockedUrl>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -175,6 +178,20 @@ internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
         builder.Property(t => t.Longitude).HasPrecision(9, 6);
         builder.Ignore(t => t.Types);
         builder.HasIndex(t => new { t.UserId, t.Position });
+    }
+}
+
+internal sealed class BlockedUrlConfiguration : IEntityTypeConfiguration<BlockedUrl>
+{
+    public void Configure(EntityTypeBuilder<BlockedUrl> builder)
+    {
+        builder.ToTable("BlockedUrls");
+        builder.HasKey(b => b.Id);
+        builder.Property(b => b.Id).ValueGeneratedNever();
+        builder.Property(b => b.Pattern).HasMaxLength(BlockedUrl.PatternMaxLength).IsRequired();
+        builder.Property(b => b.Source).HasMaxLength(BlockedUrl.SourceMaxLength).IsRequired();
+        builder.Property(b => b.Reference).HasMaxLength(BlockedUrl.ReferenceMaxLength);
+        builder.HasIndex(b => new { b.Source, b.Pattern }).IsUnique();
     }
 }
 

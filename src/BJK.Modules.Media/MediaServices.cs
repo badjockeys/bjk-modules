@@ -3,6 +3,7 @@ using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared.Configuration;
@@ -58,10 +59,33 @@ public static class MediaServices
             .ValidateDataAnnotations()
             .Validate(o => o.IsValid(), "Media:SensitiveDetection: Mean and Std need three comma-separated numbers (Std above 0) and SensitiveClasses at least one class index.")
             .ValidateOnStart();
+        services.RequireWhenDeployed(
+            "Media:SensitiveDetection:Enabled",
+            "true: the nudity and graphic content checks are required (Online Safety Act)",
+            v => bool.TryParse(v, out var on) && on);
+        services.RequireWhenDeployed("Media:SensitiveDetection:ModelPath", "the content model's path in the worker image");
         services.TryAddSingleton<ISensitiveContentClassifier>(sp =>
-            sp.GetRequiredService<IOptions<SensitiveDetectionOptions>>().Value.Provider == SensitiveClassifierProvider.Development
-                ? ActivatorUtilities.CreateInstance<DevelopmentSensitiveContentClassifier>(sp)
-                : ActivatorUtilities.CreateInstance<OnnxSensitiveContentClassifier>(sp));
+            sp.GetRequiredService<IOptions<SensitiveDetectionOptions>>().Value.Provider switch
+            {
+                SensitiveClassifierProvider.Development => ActivatorUtilities.CreateInstance<DevelopmentSensitiveContentClassifier>(sp),
+                SensitiveClassifierProvider.Onnx => ActivatorUtilities.CreateInstance<OnnxSensitiveContentClassifier>(sp),
+                _ => ActivatorUtilities.CreateInstance<ClipContentClassifier>(sp),
+            });
+        services.AddOptions<KnownImageOptions>()
+            .Bind(configuration.GetSection(KnownImageOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.RefreshInterval >= TimeSpan.FromSeconds(10), "Media:KnownImages:RefreshInterval must be at least 10 seconds.")
+            .Validate(o => o.SyncInterval >= TimeSpan.FromMinutes(5), "Media:KnownImages:SyncInterval must be at least 5 minutes.")
+            .ValidateOnStart();
+        services.RequireWhenDeployed(
+            "Media:KnownImages:Enabled",
+            "true (or unset): checking uploads against known illegal images is required (Online Safety Act)",
+            v => bool.TryParse(v, out var on) && on,
+            allowMissing: true);
+        services.TryAddSingleton<IKnownImageList, KnownImageList>();
+        services.AddHostedService<KnownImageListRefresher>();
+        services.TryAddSingleton<KnownImageSync>();
+        services.AddHostedService(sp => sp.GetRequiredService<KnownImageSync>());
         services.AddSingleton<IMediaRedactor, MediaRedactor>();
         services.AddScoped<MediaProcessor>();
 
@@ -91,6 +115,7 @@ public static class MediaServices
                 sql.EnableRetryOnFailure();
             }));
         services.TryAddScoped<IMediaRepository, MediaRepository>();
+        services.TryAddScoped<IKnownImageRepository, KnownImageRepository>();
 
         services.AddOptions<MediaOptions>()
             .Bind(configuration.GetSection(MediaOptions.SectionName))

@@ -58,6 +58,16 @@ public static class ModerationActions
     public const string RejectMedia = "RejectMedia";
     public const string AddMediaRedactions = "AddMediaRedactions";
     public const string ViewMediaOriginal = "ViewMediaOriginal";
+
+    /// <summary>A moderator added a removed image's hashes to the known-image list, so copies are blocked.</summary>
+    public const string BlockMediaCopies = "BlockMediaCopies";
+    public const string AddKnownImageHash = "AddKnownImageHash";
+    public const string RemoveKnownImageHash = "RemoveKnownImageHash";
+
+    /// <summary>An admin recorded that a known-image match was reported to the authorities.</summary>
+    public const string ReportKnownImageMatch = "ReportKnownImageMatch";
+    public const string BlockUrl = "BlockUrl";
+    public const string UnblockUrl = "UnblockUrl";
 }
 
 /// <summary>Who did a moderation action, from the current request.</summary>

@@ -1,6 +1,8 @@
 using System.Text;
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,13 +21,19 @@ public sealed class SensitiveContentTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
-    private static MediaRedactor Redactor(ISensitiveContentClassifier? classifier, SensitiveDetectionOptions? detection = null, int detectionMaxSize = 0) => new(
+    private static MediaRedactor Redactor(
+        ISensitiveContentClassifier? classifier,
+        SensitiveDetectionOptions? detection = null,
+        int detectionMaxSize = 0,
+        IKnownImageList? known = null) => new(
         [FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate)],
         Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions { DetectionMaxSize = detectionMaxSize }),
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions()),
         NullLogger<MediaRedactor>.Instance,
         classifier,
-        Microsoft.Extensions.Options.Options.Create(detection ?? new SensitiveDetectionOptions { Enabled = true }));
+        Microsoft.Extensions.Options.Options.Create(detection ?? new SensitiveDetectionOptions { Enabled = true }),
+        known,
+        Microsoft.Extensions.Options.Options.Create(new KnownImageOptions()));
 
     private string Video(string colour = "gray")
     {
@@ -79,6 +87,54 @@ public sealed class SensitiveContentTests : IDisposable
         Assert.Equal(1.0, result.SensitiveScore!.Value, 3);
     }
 
+    // Nudity and known images
+
+    [Fact]
+    public async Task A_high_nudity_score_sends_the_media_to_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var low = new FakeClassifier(_ => 0f, nudity: 0.05f);
+        var high = new FakeClassifier(_ => 0f, nudity: 0.8f);
+
+        var clean = await Redactor(low).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+        var held = await Redactor(high).RedactImageAsync(input, [], Path.Combine(_folder, "b.ppm"), Ct);
+
+        Assert.False(clean.NeedsReview, string.Join(" ", clean.ReviewReasons));
+        Assert.Equal(0.05, clean.NudityScore!.Value, 3);
+        Assert.Contains(held.ReviewReasons, r => r.StartsWith("Possible nudity (score 0.80)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_photo_matching_a_known_image_is_reported_and_its_hash_recorded()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var hit = new KnownImageHit(Guid.NewGuid(), KnownHashKind.Pdq, new string('a', 64), "Test", null, 3);
+        var known = Substitute.For<IKnownImageList>();
+        known.IsLoaded.Returns(true);
+        known.MatchPdq(Arg.Any<PdqHash>()).Returns(hit);
+
+        var result = await Redactor(new FakeClassifier(_ => 0f), known: known).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+
+        Assert.Equal(hit.ToReason(), result.ReviewReasons[0]);
+        Assert.Single(result.PerceptualHashes!);
+        Assert.Equal(64, result.PerceptualHashes![0].Length);
+    }
+
+    [Fact]
+    public async Task Until_the_known_image_list_has_loaded_media_goes_to_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var known = Substitute.For<IKnownImageList>();
+        known.IsLoaded.Returns(false);
+
+        var result = await Redactor(new FakeClassifier(_ => 0f), known: known).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+
+        Assert.Contains("The known-image list hasn't loaded yet.", result.ReviewReasons);
+    }
+
     [Fact]
     public async Task A_failing_classifier_sends_the_media_to_review_but_the_blurred_file_is_still_made()
     {
@@ -89,7 +145,7 @@ public sealed class SensitiveContentTests : IDisposable
         var result = await Redactor(classifier).RedactVideoAsync(Video(), new ProbeResult(true, 2m, 1920, 1080, 30), [], output, Ct);
 
         Assert.True(result.NeedsReview);
-        Assert.Contains(result.ReviewReasons, r => r.Contains("graphic content check failed"));
+        Assert.Contains(result.ReviewReasons, r => r.Contains("graphic content and nudity check failed"));
         Assert.Equal(1, classifier.Calls);
         Assert.Null(result.SensitiveScore);
         Assert.True(File.Exists(output));
@@ -233,8 +289,10 @@ public sealed class SensitiveContentTests : IDisposable
 }
 
 /// <summary>A classifier for tests: scores with the given function and remembers the frame sizes it saw.</summary>
-internal sealed class FakeClassifier(Func<RgbFrame, float> score, bool available = true) : ISensitiveContentClassifier
+internal sealed class FakeClassifier(Func<RgbFrame, float> score, bool available = true, float? nudity = null) : ISensitiveContentClassifier
 {
+    public ContentScores Classify(RgbFrame frame) => new(Score(frame), nudity);
+
     private readonly object _lock = new();
 
     public int Calls { get; private set; }

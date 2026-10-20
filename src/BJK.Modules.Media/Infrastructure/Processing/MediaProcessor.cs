@@ -3,6 +3,7 @@ using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,9 @@ internal sealed partial class MediaProcessor(
     TimeProvider clock,
     ILogger<MediaProcessor> logger,
     IMediaCachePurger? cachePurger = null,
-    IOptions<SensitiveDetectionOptions>? detectionOptions = null)
+    IOptions<SensitiveDetectionOptions>? detectionOptions = null,
+    IKnownImageList? knownImages = null,
+    IKnownImageRepository? knownImageRepository = null)
 {
     private const string UnreadableReason = "We couldn't read this file. Try exporting it from your dashcam app again.";
     private const string GaveUpReason = "Processing failed. Try uploading the file again.";
@@ -136,6 +139,12 @@ internal sealed partial class MediaProcessor(
         var original = Path.Combine(folder, SourceFileName(item));
         var sha256 = await DownloadOriginalAsync(item, original, cancellationToken);
 
+        // Exact copies of known images are stopped before any processing.
+        if (MatchFile(item, sha256, await Md5Async(item, original, cancellationToken)) is { } fileMatch)
+        {
+            return await BlockAsync(item, fileMatch, sha256, cancellationToken);
+        }
+
         var probe = await transcoder.ProbeAsync(original, cancellationToken);
         if (!probe.HasVideo)
         {
@@ -178,8 +187,14 @@ internal sealed partial class MediaProcessor(
             await transcoder.CreateFeedImageAsync(redacted, feed, cancellationToken);
         }
 
+        if (await MatchFromReasonsAsync(redaction.ReviewReasons, cancellationToken) is { } frameMatch)
+        {
+            return await BlockAsync(item, frameMatch, sha256, cancellationToken);
+        }
+
         var duration = item.MediaType == MediaType.Video ? probe.DurationSeconds : null;
         item.RecordRedaction(redaction.FacesBlurred, redaction.PlatesBlurred);
+        item.RecordContentChecks(redaction.NudityScore, redaction.PerceptualHashes);
         await ApplySensitiveScoreAsync(item, redaction.SensitiveScore, cancellationToken);
         var outcome = await PublishAsync(
             item,
@@ -192,7 +207,7 @@ internal sealed partial class MediaProcessor(
             feed);
 
         logger.LogInformation(
-            "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames); {Classified} frames scored for graphic content in {ClassificationTime}.",
+            "Media {MediaId} is {Status}: {Faces} faces and {Plates} plates blurred in {Elapsed} ({Frames} frames); {Classified} frames checked for known images, graphic content and nudity in {ClassificationTime}.",
             item.Id,
             item.Status,
             redaction.FacesBlurred,
@@ -229,7 +244,7 @@ internal sealed partial class MediaProcessor(
     /// <summary>Why the media must be reviewed: the redactor's reasons plus any manual regions, without repeats.</summary>
     private static List<string> ReviewReasons(IEnumerable<string> reasons, int manualRegions)
     {
-        var all = reasons.Distinct().ToList();
+        var all = WithoutKnownImage(reasons).Distinct().ToList();
         if (manualRegions > 0)
         {
             all.Add($"A moderator added {manualRegions} blur region(s); check the result.");

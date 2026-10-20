@@ -86,6 +86,17 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<IModerationAuditLog, PostsModerationAuditLog>();
         services.AddScoped<NewAccountLimits>();
         services.AddScoped<ModerationNotifications>();
+        // Blocked web addresses (IWF URL List when connected, moderators' and test entries): kept in memory, and
+        // text containing one is held for review by the content screener.
+        services.AddOptions<BlockedUrlOptions>()
+            .Bind(configuration.GetSection(BlockedUrlOptions.SectionName))
+            .Validate(o => o.RefreshInterval >= TimeSpan.FromSeconds(10) && o.SyncInterval >= TimeSpan.FromMinutes(5), "BlockedUrls: RefreshInterval must be at least 10 seconds and SyncInterval at least 5 minutes.")
+            .ValidateOnStart();
+        services.AddSingleton<BlockedUrlList>();
+        services.AddSingleton<IBlockedUrlList>(sp => sp.GetRequiredService<BlockedUrlList>());
+        services.AddScoped<IBlockedUrlRepository, BlockedUrlRepository>();
+        services.AddSingleton<BlockedUrlMaintenance>();
+        services.AddHostedService(sp => sp.GetRequiredService<BlockedUrlMaintenance>());
         services.AddContentScreening(configuration);
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();

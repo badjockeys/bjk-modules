@@ -25,19 +25,24 @@ public static class SafetyServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<ScreeningOptions>, ScreeningOptionsValidator>());
         services.AddSingleton<KeywordContentScreener>();
 
+        // Text with an address on the blocked list (IBlockedUrlList, if a module registers one) is always held.
         var provider = configuration[$"{ScreeningOptions.SectionName}:{nameof(ScreeningOptions.Provider)}"] ?? ScreeningOptions.KeywordsProvider;
         if (provider == ScreeningOptions.HttpProvider)
         {
-            services.AddHttpClient<IContentScreener, HttpContentScreener>((sp, client) =>
+            services.AddHttpClient<HttpContentScreener>((sp, client) =>
                 client.Timeout = sp.GetRequiredService<IOptions<ScreeningOptions>>().Value.Timeout);
+            services.AddTransient<IContentScreener>(sp => WithBlockedUrls(sp, sp.GetRequiredService<HttpContentScreener>()));
         }
         else
         {
-            services.AddSingleton<IContentScreener>(sp => sp.GetRequiredService<KeywordContentScreener>());
+            services.AddSingleton<IContentScreener>(sp => WithBlockedUrls(sp, sp.GetRequiredService<KeywordContentScreener>()));
         }
 
         return services;
     }
+
+    private static IContentScreener WithBlockedUrls(IServiceProvider services, IContentScreener inner) =>
+        services.GetService<IBlockedUrlList>() is { } list ? new BlockedUrlScreener(inner, list) : inner;
 
     /// <summary>
     /// Registers <see cref="ICaptchaVerifier"/> from <c>Captcha:Provider</c>, with its settings checked at startup.

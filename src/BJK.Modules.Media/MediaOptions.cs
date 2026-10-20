@@ -351,12 +351,14 @@ public enum RedactionExecutionProvider
 }
 
 /// <summary>
-/// Automatic detection of graphic content (blood, injuries, the aftermath of serious crashes). Section
+/// Automatic detection of graphic content (blood, injuries, the aftermath of serious crashes) and nudity. Section
 /// <c>Media:SensitiveDetection</c>; only the worker host reads it. When enabled, the media worker scores frames already
 /// decoded (and scaled down) for blurring with an image classifier; a photo or video scoring at least
-/// <see cref="Threshold"/> is marked sensitive automatically before it's published, so it's never public unblurred,
-/// and its post goes to the moderators' sensitive-review queue. If the classifier is missing or fails, the media goes
-/// to review instead of being published unchecked.
+/// <see cref="Threshold"/> for graphic content is marked sensitive automatically before it's published, so it's never
+/// public unblurred, and its post goes to the moderators' sensitive-review queue. One scoring at least
+/// <see cref="NudityThreshold"/> for nudity isn't published: it waits for a moderator (pornography isn't allowed). If
+/// the classifier is missing or fails, the media goes to review instead of being published unchecked. Required when
+/// deployed.
 /// </summary>
 public sealed class SensitiveDetectionOptions
 {
@@ -369,14 +371,25 @@ public sealed class SensitiveDetectionOptions
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// <see cref="SensitiveClassifierProvider.Onnx"/> (a model file, <see cref="ModelPath"/>) or
-    /// <see cref="SensitiveClassifierProvider.Development"/> (a stand-in that flags strongly red pictures, for local
-    /// testing only; refused outside the Development environment).
+    /// <see cref="SensitiveClassifierProvider.Clip"/> (the default: CLIP's vision model at <see cref="ModelPath"/>,
+    /// scoring graphic content and nudity), <see cref="SensitiveClassifierProvider.Onnx"/> (any image classification
+    /// model at <see cref="ModelPath"/>, graphic content only) or <see cref="SensitiveClassifierProvider.Development"/>
+    /// (a stand-in that flags strongly red pictures, for local testing only; refused outside the Development environment).
     /// </summary>
-    public SensitiveClassifierProvider Provider { get; set; } = SensitiveClassifierProvider.Onnx;
+    public SensitiveClassifierProvider Provider { get; set; } = SensitiveClassifierProvider.Clip;
 
-    /// <summary>The image classification model (ONNX), e.g. <c>/opt/bjk/models/graphic-content.onnx</c>.</summary>
+    /// <summary>
+    /// The model file (ONNX). For Clip, Xenova's quantised CLIP ViT-B/32 vision model, e.g.
+    /// <c>/opt/bjk/models/clip-vit-b32-vision.onnx</c> (bjk-core's model download script fetches it).
+    /// </summary>
     public string? ModelPath { get; set; }
+
+    /// <summary>
+    /// Nudity score (0 to 1) at or above which media is held for a moderator instead of being published. Only
+    /// classifiers that score nudity (Clip) use it. Low, to over-flag: dashcam footage scores near 0.
+    /// </summary>
+    [Range(0.01, 1.0)]
+    public double NudityThreshold { get; set; } = 0.3;
 
     /// <summary>
     /// Score (0 to 1) at or above which media is marked sensitive. Deliberately low, to over-flag: a moderator confirms
@@ -392,7 +405,7 @@ public sealed class SensitiveDetectionOptions
     [Range(1, 100)]
     public int SampleEvery { get; set; } = 3;
 
-    /// <summary>The model's input width in pixels (frames are resized to it, ignoring aspect ratio).</summary>
+    /// <summary>The model's input width in pixels (frames are resized to it, ignoring aspect ratio). Onnx only.</summary>
     [Range(16, 2048)]
     public int InputWidth { get; set; } = 224;
 
@@ -451,9 +464,12 @@ public sealed class SensitiveDetectionOptions
             .ToArray();
 }
 
-/// <summary>Which graphic content classifier the worker uses (<c>Media:SensitiveDetection:Provider</c>).</summary>
+/// <summary>Which content classifier the worker uses (<c>Media:SensitiveDetection:Provider</c>).</summary>
 public enum SensitiveClassifierProvider
 {
+    /// <summary>CLIP (zero-shot) from <c>Media:SensitiveDetection:ModelPath</c>: graphic content and nudity in one model run.</summary>
+    Clip,
+
     /// <summary>An ONNX image classification model from <c>Media:SensitiveDetection:ModelPath</c>.</summary>
     Onnx,
 
@@ -472,4 +488,39 @@ public enum SensitiveModelOutput
 
     /// <summary>Already probabilities (the model ends in softmax): the sensitive classes' values added.</summary>
     Probabilities,
+}
+
+/// <summary>
+/// Checking uploads against known illegal images (section <c>Media:KnownImages</c>; the media worker reads it). The
+/// hashes are in SQL (<c>media.KnownImageHashes</c>): from hash lists such as the IWF's, written by
+/// <see cref="Infrastructure.Processing.Safety.IKnownImageSource"/> sync jobs; added by moderators when they remove an
+/// image; or harmless test hashes locally. Every photo, and sampled video frames, are hashed with PDQ, and the file
+/// with SHA-256 and MD5; a match blocks the upload, deletes its files and records the match for moderators.
+/// </summary>
+public sealed class KnownImageOptions
+{
+    public const string SectionName = "Media:KnownImages";
+
+    /// <summary>On by default (an empty list blocks nothing); required when deployed.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>How often the worker checks SQL for changes to the list (it reloads only if something changed).</summary>
+    public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How many of PDQ's 256 bits may differ for a match. 31 is the figure Meta and the hash-sharing programmes use;
+    /// higher catches more edited copies and more false matches.
+    /// </summary>
+    [Range(0, 64)]
+    public int PdqMaxDistance { get; set; } = 31;
+
+    /// <summary>
+    /// Frames whose PDQ quality (0 to 100) is below this aren't checked: flat or blank pictures give hashes that match
+    /// too easily. 50 is the usual figure.
+    /// </summary>
+    [Range(0, 100)]
+    public int PdqMinQuality { get; set; } = 50;
+
+    /// <summary>How often each hash list source (<c>IKnownImageSource</c>) is synced into SQL.</summary>
+    public TimeSpan SyncInterval { get; set; } = TimeSpan.FromHours(6);
 }

@@ -13,6 +13,10 @@ public sealed class MediaItem
     public const int KeyMaxLength = 512;
     public const int FailureReasonMaxLength = 500;
     public const int ReviewReasonMaxLength = 500;
+    public const int PerceptualHashesMaxLength = 65 * MaxPerceptualHashes;
+
+    /// <summary>How many PDQ hashes are kept per media (sampled through a video).</summary>
+    public const int MaxPerceptualHashes = 8;
 
     private static readonly JsonSerializerOptions RedactionJson = new(JsonSerializerDefaults.Web);
 
@@ -131,6 +135,18 @@ public sealed class MediaItem
     /// </summary>
     public double? SensitiveScore { get; private set; }
 
+    /// <summary>
+    /// The highest nudity score (0 to 1) of the frames checked in the latest processing; null if not checked. At or
+    /// above <c>Media:SensitiveDetection:NudityThreshold</c> the media was held for a moderator.
+    /// </summary>
+    public double? NudityScore { get; private set; }
+
+    /// <summary>
+    /// PDQ hashes of the original (one for a photo, up to <see cref="MaxPerceptualHashes"/> sampled through a video),
+    /// space-separated, so a moderator who removes it can block copies of it. Null for videos processed in segments.
+    /// </summary>
+    public string? PerceptualHashes { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? UploadedAt { get; private set; }
@@ -230,6 +246,16 @@ public sealed class MediaItem
     /// <param name="score">The highest score of the frames checked.</param>
     public void RecordSensitiveScore(double? score) =>
         SensitiveScore = score is null ? null : Math.Round(Math.Clamp(score.Value, 0, 1), 4);
+
+    /// <summary>Records the nudity score and the original's perceptual hashes from the latest processing.</summary>
+    /// <param name="nudityScore">The highest nudity score of the frames checked, or null.</param>
+    /// <param name="perceptualHashes">PDQ hashes (hex); the first <see cref="MaxPerceptualHashes"/> are kept.</param>
+    public void RecordContentChecks(double? nudityScore, IEnumerable<string>? perceptualHashes)
+    {
+        NudityScore = nudityScore is null ? null : Math.Round(Math.Clamp(nudityScore.Value, 0, 1), 4);
+        var hashes = perceptualHashes?.Take(MaxPerceptualHashes).ToList();
+        PerceptualHashes = hashes is { Count: > 0 } ? string.Join(' ', hashes) : null;
+    }
 
     /// <summary>
     /// Processed and blurred, but a moderator must check it first. The blurred files are in the private bucket under
