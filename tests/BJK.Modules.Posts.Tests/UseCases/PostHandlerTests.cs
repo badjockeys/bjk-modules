@@ -303,6 +303,41 @@ public sealed class PostHandlerTests
             () => handler.Handle(new ResolveReportCommand(Guid.NewGuid(), ReportAction.Dismiss, null), Ct));
     }
 
+    [Fact]
+    public async Task Publishing_a_draft_removes_the_draft_and_keeps_its_media()
+    {
+        var mediaId = Guid.NewGuid();
+        MediaAre(Ready(mediaId, UserId));
+        var drafts = Substitute.For<IDraftRepository>();
+        var draft = PostDraft.Create(UserId, DraftOf(mediaId), Now);
+        drafts.GetAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
+        var handler = new CreatePostCommandHandler(
+            _posts, _profiles, _media, _screener, Limits(), _views, Publisher(), _caller, _clock, drafts: drafts);
+
+        await handler.Handle(Command(mediaId) with { DraftId = draft.Id }, Ct);
+
+        drafts.Received(1).Remove(draft);
+        await _media.DidNotReceive().DeleteAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Someone_elses_draft_cant_be_published()
+    {
+        var mediaId = Guid.NewGuid();
+        MediaAre(Ready(mediaId, UserId));
+        var drafts = Substitute.For<IDraftRepository>();
+        var draft = PostDraft.Create(OtherUserId, DraftOf(mediaId), Now);
+        drafts.GetAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
+        var handler = new CreatePostCommandHandler(
+            _posts, _profiles, _media, _screener, Limits(), _views, Publisher(), _caller, _clock, drafts: drafts);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(Command(mediaId) with { DraftId = draft.Id }, Ct));
+        _posts.DidNotReceive().Add(Arg.Any<Post>());
+    }
+
+    private static DraftContent DraftOf(Guid mediaId) =>
+        new("Title", null, [IncidentCategory.Speeding], null, null, null, null, false, [], null, null, null, null, null, [mediaId]);
+
     private void CallerIsModerator()
     {
         _caller.HasScope(BJK.Modules.Posts.PostsModule.ManageScope).Returns(true);

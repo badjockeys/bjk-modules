@@ -28,7 +28,8 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// tagged sensitive automatically (and queued for a moderator) whatever <c>IsSensitive</c> says. <c>Types</c> are the
 /// types of bad driving (at least one; the first is the main one); older clients can send one <c>Category</c> instead.
 /// <c>Passengers</c> are @handles of people in the author's vehicle (driving incidents only, up to 4, adults only):
-/// each is asked to accept before their name shows on the post.
+/// each is asked to accept before their name shows on the post. <c>DraftId</c> publishes one of the author's drafts:
+/// the draft is deleted once the post is saved (its photos and videos stay, in the post).
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -46,7 +47,8 @@ public sealed record CreatePostCommand(
     string? VehicleMake = null,
     string? VehicleModel = null,
     VehicleColour? VehicleColour = null,
-    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    bool? ReportedToPolice = null,
+    Guid? DraftId = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
@@ -77,7 +79,8 @@ public sealed class CreatePostCommandHandler(
     TimeProvider clock,
     PassengerTagging? passengers = null,
     INotificationSender? notifications = null,
-    IAreaAlerts? areaAlerts = null)
+    IAreaAlerts? areaAlerts = null,
+    IDraftRepository? drafts = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -94,6 +97,11 @@ public sealed class CreatePostCommandHandler(
         }
 
         await limits.EnsureCanPostAsync(userId, cancellationToken);
+
+        // Publishing a draft: it must be the caller's own. It's removed in the same save as the post.
+        var draft = request.DraftId is { } draftId && drafts is not null
+            ? await Drafts.SaveDraftCommandHandler.GetOwnAsync(drafts, caller, draftId, cancellationToken)
+            : null;
 
         var found = (await media.GetAsync(request.MediaIds, cancellationToken)).ToDictionary(m => m.Id);
         foreach (var id in request.MediaIds)
@@ -157,6 +165,11 @@ public sealed class CreatePostCommandHandler(
         }
 
         posts.Add(post);
+        if (draft is not null)
+        {
+            drafts!.Remove(draft);
+        }
+
         IReadOnlyList<Guid> tagged = [];
         if (passengers is not null && passengerIds.Count > 0)
         {

@@ -18,6 +18,7 @@ namespace BJK.Modules.Posts.Tests.UseCases;
 public sealed class PostLifecycleTests
 {
     private readonly IPostRepository _posts = Substitute.For<IPostRepository>();
+    private readonly IDraftRepository _drafts = Substitute.For<IDraftRepository>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -27,7 +28,7 @@ public sealed class PostLifecycleTests
     [InlineData(UserLifecycleEventType.Reactivated, false)]
     public async Task Deactivation_hides_and_reactivation_shows_the_users_posts(UserLifecycleEventType type, bool hidden)
     {
-        var handler = new PostsUserLifecycleHandler(_posts);
+        var handler = new PostsUserLifecycleHandler(_posts, _drafts);
 
         await handler.HandleAsync(new UserLifecycleEvent(Guid.NewGuid(), UserId, type, Now), Ct);
 
@@ -37,11 +38,12 @@ public sealed class PostLifecycleTests
     [Fact]
     public async Task Deleting_the_account_deletes_everything_in_posts()
     {
-        var handler = new PostsUserLifecycleHandler(_posts);
+        var handler = new PostsUserLifecycleHandler(_posts, _drafts);
 
         await handler.HandleAsync(new UserLifecycleEvent(Guid.NewGuid(), UserId, UserLifecycleEventType.Deleted, Now), Ct);
 
         await _posts.Received(1).DeleteAllForUserAsync(UserId, Arg.Any<CancellationToken>());
+        await _drafts.Received(1).DeleteAllForUserAsync(UserId, Arg.Any<CancellationToken>());
     }
 
     [Fact]

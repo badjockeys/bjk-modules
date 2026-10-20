@@ -89,6 +89,12 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
         services.AddScoped<UseCases.Passengers.PassengerTagging>();
+
+        // Drafts: up to 5 each, deleted with their media 30 days after they were last saved.
+        services.AddScoped<IDraftRepository, DraftRepository>();
+        services.AddScoped<UseCases.Drafts.DraftViews>();
+        services.AddScoped<UseCases.Drafts.DraftDeletion>();
+        services.AddHostedService<DraftsCleanup>();
         services.AddNotificationSenderFallback();
         services.AddAreaAlertsFallback();
 

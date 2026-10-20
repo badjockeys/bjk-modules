@@ -182,6 +182,24 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("CommentReactions", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.DraftMedia", b =>
+                {
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.HasKey("DraftId", "MediaId");
+
+                    b.HasIndex("MediaId");
+
+                    b.ToTable("DraftMedia", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.ModerationAuditRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -427,6 +445,92 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Posts", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("IncidentAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsSensitive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("PassengersText")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("Passengers");
+
+                    b.Property<string>("PlaceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool?>("ReportedToPolice")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("TypeFlags")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VehicleColour")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("VehicleMake")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("VehicleModel")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("VehicleType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("AuthorId", "UpdatedAt");
+
+                    b.ToTable("Drafts", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostMedia", b =>
                 {
                     b.Property<Guid>("PostId")
@@ -658,6 +762,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.DraftMedia", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.PostDraft", null)
+                        .WithMany("Media")
+                        .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostMedia", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
@@ -712,6 +825,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Post", b =>
+                {
+                    b.Navigation("Media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostDraft", b =>
                 {
                     b.Navigation("Media");
                 });

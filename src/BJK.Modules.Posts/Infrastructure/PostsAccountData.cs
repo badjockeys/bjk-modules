@@ -7,15 +7,25 @@ using Microsoft.EntityFrameworkCore;
 namespace BJK.Modules.Posts.Infrastructure;
 
 /// <summary>Hides a deactivated user's posts and comments, shows them again on return, and deletes them with the account.</summary>
-internal sealed class PostsUserLifecycleHandler(IPostRepository posts) : IUserLifecycleHandler
+internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRepository drafts) : IUserLifecycleHandler
 {
-    public Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken) => userEvent.Type switch
+    public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
     {
-        UserLifecycleEventType.Deactivated => posts.SetAuthorDeactivatedAsync(userEvent.UserId, true, cancellationToken),
-        UserLifecycleEventType.Reactivated => posts.SetAuthorDeactivatedAsync(userEvent.UserId, false, cancellationToken),
-        UserLifecycleEventType.Deleted => posts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken),
-        _ => Task.CompletedTask,
-    };
+        switch (userEvent.Type)
+        {
+            case UserLifecycleEventType.Deactivated:
+                await posts.SetAuthorDeactivatedAsync(userEvent.UserId, true, cancellationToken);
+                break;
+            case UserLifecycleEventType.Reactivated:
+                await posts.SetAuthorDeactivatedAsync(userEvent.UserId, false, cancellationToken);
+                break;
+            case UserLifecycleEventType.Deleted:
+                // Their uploads, drafts' included, are deleted by the Media module's own handler.
+                await drafts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+                await posts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+                break;
+        }
+    }
 }
 
 /// <summary>The user's posts (including hidden and deleted ones still held), comments, reactions, reports and reel plays.</summary>
@@ -101,9 +111,38 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(t => new { t.PostId, Status = t.Status.ToString(), t.TaggedAt, t.RespondedAt })
             .ToListAsync(cancellationToken);
 
+        // Drafts not yet posted.
+        var drafts = (await db.PostDrafts.AsNoTracking()
+                .Include(d => d.Media)
+                .Where(d => d.AuthorId == userId)
+                .OrderBy(d => d.CreatedAt)
+                .ToListAsync(cancellationToken))
+            .Select(d => new
+            {
+                d.Id,
+                d.Title,
+                d.Description,
+                Types = d.Types,
+                d.IncidentAt,
+                d.Latitude,
+                d.Longitude,
+                d.PlaceName,
+                d.IsSensitive,
+                d.Passengers,
+                d.VehicleType,
+                d.VehicleMake,
+                d.VehicleModel,
+                d.VehicleColour,
+                d.ReportedToPolice,
+                MediaIds = d.Media.OrderBy(m => m.Position).Select(m => m.MediaId).ToList(),
+                d.CreatedAt,
+                d.UpdatedAt,
+            })
+            .ToList();
+
         // Every type of bad driving on each post, by name.
         var postTypes = posts.Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(p.TypeFlags, p.Category) }).ToList();
 
-        return new { posts, postTypes, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
+        return new { posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
     }
 }
