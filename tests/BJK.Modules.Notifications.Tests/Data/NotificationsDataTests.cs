@@ -105,4 +105,37 @@ public sealed class NotificationsSqlServerTests : IAsyncLifetime
             Assert.Equal(0, (await repository.ListAsync(UserId, 1, 20, Ct)).TotalCount);
         }
     }
+
+    [Fact]
+    public async Task Subscribers_around_a_post_are_found_and_their_held_posts_listed()
+    {
+        await using (var db = Context())
+        {
+            var areas = new AreaAlertRepository(db);
+            var near = AreaSubscription.Create(UserId, "Rainhill", 53.42m, -2.76m, Now);
+            near.RecordPlan(true, Now);
+            near.SetAlerts(true, 5, AreaAlertMode.Digest, false, Now);
+            var far = AreaSubscription.Create(SamId, "Leeds", 53.80m, -1.55m, Now);
+            far.RecordPlan(true, Now);
+            far.SetAlerts(true, 25, AreaAlertMode.Digest, false, Now);
+            areas.Add(near);
+            areas.Add(far);
+            areas.AddItem(AreaAlertItem.Create(UserId, PostId, "Tailgated", "Rainhill", Now));
+            await areas.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var areas = new AreaAlertRepository(db);
+            var found = await areas.FindAroundAsync(53.43m, -2.77m, 25, Ct);
+            Assert.Equal(UserId, Assert.Single(found).UserId);
+            Assert.Equal(UserId, Assert.Single(await areas.ListWithWaitingAsync(Ct)).UserId);
+            Assert.Single(await areas.GetWaitingAsync(UserId, Now.AddMinutes(1), Ct));
+            Assert.Empty(await areas.GetWaitingAsync(UserId, Now, Ct));
+
+            await areas.RemoveAsync(UserId, Ct);
+            Assert.Null(await areas.GetAsync(UserId, Ct));
+            Assert.Empty(await areas.ListWithWaitingAsync(Ct));
+        }
+    }
 }

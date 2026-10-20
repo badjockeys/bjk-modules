@@ -143,6 +143,37 @@ public static class EmailTemplates
         return new EmailTemplate(subject, body);
     }
 
+    /// <summary>A summary of new posts in someone's home area (Premium area alerts).</summary>
+    /// <param name="area">The home area's name, e.g. "Rainhill".</param>
+    /// <param name="posts">Each post's title, place and link (link may be null).</param>
+    /// <param name="settingsLink">The notification settings page, if known.</param>
+    public static EmailTemplate AreaSummary(string area, IReadOnlyList<(string Title, string? Place, Uri? Link)> posts, Uri? settingsLink)
+    {
+        ArgumentNullException.ThrowIfNull(posts);
+        var subject = posts.Count == 1
+            ? $"New bad driving reported near {area}"
+            : $"{posts.Count} new reports of bad driving near {area}";
+        var body = BrandedEmail.Create(subject)
+            .Paragraph(posts.Count == 1
+                ? $"Someone has posted bad driving near {area} on Bad Jockeys:"
+                : $"{posts.Count} posts of bad driving near {area} since your last update:");
+        foreach (var (title, place, link) in posts.Take(20))
+        {
+            var line = string.IsNullOrWhiteSpace(place) ? $"\u201c{title}\u201d" : $"\u201c{title}\u201d, {place}";
+            body = body.Paragraph(link is null ? line : $"{line}: {link}");
+        }
+
+        if (posts.Count > 20)
+        {
+            body = body.Paragraph($"And {posts.Count - 20} more on the map.");
+        }
+
+        body = body.Footer(settingsLink is null
+            ? "You're getting this because you switched on area alerts on Bad Jockeys. You can change them under Account, Notifications."
+            : $"You're getting this because you switched on area alerts on Bad Jockeys. Change them at {settingsLink}.");
+        return new EmailTemplate(subject, body);
+    }
+
     private const string ReportFooter = "You're getting this email because you reported content on Bad Jockeys.";
 
     private static string Hours(TimeSpan duration)

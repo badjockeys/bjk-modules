@@ -90,6 +90,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<PostViews>();
         services.AddScoped<UseCases.Passengers.PassengerTagging>();
         services.AddNotificationSenderFallback();
+        services.AddAreaAlertsFallback();
 
         // Reels (daily plays by plan, ranking refreshed in the background) and the incident heat map.
         services.AddOptions<ReelsOptions>()

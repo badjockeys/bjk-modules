@@ -71,7 +71,8 @@ public sealed class CreatePostCommandHandler(
     ICurrentUser caller,
     TimeProvider clock,
     PassengerTagging? passengers = null,
-    INotificationSender? notifications = null)
+    INotificationSender? notifications = null,
+    IAreaAlerts? areaAlerts = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -159,6 +160,10 @@ public sealed class CreatePostCommandHandler(
 
         await posts.SaveChangesAsync(cancellationToken);
         await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
+        if (post.IsPublic && areaAlerts is not null)
+        {
+            await areaAlerts.PostPublishedAsync(post.ToPublished(clock.GetUtcNow()), cancellationToken);
+        }
         if (autoTagged)
         {
             await publisher.RecordAutomaticTagAsync(post, cancellationToken);

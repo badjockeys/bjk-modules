@@ -1,3 +1,4 @@
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Safety;
 
 namespace BJK.Modules.Posts.Domain;
@@ -219,6 +220,11 @@ public sealed class Post
 
     /// <summary>Published, its media are ready and its author's account is active: anyone can see it.</summary>
     public bool IsPublic => IsPublished && MediaState == PostMediaState.Ready && !IsAuthorDeactivated;
+
+    /// <summary>What area alerts need to know about the post, once it's public.</summary>
+    /// <param name="now">When it became public.</param>
+    public PublishedPost ToPublished(DateTimeOffset now) =>
+        new(Id, AuthorId, Title, PlaceName, Latitude, Longitude, now);
 
     /// <summary>Still waiting for its photos or video to finish processing.</summary>
     public bool IsMediaPending => MediaState == PostMediaState.Pending;

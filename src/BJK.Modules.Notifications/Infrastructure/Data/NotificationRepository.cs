@@ -100,6 +100,8 @@ internal sealed class NotificationRepository(NotificationsDbContext db) : INotif
         await db.Notifications.Where(n => n.UserId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.Settings.Where(s => s.UserId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.Contacts.Where(c => c.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+        await db.AreaAlertItems.Where(i => i.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+        await db.AreaSubscriptions.Where(a => a.UserId == userId).ExecuteDeleteAsync(cancellationToken);
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);

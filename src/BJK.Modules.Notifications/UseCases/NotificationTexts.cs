@@ -24,6 +24,8 @@ public static class NotificationTexts
             NotificationType.ReactionOnPost when count > 1 =>
                 $"{who} and {count - 1} {(count == 2 ? "other" : "others")} reacted to {post}.",
             NotificationType.ReactionOnPost => $"{who} reacted to {post}.",
+            NotificationType.AreaPost when count > 1 =>
+                $"{count} new posts in your area, including {on}.",
             NotificationType.AreaPost => $"New in your area: {on}.",
             _ => "You have a new notification.",
         };

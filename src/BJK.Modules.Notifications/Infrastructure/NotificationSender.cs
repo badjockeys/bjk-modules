@@ -39,33 +39,7 @@ internal sealed class NotificationSender(
             var chosen = (await notifications.GetSettingsAsync(request.UserId, cancellationToken))
                 .FirstOrDefault(s => s.Type == request.Type);
             var (inApp, byEmail) = chosen is null ? NotificationDefaults.For(request.Type) : (chosen.InApp, chosen.Email);
-            if (!inApp && !byEmail)
-            {
-                return;
-            }
-
-            var now = clock.GetUtcNow();
-            var grouped = false;
-            if (inApp)
-            {
-                if (request.Type == NotificationType.ReactionOnPost && request.PostId is { } postId
-                    && await notifications.FindUnreadAsync(request.UserId, request.Type, postId, cancellationToken) is { } existing)
-                {
-                    existing.AddOne(request.ActorId, now);
-                    grouped = true;
-                }
-                else
-                {
-                    notifications.Add(Notification.Create(request, now));
-                }
-
-                await notifications.SaveChangesAsync(cancellationToken);
-            }
-
-            if (byEmail && !grouped)
-            {
-                await EmailAsync(request, cancellationToken);
-            }
+            await DeliverAsync(request, inApp, byEmail, null, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -73,11 +47,68 @@ internal sealed class NotificationSender(
         }
     }
 
-    private async Task EmailAsync(NotificationRequest request, CancellationToken cancellationToken)
+    /// <summary>
+    /// Puts the notification in the bell (<paramref name="inApp"/>) and emails it (<paramref name="byEmail"/>), with
+    /// <paramref name="template"/> instead of the standard email if given (area summaries list their posts). Throws on
+    /// failure: callers log it.
+    /// </summary>
+    internal async Task DeliverAsync(
+        NotificationRequest request,
+        bool inApp,
+        bool byEmail,
+        EmailTemplate? template,
+        CancellationToken cancellationToken,
+        int count = 1)
+    {
+        if (!inApp && !byEmail)
+        {
+            return;
+        }
+
+        var now = clock.GetUtcNow();
+        var grouped = false;
+        if (inApp)
+        {
+            if (request.Type == NotificationType.ReactionOnPost && request.PostId is { } postId
+                && await notifications.FindUnreadAsync(request.UserId, request.Type, postId, cancellationToken) is { } existing)
+            {
+                existing.AddOne(request.ActorId, now);
+                grouped = true;
+            }
+            else
+            {
+                var notification = Notification.Create(request, now);
+                for (var i = 1; i < count; i++)
+                {
+                    notification.AddOne(null, now);
+                }
+
+                notifications.Add(notification);
+            }
+
+            await notifications.SaveChangesAsync(cancellationToken);
+        }
+
+        if (byEmail && !grouped)
+        {
+            await EmailAsync(request, template, cancellationToken);
+        }
+    }
+
+    /// <summary>The web app's links, if <c>Notifications:AppUrl</c> is set.</summary>
+    internal Uri? Link(string path) => options.Value.AppUrl is { } app ? new Uri(app, path) : null;
+
+    private async Task EmailAsync(NotificationRequest request, EmailTemplate? custom, CancellationToken cancellationToken)
     {
         var contact = await notifications.GetContactAsync(request.UserId, cancellationToken);
         if (contact is null)
         {
+            return;
+        }
+
+        if (custom is not null)
+        {
+            await email.SendAsync(custom.To(contact.Email, emailOptions.Value.LogoUrl), cancellationToken);
             return;
         }
 
@@ -88,9 +119,8 @@ internal sealed class NotificationSender(
             actorName = people.TryGetValue(actorId, out var actor) ? actor.DisplayName : null;
         }
 
-        var app = options.Value.AppUrl;
-        var link = app is null || request.PostId is null ? null : new Uri(app, $"/p/{request.PostId:D}");
-        var settings = app is null ? null : new Uri(app, "/account/notifications");
+        var link = request.PostId is null ? null : Link($"/p/{request.PostId:D}");
+        var settings = Link("/account/notifications");
         var template = EmailTemplates.Notification(
             NotificationTexts.Subject(request.Type, actorName),
             NotificationTexts.Sentence(request.Type, actorName, 1, request.PostTitle),

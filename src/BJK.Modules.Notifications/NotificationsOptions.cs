@@ -11,6 +11,9 @@ public sealed class NotificationsOptions
     /// </summary>
     public Uri? AppUrl { get; set; }
 
+    /// <summary>The place lookup (postcodes.io). Ends with a slash.</summary>
+    public Uri PlacesBaseUrl { get; set; } = new("https://api.postcodes.io/");
+
     /// <summary>How often old notifications are cleared out. Every 6 hours by default.</summary>
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(6);
 }

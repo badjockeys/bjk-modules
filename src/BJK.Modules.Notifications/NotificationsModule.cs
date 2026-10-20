@@ -46,8 +46,21 @@ public sealed class NotificationsModule(string connectionStringName) : IModule
         services.AddOptions<NotificationsOptions>().Bind(configuration.GetSection(NotificationsOptions.SectionName));
         services.AddScoped<INotificationRepository, NotificationRepository>();
 
-        // Replaces the do-nothing sender other modules register, whichever module is registered first.
-        services.Replace(ServiceDescriptor.Scoped<INotificationSender, NotificationSender>());
+        // Replace the do-nothing sender and area alerts other modules register, whichever module is registered first.
+        services.AddScoped<NotificationSender>();
+        services.Replace(ServiceDescriptor.Scoped<INotificationSender>(sp => sp.GetRequiredService<NotificationSender>()));
+        services.AddScoped<IAreaAlertRepository, AreaAlertRepository>();
+        services.Replace(ServiceDescriptor.Scoped<IAreaAlerts, AreaAlerts>());
+        services.AddHostedService<AreaSummaries>();
+
+        // Place search (home areas): postcodes.io, cached.
+        services.AddMemoryCache();
+        services.AddHttpClient<IPlaceLookup, PostcodesIoPlaceLookup>(http =>
+        {
+            http.BaseAddress = configuration.GetSection(NotificationsOptions.SectionName).Get<NotificationsOptions>()?.PlacesBaseUrl
+                ?? new NotificationsOptions().PlacesBaseUrl;
+            http.Timeout = TimeSpan.FromSeconds(5);
+        });
 
         services.AddScoped<IPersonalDataExporter, NotificationsPersonalDataExporter>();
         services.AddUserLifecycleHandler<NotificationsUserLifecycleHandler>(configuration, connectionStringName);

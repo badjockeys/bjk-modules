@@ -87,13 +87,26 @@ public sealed record GetUnreadCountQuery : IRequest<UnreadCountDto>;
 
 public sealed record UnreadCountDto(int Unread);
 
-public sealed class GetUnreadCountQueryHandler(INotificationRepository notifications, ICurrentUser caller, TimeProvider clock)
+public sealed class GetUnreadCountQueryHandler(
+    INotificationRepository notifications,
+    ICurrentUser caller,
+    TimeProvider clock,
+    IAreaAlertRepository? areas = null,
+    IPlanResolver? plans = null)
     : IRequestHandler<GetUnreadCountQuery, UnreadCountDto>
 {
     public async Task<UnreadCountDto> Handle(GetUnreadCountQuery request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
         await RecordContactAsync(userId, cancellationToken);
+
+        // Keeps area alerts in step with the plan in the user's token (alerts stop soon after Premium lapses).
+        if (areas is not null && await areas.GetAsync(userId, cancellationToken) is { } area
+            && area.RecordPlan(Plans.IsPremium(plans), clock.GetUtcNow()))
+        {
+            await areas.SaveChangesAsync(cancellationToken);
+        }
+
         return new UnreadCountDto(await notifications.CountUnreadAsync(userId, cancellationToken));
     }
 

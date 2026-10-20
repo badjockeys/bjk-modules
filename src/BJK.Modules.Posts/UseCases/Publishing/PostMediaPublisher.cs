@@ -28,7 +28,8 @@ public sealed class PostMediaPublisher(
     TimeProvider clock,
     ILogger<PostMediaPublisher> logger,
     IModerationAuditLog audit,
-    INotificationSender? notifier = null)
+    INotificationSender? notifier = null,
+    IAreaAlerts? areaAlerts = null)
 {
     /// <summary>
     /// Publishes or fails the post if its media allow; does nothing while any are still processing or if the post
@@ -97,6 +98,10 @@ public sealed class PostMediaPublisher(
                     .Select(t => t.UserId)
                     .ToList();
                 await Passengers.PassengerTagging.NotifyTaggedAsync(notifier, post, waiting, cancellationToken);
+                if (post.IsPublic && areaAlerts is not null)
+                {
+                    await areaAlerts.PostPublishedAsync(post.ToPublished(now), cancellationToken);
+                }
             }
         }
 

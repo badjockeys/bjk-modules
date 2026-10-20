@@ -14,6 +14,10 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
 
     public DbSet<NotificationContact> Contacts => Set<NotificationContact>();
 
+    public DbSet<AreaSubscription> AreaSubscriptions => Set<AreaSubscription>();
+
+    public DbSet<AreaAlertItem> AreaAlertItems => Set<AreaAlertItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(NotificationsModule.Schema);
@@ -59,6 +63,37 @@ internal sealed class NotificationContactConfiguration : IEntityTypeConfiguratio
         builder.HasKey(c => c.UserId);
         builder.Property(c => c.UserId).ValueGeneratedNever();
         builder.Property(c => c.Email).HasMaxLength(NotificationContact.EmailMaxLength).IsRequired();
+    }
+}
+
+internal sealed class AreaSubscriptionConfiguration : IEntityTypeConfiguration<AreaSubscription>
+{
+    public void Configure(EntityTypeBuilder<AreaSubscription> builder)
+    {
+        builder.ToTable("AreaSubscriptions");
+        builder.HasKey(s => s.UserId);
+        builder.Property(s => s.UserId).ValueGeneratedNever();
+        builder.Property(s => s.PlaceName).HasMaxLength(AreaSubscription.PlaceNameMaxLength).IsRequired();
+        builder.Property(s => s.Latitude).HasPrecision(9, 6);
+        builder.Property(s => s.Longitude).HasPrecision(9, 6);
+        builder.Property(s => s.Mode).HasConversion<string>().HasMaxLength(20);
+
+        // New posts are matched to the subscribers around them: only switched-on alerts, by position.
+        builder.HasIndex(s => new { s.Latitude, s.Longitude })
+            .HasFilter("[Enabled] = 1 AND [IsPremium] = 1")
+            .HasDatabaseName("IX_AreaSubscriptions_Active");
+    }
+}
+
+internal sealed class AreaAlertItemConfiguration : IEntityTypeConfiguration<AreaAlertItem>
+{
+    public void Configure(EntityTypeBuilder<AreaAlertItem> builder)
+    {
+        builder.ToTable("AreaAlertItems");
+        builder.HasKey(i => new { i.UserId, i.PostId });
+        builder.Property(i => i.Title).HasMaxLength(AreaAlertItem.TitleMaxLength).IsRequired();
+        builder.Property(i => i.PlaceName).HasMaxLength(200);
+        builder.HasIndex(i => i.CreatedAt);
     }
 }
 

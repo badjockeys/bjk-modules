@@ -34,6 +34,10 @@ internal sealed class NotificationsPersonalDataExporter(NotificationsDbContext d
             .Where(c => c.UserId == userId)
             .Select(c => new { c.Email, c.UpdatedAt })
             .FirstOrDefaultAsync(cancellationToken);
-        return new { notifications, settings, emailAddress = contact };
+        var homeArea = await db.AreaSubscriptions.AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .Select(a => new { a.PlaceName, a.Latitude, a.Longitude, a.RadiusKm, Mode = a.Mode.ToString(), a.Enabled, a.Email, a.UpdatedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+        return new { notifications, settings, emailAddress = contact, homeArea };
     }
 }
