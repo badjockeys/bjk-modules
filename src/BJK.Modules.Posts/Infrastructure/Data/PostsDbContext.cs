@@ -26,6 +26,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<ReelPlayDailyCount> ReelPlayDailyCounts => Set<ReelPlayDailyCount>();
 
+    public DbSet<PostPassenger> PostPassengers => Set<PostPassenger>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -126,6 +128,22 @@ internal sealed class ReelPlayDailyCountConfiguration : IEntityTypeConfiguration
         builder.ToTable("ReelPlayDailyCounts");
         builder.HasKey(c => new { c.PostId, c.Day });
         builder.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class PostPassengerConfiguration : IEntityTypeConfiguration<PostPassenger>
+{
+    public void Configure(EntityTypeBuilder<PostPassenger> builder)
+    {
+        builder.ToTable("PostPassengers");
+        builder.HasKey(p => new { p.PostId, p.UserId });
+        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+
+        // Deleting a post deletes its tags.
+        builder.HasOne<Post>().WithMany().HasForeignKey(p => p.PostId).OnDelete(DeleteBehavior.Cascade);
+
+        // "Posts I'm tagged in", by status.
+        builder.HasIndex(p => new { p.UserId, p.Status, p.TaggedAt });
     }
 }
 

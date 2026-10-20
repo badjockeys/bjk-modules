@@ -1,0 +1,30 @@
+# Temporary: generates the EF migrations for this branch's model changes. Removed before review.
+name: tmp-migrations
+on:
+  push:
+    branches: [feature/passenger-tags]
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore BJK.Modules.slnx && dotnet tool restore
+      - run: dotnet build BJK.Modules.slnx --configuration Release --no-restore
+      - name: Add migrations
+        run: |
+          set -e
+          for m in Posts:PostsDbContext:PassengerTags Profiles:ProfilesDbContext:RoadUserAndAgeBand; do
+            mod=${m%%:*}; rest=${m#*:}; ctx=${rest%%:*}; name=${rest#*:}
+            if dotnet ef migrations has-pending-model-changes --project src/BJK.Modules.$mod --context $ctx --configuration Release --no-build; then
+              echo "$mod: no changes"; continue
+            fi
+            dotnet ef migrations add $name --project src/BJK.Modules.$mod --context $ctx --output-dir Infrastructure/Data/Migrations --configuration Release
+          done
+          git -c user.name=ci -c user.email=ci@example.com add -A src
+          git -c user.name=ci -c user.email=ci@example.com commit -m "Generated migrations"
+          git push origin HEAD:refs/heads/tmp/passenger-tags-migrations --force

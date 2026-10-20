@@ -62,6 +62,9 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
                 p.CreatedAt,
                 p.UpdatedAt,
                 p.DeactivatedAt,
+                RoadUser = p.RoadUser?.ToString(),
+                p.ShowRoadUser,
+                p.IsMinor,
                 blocks,
             };
     }

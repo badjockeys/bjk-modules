@@ -43,6 +43,22 @@ public sealed class Profile
 
     public bool IsActive => DeactivatedAt is null;
 
+    /// <summary>
+    /// Under 18 by the date of birth they gave the identity server, as their own token last said (its "minor"
+    /// claim). Recorded whenever they create, read or change their profile, so it lapses soon after their 18th
+    /// birthday. Null until then: treated as under 18 for anything that needs an adult (such as being tagged).
+    /// </summary>
+    public bool? IsMinor { get; private set; }
+
+    /// <summary>How they use the road, if they've said. Private unless <see cref="ShowRoadUser"/>.</summary>
+    public RoadUser? RoadUser { get; private set; }
+
+    /// <summary>They chose to show <see cref="RoadUser"/> on their profile and posts.</summary>
+    public bool ShowRoadUser { get; private set; }
+
+    /// <summary>Their road user type as others may see it: only if they chose to show it.</summary>
+    public RoadUser? PublicRoadUser => ShowRoadUser ? RoadUser : null;
+
     public byte[] RowVersion { get; private set; } = [];
 
     public static Profile Create(
@@ -69,6 +85,26 @@ public sealed class Profile
     }
 
     public bool IsOwnedBy(Guid userId) => Id == userId;
+
+    /// <summary>Records whether they're under 18, from their token. Returns true if it changed.</summary>
+    public bool RecordAgeBand(bool isMinor)
+    {
+        if (IsMinor == isMinor)
+        {
+            return false;
+        }
+
+        IsMinor = isMinor;
+        return true;
+    }
+
+    /// <summary>Sets (or with null clears) how they use the road, and whether others see it.</summary>
+    public void SetRoadUser(RoadUser? roadUser, bool show, DateTimeOffset now)
+    {
+        RoadUser = roadUser;
+        ShowRoadUser = roadUser is not null && show;
+        UpdatedAt = now;
+    }
 
     public void Update(string displayName, string? bio, string? location, DateTimeOffset now)
     {

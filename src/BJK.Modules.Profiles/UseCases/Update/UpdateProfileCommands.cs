@@ -27,8 +27,40 @@ public sealed class UpdateProfileCommandHandler(
         var profile = await MyProfile.GetAsync(profiles, caller, cancellationToken);
 
         profile.Update(request.DisplayName, request.Bio, request.Location, clock.GetUtcNow());
+        profile.RecordAgeBand(caller.IsMinor);
         await profiles.SaveChangesAsync(cancellationToken);
 
+        return await Avatars.ToDtoAsync(media, profile, cancellationToken);
+    }
+}
+
+/// <summary>
+/// Sets how the signed-in user uses the road (Driver, Cyclist or Both; null to not say). Optional and private: it
+/// tailors their defaults (types first in lists, area alerts) and counts towards totals on the heat map. Others only
+/// see it, on the profile and posts, if <c>Show</c> is true.
+/// </summary>
+public sealed record SetRoadUserCommand(RoadUser? RoadUser, bool Show = false) : IRequest<ProfileDto>;
+
+public sealed class SetRoadUserCommandValidator : AbstractValidator<SetRoadUserCommand>
+{
+    public SetRoadUserCommandValidator()
+    {
+        RuleFor(c => c.RoadUser).IsInEnum().When(c => c.RoadUser is not null);
+    }
+}
+
+public sealed class SetRoadUserCommandHandler(
+    IProfileRepository profiles,
+    IMediaDirectory media,
+    ICurrentUser caller,
+    TimeProvider clock)
+    : IRequestHandler<SetRoadUserCommand, ProfileDto>
+{
+    public async Task<ProfileDto> Handle(SetRoadUserCommand request, CancellationToken cancellationToken)
+    {
+        var profile = await MyProfile.GetAsync(profiles, caller, cancellationToken);
+        profile.SetRoadUser(request.RoadUser, request.Show, clock.GetUtcNow());
+        await profiles.SaveChangesAsync(cancellationToken);
         return await Avatars.ToDtoAsync(media, profile, cancellationToken);
     }
 }

@@ -14,13 +14,19 @@ public interface IProfileDirectory
     Task<ProfileSummary?> FindByHandleAsync(string handle, CancellationToken cancellationToken);
 }
 
-/// <summary>A profile as other modules see it. <c>CreatedAt</c> lets Posts apply the new-account limits.</summary>
+/// <summary>
+/// A profile as other modules see it. <c>CreatedAt</c> lets Posts apply the new-account limits. <c>IsAdult</c> is
+/// true only if the user's own token last said they're 18 or over (false if under 18 or not known yet): Posts only
+/// lets adults be tagged. <c>RoadUser</c> is "Driver", "Cyclist" or "Both" only if they chose to show it.
+/// </summary>
 public sealed record ProfileSummary(
     Guid UserId,
     string Handle,
     string DisplayName,
     Uri? AvatarUrl,
-    DateTimeOffset CreatedAt = default);
+    DateTimeOffset CreatedAt = default,
+    bool IsAdult = false,
+    string? RoadUser = null);
 
 /// <summary>Blocks between users, for Posts to hide content and refuse interactions.</summary>
 public interface IBlockDirectory

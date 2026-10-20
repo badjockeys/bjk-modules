@@ -116,4 +116,40 @@ public sealed class PostsSqlServerTests : IAsyncLifetime
             Assert.Equal(new[] { parking.Id }, parked.Select(p => p.Id));
         }
     }
+
+    [Fact]
+    public async Task Passenger_tags_are_listed_for_the_tagged_person_and_go_with_the_post()
+    {
+        var post = Post.Create(UserId, Details("Cut up at the roundabout"), [Guid.NewGuid()], Now);
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            repository.Add(post);
+            repository.AddPassenger(PostPassenger.Tag(post.Id, OtherUserId, Now));
+            await repository.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            var (pending, total) = await repository.ListTaggedAsync(OtherUserId, PassengerTagStatus.Pending, 1, 20, Ct);
+            Assert.Equal(1, total);
+            Assert.Equal(post.Id, Assert.Single(pending).Id);
+
+            var tag = Assert.Single(await repository.GetPassengersAsync([post.Id], Ct));
+            Assert.True(tag.Respond(accept: true, Now));
+            await repository.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            Assert.Empty((await repository.ListTaggedAsync(OtherUserId, PassengerTagStatus.Pending, 1, 20, Ct)).Items);
+            Assert.Single((await repository.ListTaggedAsync(OtherUserId, PassengerTagStatus.Accepted, 1, 20, Ct)).Items);
+
+            // Deleting the author's account deletes the post and its tags.
+            await repository.DeleteAllForUserAsync(UserId, Ct);
+            Assert.Empty(await repository.GetPassengersAsync([post.Id], Ct));
+        }
+    }
 }

@@ -6,6 +6,7 @@ using BJK.Modules.Posts.UseCases.Create;
 using BJK.Modules.Posts.UseCases.Delete;
 using BJK.Modules.Posts.UseCases.Get;
 using BJK.Modules.Posts.UseCases.Moderation;
+using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Posts.UseCases.Update;
@@ -60,6 +61,44 @@ public sealed class PostsController(ISender sender) : ControllerBase
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListMyPostsQuery(page, pageSize), cancellationToken);
 
+    /// <summary>
+    /// Posts you're tagged in as a passenger, newest tag first: Pending (the default) are waiting for you to accept
+    /// or decline; Accepted show your name.
+    /// </summary>
+    /// <param name="status">Pending, Accepted or Declined.</param>
+    /// <param name="page">Page number, from 1.</param>
+    /// <param name="pageSize">Posts per page, up to 50.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    [HttpGet("tagged")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PagedResult<PostDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<PostDto>> ListTagged(
+        [FromQuery] PassengerTagStatus status = PassengerTagStatus.Pending,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListTaggedPostsQuery(status, page, pageSize), cancellationToken);
+
+    /// <summary>Accept (your name then shows on the post) or decline being tagged as a passenger.</summary>
+    [HttpPut("{id:guid}/passengers/me")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PostDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PostDto> RespondToTag(Guid id, TagResponseRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new RespondToTagCommand(id, request.Accept), cancellationToken);
+
+    /// <summary>Remove yourself from a post you were tagged on.</summary>
+    [HttpDelete("{id:guid}/passengers/me")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveMyTag(Guid id, CancellationToken cancellationToken)
+    {
+        await sender.Send(new RemoveMyTagCommand(id), cancellationToken);
+        return NoContent();
+    }
+
     /// <summary>One post. Anyone can call this; sensitive posts are 404 for logged-out callers.</summary>
     [HttpGet("{id:guid}")]
     [Authorize(Policy = PostsModule.ReadPolicy)]
@@ -97,7 +136,8 @@ public sealed class PostsController(ISender sender) : ControllerBase
                 request.Longitude,
                 request.PlaceName,
                 request.IsSensitive,
-                request.Types),
+                request.Types,
+                request.Passengers),
             cancellationToken);
 
     /// <summary>Delete your post and its photos and videos.</summary>
@@ -273,7 +313,10 @@ public sealed class PostsController(ISender sender) : ControllerBase
     }
 }
 
-/// <summary>A post's new details. Send <c>Types</c> (the first is the main one), or one <c>Category</c>.</summary>
+/// <summary>
+/// A post's new details. Send <c>Types</c> (the first is the main one), or one <c>Category</c>. <c>Passengers</c>
+/// (@handles) replaces the tagged passengers; leave it out to keep them.
+/// </summary>
 public sealed record UpdatePostRequest(
     string Title,
     string? Description,
@@ -283,7 +326,11 @@ public sealed record UpdatePostRequest(
     decimal Longitude,
     string? PlaceName,
     bool? IsSensitive = null,
-    IReadOnlyList<IncidentCategory>? Types = null);
+    IReadOnlyList<IncidentCategory>? Types = null,
+    IReadOnlyList<string>? Passengers = null);
+
+/// <summary>Accept or decline being tagged as a passenger.</summary>
+public sealed record TagResponseRequest(bool Accept);
 
 public sealed record ReactRequest(ReactionType Type);
 

@@ -25,7 +25,7 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
 
         return found.ToDictionary(
             p => p.Id,
-            p => new ProfileSummary(p.Id, p.Handle, p.DisplayName, Avatars.UrlFor(p, avatars), p.CreatedAt));
+            p => Summary(p, Avatars.UrlFor(p, avatars)));
     }
 
     public async Task<ProfileSummary?> FindByHandleAsync(string handle, CancellationToken cancellationToken)
@@ -43,8 +43,17 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
         }
 
         var avatars = await Avatars.GetUrlsAsync(media, [profile], cancellationToken);
-        return new ProfileSummary(profile.Id, profile.Handle, profile.DisplayName, Avatars.UrlFor(profile, avatars), profile.CreatedAt);
+        return Summary(profile, Avatars.UrlFor(profile, avatars));
     }
+
+    private static ProfileSummary Summary(Profile p, Uri? avatarUrl) => new(
+        p.Id,
+        p.Handle,
+        p.DisplayName,
+        avatarUrl,
+        p.CreatedAt,
+        IsAdult: p.IsMinor == false,
+        RoadUser: p.PublicRoadUser?.ToString());
 }
 
 internal sealed class BlockDirectory(IProfileRepository profiles) : IBlockDirectory

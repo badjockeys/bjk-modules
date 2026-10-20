@@ -7,14 +7,23 @@ using BJK.Modules.Shared.Security;
 
 namespace BJK.Modules.Posts.UseCases;
 
-/// <summary>Who wrote a post or comment. <c>Handle</c> is null if the author's profile no longer exists.</summary>
-public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri? AvatarUrl)
+/// <summary>
+/// Who wrote a post or comment. <c>Handle</c> is null if the author's profile no longer exists. <c>RoadUser</c>
+/// ("Driver", "Cyclist" or "Both") only if they chose to show it.
+/// </summary>
+public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri? AvatarUrl, string? RoadUser = null)
 {
     internal static AuthorDto From(Guid userId, IReadOnlyDictionary<Guid, ProfileSummary> profiles) =>
         profiles.TryGetValue(userId, out var p)
-            ? new AuthorDto(p.UserId, p.Handle, p.DisplayName, p.AvatarUrl)
+            ? new AuthorDto(p.UserId, p.Handle, p.DisplayName, p.AvatarUrl, p.RoadUser)
             : new AuthorDto(userId, null, "Former member", null);
 }
+
+/// <summary>
+/// A passenger tagged on a post. Everyone sees Accepted ones ("with @sam_j"); the author also sees Pending ones, and
+/// the tagged person sees their own tag whatever its status.
+/// </summary>
+public sealed record PassengerDto(AuthorDto Person, PassengerTagStatus Status);
 
 /// <summary>Where it happened: the map pin, rounded to about 500 m when the post was saved, and the place name.</summary>
 public sealed record LocationDto(decimal Latitude, decimal Longitude, string? PlaceName);
@@ -52,6 +61,7 @@ public sealed record PostMediaDto(
 /// the photos or video are still processing (show a "processing" badge; <c>Media</c> lists only the ready ones) and
 /// Failed, with <c>MediaFailureReason</c>, if the post can't be published; others only ever see Ready posts.
 /// <c>Types</c> are every type of bad driving on the post, shown as tags, the main one (<c>Category</c>) first.
+/// <c>Passengers</c> are the people tagged as being in the author's vehicle (see <see cref="PassengerDto"/>).
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -75,7 +85,8 @@ public sealed record PostDto(
     string? MediaFailureReason = null,
     bool RequiresAgeVerification = false,
     PostSensitiveSource SensitiveSource = PostSensitiveSource.None,
-    IReadOnlyList<IncidentCategory>? Types = null)
+    IReadOnlyList<IncidentCategory>? Types = null,
+    IReadOnlyList<PassengerDto>? Passengers = null)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -217,8 +228,10 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
             return [];
         }
 
+        var tags = (await posts.GetPassengersAsync(items.Select(p => p.Id).ToList(), cancellationToken) ?? [])
+            .ToLookup(t => t.PostId);
         var authors = await profiles.GetSummariesAsync(
-            items.Select(p => p.AuthorId).Distinct().ToList(),
+            items.Select(p => p.AuthorId).Concat(tags.SelectMany(g => g.Select(t => t.UserId))).Distinct().ToList(),
             cancellationToken);
         var mediaById = (await media.GetAsync(
                 items.SelectMany(p => p.Media).Select(m => m.MediaId).ToList(),
@@ -268,9 +281,25 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 MediaFailureReason: p.MediaFailureReason,
                 RequiresAgeVerification: blurred.Contains(p.Id),
                 SensitiveSource: p.SensitiveSource,
-                Types: p.Types);
+                Types: p.Types,
+                Passengers: PassengersFor(p, tags[p.Id], authors, viewerId));
         }).ToList();
     }
+
+    /// <summary>Accepted passengers for everyone; the author also sees Pending; you always see your own tag.</summary>
+    private static List<PassengerDto> PassengersFor(
+        Post post,
+        IEnumerable<PostPassenger> tags,
+        IReadOnlyDictionary<Guid, ProfileSummary> people,
+        Guid? viewerId) =>
+        tags
+            .Where(t => people.ContainsKey(t.UserId))
+            .Where(t => t.Status == PassengerTagStatus.Accepted
+                || t.UserId == viewerId
+                || (t.Status == PassengerTagStatus.Pending && post.AuthorId == viewerId))
+            .OrderBy(t => t.TaggedAt)
+            .Select(t => new PassengerDto(AuthorDto.From(t.UserId, people), t.Status))
+            .ToList();
 
     /// <summary>
     /// The post's ready media, in order. Blurred: only the blurred preview, never a real address, whatever the Media

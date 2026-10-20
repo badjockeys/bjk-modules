@@ -89,9 +89,16 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(p => new { p.PostId, p.Day, p.PlayedAt })
             .ToListAsync(cancellationToken);
 
+        // Posts the user was tagged on as a passenger, and their answer.
+        var passengerTags = await db.PostPassengers.AsNoTracking()
+            .Where(t => t.UserId == userId)
+            .OrderBy(t => t.TaggedAt)
+            .Select(t => new { t.PostId, Status = t.Status.ToString(), t.TaggedAt, t.RespondedAt })
+            .ToListAsync(cancellationToken);
+
         // Every type of bad driving on each post, by name.
         var postTypes = posts.Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(p.TypeFlags, p.Category) }).ToList();
 
-        return new { posts, postTypes, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
+        return new { posts, postTypes, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
     }
 }

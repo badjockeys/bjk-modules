@@ -87,6 +87,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddContentScreening(configuration);
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
+        services.AddScoped<UseCases.Passengers.PassengerTagging>();
 
         // Reels (daily plays by plan, ranking refreshed in the background) and the incident heat map.
         services.AddOptions<ReelsOptions>()
