@@ -39,8 +39,18 @@ public sealed class PdqTests
     [Fact]
     public void A_resized_copy_still_matches()
     {
-        var original = Picture("noise_250x180_seed42");
-        var smaller = FrameOps.Resize(original, 200, 144);
+        // Pixel noise doesn't survive resizing, so a picture with structure: noise blown up into 20-pixel blocks.
+        var noise = Picture("noise_16x12_seed42");
+        var original = new RgbFrame(320, 240);
+        for (var y = 0; y < 240; y++)
+        {
+            for (var x = 0; x < 320; x++)
+            {
+                Array.Copy(noise.Pixels, (((y / 20) * 16) + (x / 20)) * 3, original.Pixels, ((y * 320) + x) * 3, 3);
+            }
+        }
+
+        var smaller = FrameOps.Resize(original, 256, 192);
 
         var distance = Pdq.Compute(original).Hash.Distance(Pdq.Compute(smaller).Hash);
 

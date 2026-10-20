@@ -84,6 +84,39 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Appeals", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.BlockedUrl", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("AddedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Source", "Pattern")
+                        .IsUnique();
+
+                    b.ToTable("BlockedUrls", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Comment", b =>
                 {
                     b.Property<Guid>("Id")
