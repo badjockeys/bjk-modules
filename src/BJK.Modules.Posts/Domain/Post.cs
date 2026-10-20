@@ -579,7 +579,7 @@ public sealed record PostDetails(
 /// </summary>
 public sealed record VehicleDetails(VehicleType? Type, string? Make = null, string? Model = null, VehicleColour? Colour = null)
 {
-    public static readonly VehicleDetails None = new(null);
+    public static readonly VehicleDetails None = new(Type: null);
 }
 
 /// <summary>One photo or video (from the Media module) in a post.</summary>
