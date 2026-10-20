@@ -168,14 +168,14 @@ internal sealed class ReelRepository(PostsDbContext db) : IReelRepository
                 CROSS APPLY (
                     SELECT COUNT(*) AS [Count] FROM [posts].[Comments] AS [x]
                     WHERE [x].[PostId] = [p].[Id] AND [x].[Status] = N'Visible' AND [x].[IsAuthorDeactivated] = 0) AS [c]
-                WHERE [p].[HasVideo] = 1 AND [p].[Status] <> N'Deleted' AND [p].[CreatedAt] >= {windowStart};
+                WHERE [p].[Status] <> N'Deleted' AND [p].[CreatedAt] >= {windowStart};
                 """,
                 cancellationToken);
 
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 UPDATE [posts].[Posts] SET [ReelScore] = 0
-                WHERE [HasVideo] = 1 AND [CreatedAt] < {windowStart} AND [ReelScore] <> 0;
+                WHERE [CreatedAt] < {windowStart} AND [ReelScore] <> 0;
                 """,
                 cancellationToken);
             return scored;

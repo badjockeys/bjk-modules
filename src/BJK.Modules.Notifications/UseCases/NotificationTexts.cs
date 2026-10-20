@@ -27,6 +27,7 @@ public static class NotificationTexts
             NotificationType.AreaPost when count > 1 =>
                 $"{count} new posts in your area, including {on}.",
             NotificationType.AreaPost => $"New in your area: {on}.",
+            NotificationType.NewFollower => $"{who} followed you.",
             _ => "You have a new notification.",
         };
     }
@@ -43,6 +44,7 @@ public static class NotificationTexts
             NotificationType.ReplyToComment => $"{who} replied to your comment",
             NotificationType.ReactionOnPost => $"{who} reacted to your post",
             NotificationType.AreaPost => "New bad driving reported in your area",
+            NotificationType.NewFollower => $"{who} followed you on Bad Jockeys",
             _ => "New on Bad Jockeys",
         };
     }
@@ -56,6 +58,7 @@ public static class NotificationTexts
         NotificationType.ReplyToComment => "Replies to your comments",
         NotificationType.ReactionOnPost => "Reactions to your posts",
         NotificationType.AreaPost => "New posts in your area",
+        NotificationType.NewFollower => "New followers",
         _ => type.ToString(),
     };
 }

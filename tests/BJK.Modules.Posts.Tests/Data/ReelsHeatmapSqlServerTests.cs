@@ -87,7 +87,8 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
         await using (var db = Context())
         {
             var scored = await new ReelRepository(db).RefreshScoresAsync(Now, Now.AddDays(-30), Ct);
-            Assert.Equal(5, scored);
+            // Every post in the window is scored (photo posts too, for For you); the ancient one isn't.
+            Assert.Equal(6, scored);
         }
 
         await using (var db = Context())

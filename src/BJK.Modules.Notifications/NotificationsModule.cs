@@ -53,6 +53,7 @@ public sealed class NotificationsModule(string connectionStringName) : IModule
         services.Replace(ServiceDescriptor.Scoped<INotificationSender>(sp => sp.GetRequiredService<NotificationSender>()));
         services.AddScoped<IAreaAlertRepository, AreaAlertRepository>();
         services.Replace(ServiceDescriptor.Scoped<IAreaAlerts, AreaAlerts>());
+        services.Replace(ServiceDescriptor.Scoped<IHomeAreas, HomeAreas>());
         services.AddHostedService<AreaSummaries>();
 
         // Place search (home areas): postcodes.io, cached.

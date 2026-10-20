@@ -44,6 +44,16 @@ public interface IBlockDirectory
     Task<bool> IsBlockedAsync(Guid blockerId, Guid blockedId, CancellationToken cancellationToken);
 }
 
+/// <summary>Who follows whom, for Posts' Following timeline and the "People I follow" comment setting.</summary>
+public interface IFollowDirectory
+{
+    /// <summary>Everyone the user follows.</summary>
+    Task<IReadOnlyCollection<Guid>> GetFollowingIdsAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>True if <paramref name="followerId"/> follows <paramref name="followeeId"/>.</summary>
+    Task<bool> IsFollowingAsync(Guid followerId, Guid followeeId, CancellationToken cancellationToken);
+}
+
 /// <summary>Moderation of profiles by other modules (Posts resolves reports about profiles).</summary>
 public interface IProfileModeration
 {

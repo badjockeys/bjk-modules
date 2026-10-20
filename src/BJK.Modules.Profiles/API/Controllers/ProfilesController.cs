@@ -1,8 +1,10 @@
 using BJK.Modules.Profiles.UseCases;
 using BJK.Modules.Profiles.UseCases.Blocks;
 using BJK.Modules.Profiles.UseCases.Create;
+using BJK.Modules.Profiles.UseCases.Follows;
 using BJK.Modules.Profiles.UseCases.Get;
 using BJK.Modules.Profiles.UseCases.Update;
+using BJK.Modules.Shared;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -97,6 +99,60 @@ public sealed class ProfilesController(ISender sender) : ControllerBase
         await sender.Send(new UnblockUserCommand(user), cancellationToken);
         return NoContent();
     }
+
+    /// <summary>
+    /// Follow someone, by @handle or user id: their posts show in your Following timeline. You can't follow across a
+    /// block. Needs your own profile.
+    /// </summary>
+    [HttpPut("me/following/{user}")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<FollowStateDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<FollowStateDto> Follow(string user, CancellationToken cancellationToken) =>
+        await sender.Send(new FollowUserCommand(user), cancellationToken);
+
+    /// <summary>Stop following someone, by @handle or user id.</summary>
+    [HttpDelete("me/following/{user}")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<FollowStateDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<FollowStateDto> Unfollow(string user, CancellationToken cancellationToken) =>
+        await sender.Send(new UnfollowUserCommand(user), cancellationToken);
+
+    /// <summary>
+    /// Who to follow: up to <paramref name="limit"/> adults whose home area is near yours, nearest first. Empty, with
+    /// <c>hasHomeArea</c> false, until you choose a home area.
+    /// </summary>
+    [HttpGet("me/suggestions")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<WhoToFollowDto>(StatusCodes.Status200OK)]
+    public async Task<WhoToFollowDto> Suggestions([FromQuery] int limit = 3, CancellationToken cancellationToken = default) =>
+        await sender.Send(new WhoToFollowQuery(limit), cancellationToken);
+
+    /// <summary>Someone's followers, most recent first. Anyone can call this.</summary>
+    [HttpGet("{handle}/followers")]
+    [Authorize(Policy = ProfilesModule.ReadPolicy)]
+    [ProducesResponseType<PagedResult<FollowProfileDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PagedResult<FollowProfileDto>> Followers(
+        string handle,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListFollowsQuery(handle, Followers: true, page, pageSize), cancellationToken);
+
+    /// <summary>The people someone follows, most recent first. Anyone can call this.</summary>
+    [HttpGet("{handle}/following")]
+    [Authorize(Policy = ProfilesModule.ReadPolicy)]
+    [ProducesResponseType<PagedResult<FollowProfileDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PagedResult<FollowProfileDto>> Following(
+        string handle,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListFollowsQuery(handle, Followers: false, page, pageSize), cancellationToken);
 
     /// <summary>Whether a handle is free. Anyone can call this.</summary>
     [HttpGet("handles/{handle}/availability")]

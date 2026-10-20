@@ -1,11 +1,14 @@
 using BJK.Modules.Media.Contracts;
 using BJK.Modules.Profiles.Domain;
+using BJK.Modules.Profiles.Infrastructure.Data;
 
 namespace BJK.Modules.Profiles.UseCases;
 
 /// <summary>
 /// A profile. <c>RoadUser</c> (Driver, Cyclist or Both) is shown to others only if the user chose to show it;
-/// <c>ShowRoadUser</c> is only filled in for the user themselves (null for others).
+/// <c>ShowRoadUser</c> is only filled in for the user themselves (null for others). <c>FollowerCount</c> and
+/// <c>FollowingCount</c> count active profiles; <c>IsFollowing</c> (you follow them) and <c>FollowsYou</c> are null
+/// when signed out or for yourself.
 /// </summary>
 public sealed record ProfileDto(
     Guid Id,
@@ -16,7 +19,11 @@ public sealed record ProfileDto(
     Uri? AvatarUrl,
     DateTimeOffset CreatedAt,
     RoadUser? RoadUser = null,
-    bool? ShowRoadUser = null)
+    bool? ShowRoadUser = null,
+    int FollowerCount = 0,
+    int FollowingCount = 0,
+    bool? IsFollowing = null,
+    bool? FollowsYou = null)
 {
     internal static ProfileDto From(Profile profile, Uri? avatarUrl, bool forOwner = true) => new(
         profile.Id,
@@ -67,5 +74,26 @@ internal static class Avatars
     {
         var urls = await GetUrlsAsync(media, [profile], cancellationToken);
         return ProfileDto.From(profile, UrlFor(profile, urls), forOwner);
+    }
+
+    /// <summary>The profile with its follow counts, and whether the viewer and they follow each other.</summary>
+    public static async Task<ProfileDto> WithFollowsAsync(
+        IProfileRepository profiles,
+        ProfileDto dto,
+        Guid? viewerId,
+        CancellationToken cancellationToken)
+    {
+        var (followers, following) = await profiles.CountFollowsAsync(dto.Id, cancellationToken);
+        dto = dto with { FollowerCount = followers, FollowingCount = following };
+        if (viewerId is not { } viewer || viewer == dto.Id)
+        {
+            return dto;
+        }
+
+        return dto with
+        {
+            IsFollowing = await profiles.GetFollowAsync(viewer, dto.Id, cancellationToken) is not null,
+            FollowsYou = await profiles.GetFollowAsync(dto.Id, viewer, cancellationToken) is not null,
+        };
     }
 }

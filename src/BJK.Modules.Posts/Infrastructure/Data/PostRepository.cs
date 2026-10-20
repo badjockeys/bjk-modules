@@ -11,6 +11,8 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="ExcludeSensitive">Leave out sensitive posts. (The public feed no longer does: they show blurred.)</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
 /// <param name="HashtagId">Only posts with this hashtag.</param>
+/// <param name="AuthorIds">Only posts by these authors (the Following timeline); empty means none.</param>
+/// <param name="TypeFlags">Only posts with any of these types of bad driving (<see cref="IncidentTypeFlags"/> bits; 0 = all).</param>
 public sealed record PostSearch(
     Guid? AuthorId,
     IncidentCategory? Category,
@@ -18,7 +20,21 @@ public sealed record PostSearch(
     bool IncludeHidden,
     bool ExcludeSensitive = false,
     IReadOnlyCollection<Guid>? ExcludeAuthorIds = null,
-    Guid? HashtagId = null);
+    Guid? HashtagId = null,
+    IReadOnlyCollection<Guid>? AuthorIds = null,
+    int TypeFlags = 0);
+
+/// <summary>
+/// The For you timeline: public posts from <paramref name="Since"/>, ranked by their score (reactions and comments,
+/// fading with age), boosted near <paramref name="Home"/>; then older posts, newest first.
+/// </summary>
+/// <param name="Since">Posts since then are ranked; older ones follow by date.</param>
+/// <param name="Home">The viewer's home area, or null.</param>
+/// <param name="ExcludeAuthorIds">People blocked either way.</param>
+public sealed record ForYouSearch(DateTimeOffset Since, ForYouHome? Home, IReadOnlyCollection<Guid>? ExcludeAuthorIds);
+
+/// <summary>Posts in <paramref name="Near"/> score 3 times as much, and in <paramref name="Around"/> 1.5 times.</summary>
+public sealed record ForYouHome(GeoBox Near, GeoBox Around);
 
 /// <summary>A latitude/longitude rectangle.</summary>
 public sealed record GeoBox(decimal MinLatitude, decimal MaxLatitude, decimal MinLongitude, decimal MaxLongitude)
@@ -56,6 +72,9 @@ public interface IPostRepository
 
     /// <summary>True if any of the media is already in a post (including hidden and deleted ones).</summary>
     Task<bool> AnyUseMediaAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
+
+    /// <summary>The For you timeline (see <see cref="ForYouSearch"/>).</summary>
+    Task<(IReadOnlyList<Post> Items, int TotalCount)> ForYouAsync(ForYouSearch search, int page, int pageSize, CancellationToken cancellationToken);
 
     /// <summary>Posts newest first.</summary>
     Task<(IReadOnlyList<Post> Items, int TotalCount)> SearchAsync(
@@ -136,6 +155,69 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
     public Task<bool> AnyUseMediaAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken) =>
         db.Set<PostMedia>().AnyAsync(m => mediaIds.Contains(m.MediaId), cancellationToken);
 
+    public async Task<(IReadOnlyList<Post> Items, int TotalCount)> ForYouAsync(
+        ForYouSearch search,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var visible = db.Posts.AsNoTracking()
+            .Where(p => p.Status == PostStatus.Published && p.MediaState == PostMediaState.Ready && !p.IsAuthorDeactivated);
+        if (search.ExcludeAuthorIds is { Count: > 0 } excluded)
+        {
+            visible = visible.Where(p => !excluded.Contains(p.AuthorId));
+        }
+
+        var since = search.Since;
+        var recent = visible.Where(p => p.CreatedAt >= since);
+        var older = visible.Where(p => p.CreatedAt < since);
+        var recentCount = await recent.CountAsync(cancellationToken);
+        var total = recentCount + await older.CountAsync(cancellationToken);
+
+        IOrderedQueryable<Post> ranked;
+        if (search.Home is { } home)
+        {
+            var (n, a) = (home.Near, home.Around);
+            ranked = recent.OrderByDescending(p => p.ReelScore * (
+                p.Latitude >= n.MinLatitude && p.Latitude <= n.MaxLatitude && p.Longitude >= n.MinLongitude && p.Longitude <= n.MaxLongitude
+                    ? 3.0
+                    : p.Latitude >= a.MinLatitude && p.Latitude <= a.MaxLatitude && p.Longitude >= a.MinLongitude && p.Longitude <= a.MaxLongitude
+                        ? 1.5
+                        : 1.0));
+        }
+        else
+        {
+            ranked = recent.OrderByDescending(p => p.ReelScore);
+        }
+
+        // The ranked recent posts first, then older ones by date, as one list: a page can straddle the two.
+        var skip = (page - 1) * pageSize;
+        var items = new List<Post>();
+        if (skip < recentCount)
+        {
+            items.AddRange(await ranked
+                .ThenByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.Id)
+                .Skip(skip)
+                .Take(pageSize)
+                .Include(p => p.Media)
+                .ToListAsync(cancellationToken));
+        }
+
+        if (items.Count < pageSize)
+        {
+            items.AddRange(await older
+                .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.Id)
+                .Skip(Math.Max(0, skip - recentCount))
+                .Take(pageSize - items.Count)
+                .Include(p => p.Media)
+                .ToListAsync(cancellationToken));
+        }
+
+        return (items, total);
+    }
+
     public async Task<(IReadOnlyList<Post> Items, int TotalCount)> SearchAsync(
         PostSearch search,
         int page,
@@ -173,6 +255,22 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
         if (search.HashtagId is { } hashtagId)
         {
             query = query.Where(p => db.PostHashtags.Any(t => t.PostId == p.Id && t.HashtagId == hashtagId));
+        }
+
+        if (search.AuthorIds is { } authorIds)
+        {
+            if (authorIds.Count == 0)
+            {
+                return ([], 0);
+            }
+
+            query = query.Where(p => authorIds.Contains(p.AuthorId));
+        }
+
+        if (search.TypeFlags != 0)
+        {
+            var flags = search.TypeFlags;
+            query = query.Where(p => (p.TypeFlags & flags) != 0);
         }
 
         if (search.Area is { } area)

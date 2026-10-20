@@ -68,6 +68,15 @@ internal sealed class BlockDirectory(IProfileRepository profiles) : IBlockDirect
         profiles.IsBlockedAsync(blockerId, blockedId, cancellationToken);
 }
 
+internal sealed class FollowDirectory(IProfileRepository profiles) : IFollowDirectory
+{
+    public async Task<IReadOnlyCollection<Guid>> GetFollowingIdsAsync(Guid userId, CancellationToken cancellationToken) =>
+        await profiles.GetFollowingIdsAsync(userId, cancellationToken);
+
+    public async Task<bool> IsFollowingAsync(Guid followerId, Guid followeeId, CancellationToken cancellationToken) =>
+        await profiles.GetFollowAsync(followerId, followeeId, cancellationToken) is not null;
+}
+
 internal sealed class ProfileModeration(IProfileRepository profiles, IMediaDirectory media, TimeProvider clock) : IProfileModeration
 {
     public async Task<bool> ResetPublicDetailsAsync(Guid userId, CancellationToken cancellationToken)

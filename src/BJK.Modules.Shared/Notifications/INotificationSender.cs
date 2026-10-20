@@ -23,6 +23,9 @@ public enum NotificationType
 
     /// <summary>A new post in your home area (Premium area alerts).</summary>
     AreaPost,
+
+    /// <summary>Someone started following you.</summary>
+    NewFollower,
 }
 
 /// <summary>

@@ -12,6 +12,8 @@ public sealed class ProfilesDbContext(DbContextOptions<ProfilesDbContext> option
 
     public DbSet<Block> Blocks => Set<Block>();
 
+    public DbSet<Follow> Follows => Set<Follow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(ProfilesModule.Schema);
@@ -49,6 +51,18 @@ internal sealed class BlockConfiguration : IEntityTypeConfiguration<Block>
 
         // "Who has blocked this user", for clean-up when an account is deleted.
         builder.HasIndex(b => b.BlockedId);
+    }
+}
+
+internal sealed class FollowConfiguration : IEntityTypeConfiguration<Follow>
+{
+    public void Configure(EntityTypeBuilder<Follow> builder)
+    {
+        builder.ToTable("Follows");
+        builder.HasKey(f => new { f.FollowerId, f.FolloweeId });
+
+        // A user's followers, newest first (and their count).
+        builder.HasIndex(f => new { f.FolloweeId, f.CreatedAt });
     }
 }
 

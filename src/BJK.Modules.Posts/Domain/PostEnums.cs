@@ -188,6 +188,9 @@ public enum CommentSetting
 
     /// <summary>Nobody can add comments or replies; the ones already there stay.</summary>
     Off,
+
+    /// <summary>Only people the post's author follows (and the author) can add comments and replies.</summary>
+    Following,
 }
 
 /// <summary>How quickly a report needs a decision; see <see cref="Report.UrgentResponseTime"/>.</summary>

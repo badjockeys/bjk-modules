@@ -29,6 +29,7 @@ public sealed class CommentControlsTests
     private readonly IReportRepository _reports = Substitute.For<IReportRepository>();
     private readonly IProfileDirectory _profiles = Substitute.For<IProfileDirectory>();
     private readonly IBlockDirectory _blocks = Substitute.For<IBlockDirectory>();
+    private readonly IFollowDirectory _follows = Substitute.For<IFollowDirectory>();
     private readonly IContentScreener _screener = Substitute.For<IContentScreener>();
     private readonly IEmailSender _email = Substitute.For<IEmailSender>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
@@ -182,6 +183,21 @@ public sealed class CommentControlsTests
     }
 
     [Fact]
+    public async Task With_people_i_follow_only_people_the_author_follows_can_comment()
+    {
+        var post = Existing(OtherUserId);
+        post.SetCommentSetting(CommentSetting.Following, Now);
+
+        var refused = await Assert.ThrowsAsync<ForbiddenException>(
+            () => AddComment().Handle(new AddCommentCommand(post.Id, "Shocking."), Ct));
+        Assert.Contains("Only people the author follows", refused.Message);
+
+        _follows.IsFollowingAsync(OtherUserId, UserId, Arg.Any<CancellationToken>()).Returns(true);
+        await AddComment().Handle(new AddCommentCommand(post.Id, "Shocking."), Ct);
+        _comments.Received(1).Add(Arg.Any<Comment>());
+    }
+
+    [Fact]
     public async Task Only_the_author_changes_who_can_comment()
     {
         var post = Existing(OtherUserId);
@@ -237,7 +253,8 @@ public sealed class CommentControlsTests
             _screener,
             new NewAccountLimits(_profiles, _posts, _comments, Options.Create(new SafetyOptions()), _clock),
             _caller,
-            _clock);
+            _clock,
+            follows: _follows);
 
     private void SignedInAs(Guid userId) => _caller.IdentityId.Returns(userId.ToString());
 

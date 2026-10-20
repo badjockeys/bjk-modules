@@ -63,6 +63,9 @@ public sealed class BlockUserCommandHandler(
             block = Block.Create(userId, target.Id, clock.GetUtcNow());
             profiles.AddBlock(block);
             await profiles.SaveChangesAsync(cancellationToken);
+
+            // Blocking ends follows either way.
+            await profiles.RemoveFollowsBetweenAsync(userId, target.Id, cancellationToken);
         }
 
         var avatars = await Avatars.GetUrlsAsync(media, [target], cancellationToken);
