@@ -262,6 +262,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("UploadedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("UsageCheckedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -269,6 +272,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Media_UnusedUploads")
+                        .HasFilter("[UsageCheckedAt] IS NULL AND [Status] <> 'Deleted'");
 
                     b.HasIndex("Status", "CreatedAt");
 

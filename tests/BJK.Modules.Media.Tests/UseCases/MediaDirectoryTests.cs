@@ -110,8 +110,8 @@ public sealed class MediaDirectoryTests
 
         Assert.Equal(0, await cleanup.SweepAsync(Ct));
 
-        await _media.DidNotReceiveWithAnyArgs().ListUnusedCandidatesAsync(default, default, default);
-        await _storage.DidNotReceiveWithAnyArgs().DeleteOriginalAsync(default!, default);
+        await _media.DidNotReceiveWithAnyArgs().ListUnusedCandidatesAsync(default, default, Ct);
+        await _storage.DidNotReceiveWithAnyArgs().DeleteOriginalAsync(default!, Ct);
     }
 
     private static IMediaUsage Usage(string name, params Guid[] inUse)

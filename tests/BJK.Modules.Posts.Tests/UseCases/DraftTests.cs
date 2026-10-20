@@ -197,7 +197,7 @@ public sealed class DraftTests
 
         await Save(Draft() with { DraftId = draft.Id, MediaIds = [photo, Guid.NewGuid()] });
 
-        await _media.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        await _media.DidNotReceiveWithAnyArgs().DeleteAsync(default!, Ct);
     }
 
     private async Task<DraftDto> Save(SaveDraftCommand command) =>
