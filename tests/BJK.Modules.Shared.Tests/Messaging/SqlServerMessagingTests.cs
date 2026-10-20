@@ -192,8 +192,10 @@ public sealed class SqlServerMessagingTests : IAsyncLifetime
 
         await host.GetRequiredService<IMessageSender>().SendAsync(queue, Message("poison"), Ct);
 
-        await EventuallyAsync(async () => await CountAsync(FailedTable(queue)) == 1, "the message in the dead-letter table");
-        Assert.Equal(0, await CountAsync(Table(queue)));
+        // The move to the dead-letter table and the removal from the queue aren't seen at the same instant, so wait for both.
+        await EventuallyAsync(
+            async () => await CountAsync(FailedTable(queue)) == 1 && await CountAsync(Table(queue)) == 0,
+            "the message in the dead-letter table and gone from the queue");
         Assert.Equal(new[] { 1, 2, 3 }, probe.Received.Select(m => m.Attempt));
         var givenUp = Assert.Single(probe.GivenUp);
         Assert.Equal("poison", givenUp.Id);

@@ -45,7 +45,7 @@ public sealed class CaptchaOptions
     public string Provider { get; set; } = TurnstileProvider;
 
     /// <summary>
-    /// Turnstile secret key: Key Vault in Azure, user secrets locally. Cloudflare's test key
+    /// Turnstile secret key: a container secret when deployed, user secrets locally. Cloudflare's test key
     /// <c>1x0000000000000000000000000000000AA</c> accepts every token; <c>2x0000000000000000000000000000000AA</c> rejects every token.
     /// </summary>
     public string? TurnstileSecretKey { get; set; }
