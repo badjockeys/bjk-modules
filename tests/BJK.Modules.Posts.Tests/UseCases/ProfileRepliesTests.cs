@@ -32,7 +32,7 @@ public sealed class ProfileRepliesTests
             });
         _blocks.GetBlockedEitherWayAsync(UserId, Arg.Any<CancellationToken>()).Returns(new List<Guid>());
         _blocks.GetBlockedIdsAsync(UserId, Arg.Any<CancellationToken>()).Returns(new List<Guid>());
-        _reactions.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+        _reactions.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, CommentReactionStats>());
     }
 
