@@ -15,6 +15,7 @@ using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -87,6 +88,9 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddContentScreening(configuration);
         services.AddCaptchaVerification(configuration);
         services.AddScoped<PostViews>();
+        services.AddScoped<UseCases.Passengers.PassengerTagging>();
+        services.AddNotificationSenderFallback();
+        services.AddAreaAlertsFallback();
 
         // Reels (daily plays by plan, ranking refreshed in the background) and the incident heat map.
         services.AddOptions<ReelsOptions>()

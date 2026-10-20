@@ -129,6 +129,48 @@ public sealed class ProfileHandlerTests
         Assert.True((await handler.Handle(new CheckHandleQuery("free_one"), Ct)).Available);
     }
 
+    [Fact]
+    public async Task Reading_your_profile_records_whether_you_are_under_18()
+    {
+        var profile = Existing(UserId, "roadhog");
+        _caller.IsMinor.Returns(true);
+        var handler = new GetMyProfileQueryHandler(_profiles, _media, _caller);
+
+        await handler.Handle(new GetMyProfileQuery(), Ct);
+        Assert.True(profile.IsMinor);
+
+        // Their 18th birthday: the next token no longer says minor.
+        _caller.IsMinor.Returns(false);
+        await handler.Handle(new GetMyProfileQuery(), Ct);
+        Assert.False(profile.IsMinor);
+        await _profiles.Received(2).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Road_user_is_private_unless_shown()
+    {
+        var profile = Existing(UserId, "roadhog");
+        var handler = new SetRoadUserCommandHandler(_profiles, _media, _caller, _clock);
+
+        var mine = await handler.Handle(new SetRoadUserCommand(RoadUser.Cyclist), Ct);
+        Assert.Equal(RoadUser.Cyclist, mine.RoadUser);
+        Assert.False(mine.ShowRoadUser);
+
+        var seenByOthers = await new GetProfileQueryHandler(_profiles, _media).Handle(new GetProfileQuery("roadhog"), Ct);
+        Assert.Null(seenByOthers.RoadUser);
+        Assert.Null(seenByOthers.ShowRoadUser);
+
+        await handler.Handle(new SetRoadUserCommand(RoadUser.Both, Show: true), Ct);
+        seenByOthers = await new GetProfileQueryHandler(_profiles, _media).Handle(new GetProfileQuery("roadhog"), Ct);
+        Assert.Equal(RoadUser.Both, seenByOthers.RoadUser);
+        Assert.Equal(RoadUser.Both, profile.PublicRoadUser);
+
+        // Not saying clears it, and the choice to show it.
+        await handler.Handle(new SetRoadUserCommand(null, Show: true), Ct);
+        Assert.Null(profile.RoadUser);
+        Assert.False(profile.ShowRoadUser);
+    }
+
     private Profile Existing(Guid userId, string handle)
     {
         var profile = Profile.Create(userId, handle, "Someone", null, null, Now);

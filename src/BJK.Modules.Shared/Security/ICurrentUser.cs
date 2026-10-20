@@ -23,6 +23,9 @@ public interface ICurrentUser
 
     /// <summary>The user's email address, if the token carries an "email" claim. Used only to reply to reports.</summary>
     string? Email { get; }
+
+    /// <summary>True if the token says the user is under 18 by their declared date of birth (the "minor" claim).</summary>
+    bool IsMinor { get; }
 }
 
 internal sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
@@ -40,4 +43,6 @@ internal sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : IC
     public bool AgeVerified => accessor.HttpContext?.User.IsAgeVerified() ?? false;
 
     public string? Email => accessor.HttpContext?.User.GetEmail();
+
+    public bool IsMinor => accessor.HttpContext?.User.IsMinor() ?? false;
 }

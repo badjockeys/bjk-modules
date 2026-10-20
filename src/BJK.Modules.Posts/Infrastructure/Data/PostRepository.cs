@@ -99,6 +99,24 @@ public interface IPostRepository
 
     /// <summary>Saves all pending changes in the Posts module (posts, reactions, comments, reports).</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>The passenger tags on these posts (tracked, so changes are saved), any status.</summary>
+    Task<IReadOnlyList<PostPassenger>> GetPassengersAsync(IReadOnlyCollection<Guid> postIds, CancellationToken cancellationToken);
+
+    void AddPassenger(PostPassenger passenger);
+
+    void RemovePassenger(PostPassenger passenger);
+
+    /// <summary>
+    /// Published posts (not deleted, media ready, author active) the user is tagged in with this status, newest
+    /// tag first.
+    /// </summary>
+    Task<(IReadOnlyList<Post> Items, int TotalCount)> ListTaggedAsync(
+        Guid userId,
+        PassengerTagStatus status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class PostRepository(PostsDbContext db) : IPostRepository
@@ -279,6 +297,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             await db.Reactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.CommentReactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Comments.Where(c => c.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.PostPassengers.Where(p => p.UserId == userId).ExecuteDeleteAsync(cancellationToken);
 
             // The database cascades the comment deletes to their reactions, and this to the posts' media links,
             // comments (and their reactions), reactions, reports and appeals. Other people's replies to the user's
@@ -291,4 +310,38 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
     public void Add(Post post) => db.Posts.Add(post);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PostPassenger>> GetPassengersAsync(
+        IReadOnlyCollection<Guid> postIds,
+        CancellationToken cancellationToken) =>
+        postIds.Count == 0
+            ? []
+            : await db.PostPassengers.Where(p => postIds.Contains(p.PostId)).ToListAsync(cancellationToken);
+
+    public void AddPassenger(PostPassenger passenger) => db.PostPassengers.Add(passenger);
+
+    public void RemovePassenger(PostPassenger passenger) => db.PostPassengers.Remove(passenger);
+
+    public async Task<(IReadOnlyList<Post> Items, int TotalCount)> ListTaggedAsync(
+        Guid userId,
+        PassengerTagStatus status,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query =
+            from tag in db.PostPassengers
+            where tag.UserId == userId && tag.Status == status
+            join post in db.Posts on tag.PostId equals post.Id
+            where post.Status == PostStatus.Published && post.MediaState == PostMediaState.Ready && !post.IsAuthorDeactivated
+            orderby tag.TaggedAt descending
+            select post;
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .Include(p => p.Media)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return (items, total);
+    }
 }

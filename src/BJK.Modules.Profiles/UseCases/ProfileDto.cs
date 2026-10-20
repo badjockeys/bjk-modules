@@ -3,6 +3,10 @@ using BJK.Modules.Profiles.Domain;
 
 namespace BJK.Modules.Profiles.UseCases;
 
+/// <summary>
+/// A profile. <c>RoadUser</c> (Driver, Cyclist or Both) is shown to others only if the user chose to show it;
+/// <c>ShowRoadUser</c> is only filled in for the user themselves (null for others).
+/// </summary>
 public sealed record ProfileDto(
     Guid Id,
     string Handle,
@@ -10,16 +14,20 @@ public sealed record ProfileDto(
     string? Bio,
     string? Location,
     Uri? AvatarUrl,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    RoadUser? RoadUser = null,
+    bool? ShowRoadUser = null)
 {
-    internal static ProfileDto From(Profile profile, Uri? avatarUrl) => new(
+    internal static ProfileDto From(Profile profile, Uri? avatarUrl, bool forOwner = true) => new(
         profile.Id,
         profile.Handle,
         profile.DisplayName,
         profile.Bio,
         profile.Location,
         avatarUrl,
-        profile.CreatedAt);
+        profile.CreatedAt,
+        forOwner ? profile.RoadUser : profile.PublicRoadUser,
+        forOwner ? profile.ShowRoadUser : null);
 }
 
 /// <summary>Is a handle free to take?</summary>
@@ -54,9 +62,10 @@ internal static class Avatars
     public static async Task<ProfileDto> ToDtoAsync(
         IMediaDirectory media,
         Profile profile,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forOwner = true)
     {
         var urls = await GetUrlsAsync(media, [profile], cancellationToken);
-        return ProfileDto.From(profile, UrlFor(profile, urls));
+        return ProfileDto.From(profile, UrlFor(profile, urls), forOwner);
     }
 }

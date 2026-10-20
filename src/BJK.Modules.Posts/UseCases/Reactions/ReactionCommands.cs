@@ -4,6 +4,7 @@ using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using FluentValidation;
 using MediatR;
 
@@ -28,7 +29,8 @@ public sealed class ReactToPostCommandHandler(
     IReactionRepository reactions,
     IBlockDirectory blocks,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<ReactToPostCommand>
 {
     public async Task Handle(ReactToPostCommand request, CancellationToken cancellationToken)
@@ -52,6 +54,14 @@ public sealed class ReactToPostCommandHandler(
         }
 
         await reactions.SaveChangesAsync(cancellationToken);
+
+        // Only for a new reaction, not a change of mind. The Notifications module groups them per post.
+        if (existing is null && notifications is not null)
+        {
+            await notifications.NotifyAsync(
+                new NotificationRequest(post.AuthorId, NotificationType.ReactionOnPost, userId, post.Id, PostTitle: post.Title),
+                cancellationToken);
+        }
     }
 }
 

@@ -1,8 +1,10 @@
 using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using MediatR;
 using Microsoft.Extensions.Options;
 
@@ -13,7 +15,8 @@ namespace BJK.Modules.Posts.UseCases.Update;
 /// <c>IsSensitive</c>: true or false to change the sensitive tag, null to leave it. Authors can only remove a tag they
 /// set themselves, not a moderator's or an automatic one (400). Tagging moves the media to private storage (blurred
 /// previews public) within seconds; untagging publishes them again. <c>Types</c> replace the post's types of bad
-/// driving (or send one <c>Category</c>).
+/// driving (or send one <c>Category</c>). <c>Passengers</c> replaces the tagged @handles (null leaves them); new ones
+/// are asked to accept. Changing the types to only bad parking removes every passenger.
 /// </summary>
 public sealed record UpdatePostCommand(
     Guid PostId,
@@ -25,7 +28,13 @@ public sealed record UpdatePostCommand(
     decimal Longitude,
     string? PlaceName,
     bool? IsSensitive = null,
-    IReadOnlyList<IncidentCategory>? Types = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    IReadOnlyList<IncidentCategory>? Types = null,
+    IReadOnlyList<string>? Passengers = null,
+    VehicleType? VehicleType = null,
+    string? VehicleMake = null,
+    string? VehicleModel = null,
+    VehicleColour? VehicleColour = null,
+    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class UpdatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
     : PostDetailsValidator<UpdatePostCommand>(clock, options);
@@ -36,7 +45,9 @@ public sealed class UpdatePostCommandHandler(
     PostViews views,
     IMediaDirectory media,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    PassengerTagging? passengers = null,
+    INotificationSender? notifications = null)
     : IRequestHandler<UpdatePostCommand, PostDto>
 {
     public async Task<PostDto> Handle(UpdatePostCommand request, CancellationToken cancellationToken)
@@ -53,7 +64,23 @@ public sealed class UpdatePostCommandHandler(
         }
 
         var now = clock.GetUtcNow();
-        post.Update(request.ToDetails(), now);
+        var details = request.ToDetails();
+        var passengerIds = passengers is null || request.Passengers is null
+            ? null
+            : await passengers.ResolveAsync(post.AuthorId, request.Passengers, details.Types!, cancellationToken);
+        post.Update(details, now);
+        IReadOnlyList<Guid> tagged = [];
+        if (passengers is not null)
+        {
+            if (!PostPassenger.AllowedFor(post.Types))
+            {
+                await passengers.ClearAsync(post, cancellationToken);
+            }
+            else if (passengerIds is not null)
+            {
+                tagged = await passengers.ApplyAsync(post, passengerIds, cancellationToken);
+            }
+        }
         if (request.IsSensitive is { } sensitive)
         {
             post.SetSensitive(sensitive, now);
@@ -61,6 +88,7 @@ public sealed class UpdatePostCommandHandler(
 
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         await posts.SaveChangesAsync(cancellationToken);
+        await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
 
         if (request.IsSensitive is not null)
         {

@@ -38,4 +38,15 @@ public sealed class ProfileTests
         Assert.Equal(second, profile.SetAvatar(null, Now));
         Assert.Null(profile.AvatarMediaId);
     }
+
+    [Fact]
+    public void Age_band_is_unknown_until_recorded()
+    {
+        var profile = Profile.Create(UserId, "roadhog", "Road Hog", null, null, Now);
+
+        Assert.Null(profile.IsMinor);
+        Assert.True(profile.RecordAgeBand(false));
+        Assert.False(profile.RecordAgeBand(false));
+        Assert.False(profile.IsMinor);
+    }
 }

@@ -40,6 +40,7 @@ public sealed class CreateProfileCommandHandler(
         }
 
         var profile = Profile.Create(userId, handle, request.DisplayName, request.Bio, request.Location, clock.GetUtcNow());
+        profile.RecordAgeBand(caller.IsMinor);
         profiles.Add(profile);
         await profiles.SaveChangesAsync(cancellationToken);
 

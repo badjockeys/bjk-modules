@@ -246,4 +246,39 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
         var types = await heatmap.CountByCategoryAsync(Filter(), Ct);
         Assert.Equal(new[] { ("Speeding", 4), ("MobilePhoneUse", 3) }, types.Select(t => (t.Key, t.Count)));
     }
+
+    [Fact]
+    public async Task The_heat_map_filters_by_vehicle_light_school_run_reported_and_video()
+    {
+        // Monday 12 Oct 2026: 08:30 BST (school run, daylight) and 19:30 BST (dark).
+        var morning = new DateTimeOffset(2026, 10, 12, 7, 30, 0, TimeSpan.Zero);
+        var evening = new DateTimeOffset(2026, 10, 12, 18, 30, 0, TimeSpan.Zero);
+        var van = new VehicleDetails(VehicleType.Van, "Ford", "Transit", VehicleColour.White);
+        var car = new VehicleDetails(VehicleType.Car, "BMW", "3 Series", VehicleColour.Black);
+        var posts = new List<Post>
+        {
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, morning) with { Vehicle = van, ReportedToPolice = true }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, morning.AddMinutes(5)) with { Vehicle = van }, [Guid.NewGuid()], Now, hasVideo: true),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, evening) with { Vehicle = car }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, evening.AddMinutes(5)), [Guid.NewGuid()], Now),
+        };
+        await SaveAsync(posts.ToArray());
+
+        var box = new GeoBox(53.40m, 53.46m, -2.85m, -2.75m);
+        var (from, to) = (UkCalendar.StartOf(new DateOnly(2026, 10, 12)), UkCalendar.StartOf(new DateOnly(2026, 10, 13)));
+        HeatmapFilter Filter() => new(box, from, to, [], null, HeatmapDays.All);
+
+        await using var db = Context();
+        var heatmap = new HeatmapRepository(db);
+
+        Assert.Equal(4, await heatmap.CountAsync(Filter(), Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter() with { VehicleTypes = [VehicleType.Van] }, Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter() with { Make = "Ford", Model = "Transit" }, Ct));
+        Assert.Equal(1, await heatmap.CountAsync(Filter() with { Colours = [VehicleColour.Black, VehicleColour.Red] }, Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter() with { Dark = true }, Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter() with { Dark = false }, Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter() with { SchoolRun = true }, Ct));
+        Assert.Equal(1, await heatmap.CountAsync(Filter() with { ReportedOnly = true }, Ct));
+        Assert.Equal(1, await heatmap.CountAsync(Filter() with { VideoOnly = true }, Ct));
+    }
 }

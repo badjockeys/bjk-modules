@@ -2,11 +2,13 @@ using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Domain;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Notifications;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +27,8 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// adults, and the media are kept privately. If automatic detection already flagged any of the media, the post is
 /// tagged sensitive automatically (and queued for a moderator) whatever <c>IsSensitive</c> says. <c>Types</c> are the
 /// types of bad driving (at least one; the first is the main one); older clients can send one <c>Category</c> instead.
+/// <c>Passengers</c> are @handles of people in the author's vehicle (driving incidents only, up to 4, adults only):
+/// each is asked to accept before their name shows on the post.
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -36,7 +40,13 @@ public sealed record CreatePostCommand(
     string? PlaceName,
     IReadOnlyList<Guid> MediaIds,
     bool IsSensitive = false,
-    IReadOnlyList<IncidentCategory>? Types = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    IReadOnlyList<IncidentCategory>? Types = null,
+    IReadOnlyList<string>? Passengers = null,
+    VehicleType? VehicleType = null,
+    string? VehicleMake = null,
+    string? VehicleModel = null,
+    VehicleColour? VehicleColour = null,
+    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
@@ -64,7 +74,10 @@ public sealed class CreatePostCommandHandler(
     PostViews views,
     PostMediaPublisher publisher,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    PassengerTagging? passengers = null,
+    INotificationSender? notifications = null,
+    IAreaAlerts? areaAlerts = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -118,10 +131,15 @@ public sealed class CreatePostCommandHandler(
             throw PostAccess.Invalid(nameof(request.MediaIds), "A photo or video is already in another post.");
         }
 
+        var details = request.ToDetails();
+        var passengerIds = passengers is null || request.Passengers is not { Count: > 0 }
+            ? []
+            : await passengers.ResolveAsync(userId, request.Passengers, details.Types!, cancellationToken);
+
         var pending = request.MediaIds.Any(id => !found[id].IsReady);
         var post = Post.Create(
             userId,
-            request.ToDetails(),
+            details,
             request.MediaIds,
             clock.GetUtcNow(),
             request.IsSensitive,
@@ -139,7 +157,18 @@ public sealed class CreatePostCommandHandler(
         }
 
         posts.Add(post);
+        IReadOnlyList<Guid> tagged = [];
+        if (passengers is not null && passengerIds.Count > 0)
+        {
+            tagged = await passengers.ApplyAsync(post, passengerIds, cancellationToken);
+        }
+
         await posts.SaveChangesAsync(cancellationToken);
+        await PassengerTagging.NotifyTaggedAsync(notifications, post, tagged, cancellationToken);
+        if (post.IsPublic && areaAlerts is not null)
+        {
+            await areaAlerts.PostPublishedAsync(post.ToPublished(clock.GetUtcNow()), cancellationToken);
+        }
         if (autoTagged)
         {
             await publisher.RecordAutomaticTagAsync(post, cancellationToken);

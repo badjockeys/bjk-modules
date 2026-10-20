@@ -26,6 +26,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<ReelPlayDailyCount> ReelPlayDailyCounts => Set<ReelPlayDailyCount>();
 
+    public DbSet<PostPassenger> PostPassengers => Set<PostPassenger>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -58,6 +60,10 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.SensitiveReview).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.RowVersion).IsRowVersion();
         builder.Ignore(p => p.Types);
+        builder.Property(p => p.VehicleType).HasConversion<string>().HasMaxLength(20);
+        builder.Property(p => p.VehicleColour).HasConversion<string>().HasMaxLength(20);
+        builder.Property(p => p.VehicleMake).HasMaxLength(VehicleCatalogue.NameMaxLength);
+        builder.Property(p => p.VehicleModel).HasMaxLength(VehicleCatalogue.NameMaxLength);
         builder.Ignore(p => p.IsMediaPending);
         builder.Ignore(p => p.AuthorMayRemoveSensitive);
 
@@ -93,7 +99,21 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.HasIndex(p => p.IncidentAt)
             .HasDatabaseName("IX_Posts_Heatmap")
             .HasFilter(PublicFilter)
-            .IncludeProperties(p => new { p.Latitude, p.Longitude, p.Category, p.TypeFlags, p.PlaceName });
+            .IncludeProperties(p => new
+            {
+                p.Latitude,
+                p.Longitude,
+                p.Category,
+                p.TypeFlags,
+                p.PlaceName,
+                p.VehicleType,
+                p.VehicleMake,
+                p.VehicleModel,
+                p.VehicleColour,
+                p.IsDark,
+                p.ReportedToPolice,
+                p.HasVideo,
+            });
     }
 
     /// <summary>Published, media ready, author active: what everyone can see.</summary>
@@ -126,6 +146,22 @@ internal sealed class ReelPlayDailyCountConfiguration : IEntityTypeConfiguration
         builder.ToTable("ReelPlayDailyCounts");
         builder.HasKey(c => new { c.PostId, c.Day });
         builder.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class PostPassengerConfiguration : IEntityTypeConfiguration<PostPassenger>
+{
+    public void Configure(EntityTypeBuilder<PostPassenger> builder)
+    {
+        builder.ToTable("PostPassengers");
+        builder.HasKey(p => new { p.PostId, p.UserId });
+        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+
+        // Deleting a post deletes its tags.
+        builder.HasOne<Post>().WithMany().HasForeignKey(p => p.PostId).OnDelete(DeleteBehavior.Cascade);
+
+        // "Posts I'm tagged in", by status.
+        builder.HasIndex(p => new { p.UserId, p.Status, p.TaggedAt });
     }
 }
 

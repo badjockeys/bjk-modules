@@ -35,6 +35,8 @@ internal sealed class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         builder.Property(p => p.Bio).HasMaxLength(Profile.BioMaxLength);
         builder.Property(p => p.Location).HasMaxLength(Profile.LocationMaxLength);
         builder.Property(p => p.RowVersion).IsRowVersion();
+        builder.Property(p => p.RoadUser).HasConversion<string>().HasMaxLength(20);
+        builder.Ignore(p => p.PublicRoadUser);
     }
 }
 
