@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BJK.Modules.Shared.Behaviours;
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Errors;
 using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Safety;
@@ -75,6 +76,9 @@ public static class ModuleServiceCollectionExtensions
                 .AddAuthenticationSchemes(ModuleAuthentication.Scheme)
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => context.User.GetIdentityId() is not null));
+
+        // Deployed environments must have every setting (see DeployedSettings); the MediatR licence is common to all.
+        services.RequireWhenDeployed(MediatRLicenseKeySetting, "the MediatR licence key");
 
         services.AddHttpContextAccessor();
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();

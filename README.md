@@ -141,6 +141,25 @@ app.MapControllers();
 
 `user-secrets.template.json` lists these with local development values.
 
+### Deployed environments refuse to start without every setting
+
+Outside Development (DEV, QA, Staging and Live alike), a host refuses to start until every setting it needs has a live value, and the error lists **all** the problems at once. Modules declare their own with `services.RequireWhenDeployed(key, requirement, isValid)` (`BJK.Modules.Shared.Configuration`); hosts add theirs the same way. A value still in the template's `<...>` placeholder form fails too, required or not.
+
+| Setting | Required outside Development | From |
+|---|---|---|
+| `MediatR:LicenseKey` | Set | Every host |
+| `Email:Provider` | `SendGrid` (`Log`, the default, sends nothing; use SendGrid's `SandboxMode` on test servers) | Email module |
+| `SMS:Provider` | `Twilio` (`Log` sends nothing) | SMS module |
+| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | `Turnstile` (or unset); a real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
+| `Notifications:AppUrl` | An https address | Notifications module |
+| `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
+| `Media:Storage:SensitiveBucket` | Set | Media module |
+| `Media:Redaction:FaceModelPath`, `PlateModelPath` | Set | Media worker |
+
+The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
+
+**`--check-settings`:** a host started with this argument builds its services, runs every startup settings check, prints the result and exits (0 when ready, 1 with every problem listed) without touching the database. `SettingsCheck.Requested(args)` and `SettingsCheck.Run(app.Services)` do it. Deploy pipelines run each image with the environment's settings and `--check-settings` before rolling it out, so a missing setting fails the pipeline rather than the release.
+
 ### One id per person, one copy of each fact
 
 A user's id is the same GUID everywhere: the sign-in account (`auth.AspNetUsers`), the account record (`users.Accounts`), the core profile and every post, comment and media item. It's the `sub` claim in every token, so no module ever needs to look up another id.

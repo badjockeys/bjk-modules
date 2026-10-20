@@ -1,3 +1,4 @@
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Delivery;
 using BJK.Modules.SMS.Contracts;
@@ -32,6 +33,10 @@ public sealed class SMSModule : IModule
             .Bind(configuration.GetSection(SMSOptions.SectionName))
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SMSOptions>, SMSOptionsValidator>());
+        services.RequireWhenDeployed(
+            "SMS:Provider",
+            $"{SMSOptions.TwilioProvider} (the default, {SMSOptions.LogProvider}, sends nothing)",
+            v => v == SMSOptions.TwilioProvider);
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(sp => new ProviderRetry(sp.GetRequiredService<TimeProvider>()));

@@ -1,6 +1,7 @@
 using BJK.Modules.Notifications.Infrastructure;
 using BJK.Modules.Notifications.Infrastructure.Data;
 using BJK.Modules.Profiles;
+using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
 using BJK.Modules.Shared.Notifications;
@@ -44,6 +45,7 @@ public sealed class NotificationsModule(string connectionStringName) : IModule
                 sql.EnableRetryOnFailure();
             }));
         services.AddOptions<NotificationsOptions>().Bind(configuration.GetSection(NotificationsOptions.SectionName));
+        services.RequireWhenDeployed("Notifications:AppUrl", "the web app's https address, for links in emails", DeployedSettingChecks.IsHttps);
         services.AddScoped<INotificationRepository, NotificationRepository>();
 
         // Replace the do-nothing sender and area alerts other modules register, whichever module is registered first.
