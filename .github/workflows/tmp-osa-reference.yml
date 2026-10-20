@@ -1,0 +1,28 @@
+# Temporary: model facts and reference data for the online safety checks. Removed before review.
+name: tmp-osa-reference
+on:
+  push:
+    branches: [feature/online-safety-detection]
+permissions:
+  contents: write
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reference data
+        continue-on-error: true
+        run: |
+          exec > >(tee osa-reference.log) 2>&1
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet transformers==4.46.3 onnxruntime numpy pillow pdqhash huggingface_hub
+          python .github/osa_reference.py
+      - name: Push
+        if: ${{ always() }}
+        run: |
+          git add -f osa-reference.log osa-reference.json || true
+          git -c user.name=ci -c user.email=ci@example.com commit -m "OSA reference data"
+          git push origin HEAD:refs/heads/tmp/osa-reference --force
