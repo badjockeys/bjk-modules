@@ -52,6 +52,18 @@ public interface ICommentRepository
         int pageSize,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One person's comments and replies, newest first, on posts everyone can see, leaving out posts by the given
+    /// authors. Only visible comments, unless <paramref name="includeOwnHidden"/> (the person looking at their own).
+    /// </summary>
+    Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListByAuthorAsync(
+        Guid authorId,
+        IReadOnlyCollection<Guid> excludePostAuthorIds,
+        bool includeOwnHidden,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
     /// <summary>How many visible replies each comment has, leaving out the given authors.</summary>
     Task<IReadOnlyDictionary<Guid, int>> CountRepliesAsync(
         IReadOnlyCollection<Guid> parentIds,
@@ -133,6 +145,34 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, total);
+    }
+
+    public async Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListByAuthorAsync(
+        Guid authorId,
+        IReadOnlyCollection<Guid> excludePostAuthorIds,
+        bool includeOwnHidden,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var publicPosts = db.Posts.AsNoTracking().Where(p =>
+            p.Status == PostStatus.Published
+            && p.MediaState == PostMediaState.Ready
+            && !p.IsAuthorDeactivated
+            && !excludePostAuthorIds.Contains(p.AuthorId));
+        var query = db.Comments.AsNoTracking()
+            .Where(c => c.AuthorId == authorId && !c.IsAuthorDeactivated && c.Status != CommentStatus.Deleted)
+            .Where(c => includeOwnHidden || c.Status == CommentStatus.Visible)
+            .Where(c => publicPosts.Any(p => p.Id == c.PostId));
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(c => c.CreatedAt)
             .ThenBy(c => c.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

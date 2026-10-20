@@ -99,6 +99,25 @@ public sealed class PostsController(ISender sender) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// One person's comments and replies, newest first, with the post each is on: the Replies tab on their profile.
+    /// Only comments on posts everyone can see.
+    /// </summary>
+    /// <param name="author">The profile's @handle.</param>
+    /// <param name="page">Page number, from 1.</param>
+    /// <param name="pageSize">Comments per page, up to 50.</param>
+    /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
+    [HttpGet("replies")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PagedResult<ProfileReplyDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<PagedResult<ProfileReplyDto>> ListProfileReplies(
+        [FromQuery] string author,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListProfileRepliesQuery(author, page, pageSize), cancellationToken);
+
     /// <summary>One post. Anyone can call this; sensitive posts are 404 for logged-out callers.</summary>
     [HttpGet("{id:guid}")]
     [Authorize(Policy = PostsModule.ReadPolicy)]
