@@ -103,6 +103,12 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("EditedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("HiddenByPostAuthorAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("HiddenReason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -111,6 +117,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsFlagged")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsHiddenByPostAuthor")
                         .HasColumnType("bit");
 
                     b.Property<Guid?>("ParentCommentId")
@@ -157,6 +166,32 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasIndex("PostId", "Status", "CreatedAt");
 
                     b.ToTable("Comments", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.CommentEdit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ReplacedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("WrittenAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommentId", "ReplacedAt");
+
+                    b.ToTable("CommentEdits", "posts");
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.CommentReaction", b =>
@@ -274,6 +309,13 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("CommentSetting")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Everyone");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -749,6 +791,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
                         .WithMany()
                         .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.CommentEdit", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Comment", null)
+                        .WithMany()
+                        .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

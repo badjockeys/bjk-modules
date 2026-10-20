@@ -16,6 +16,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
 
+    public DbSet<CommentEdit> CommentEdits => Set<CommentEdit>();
+
     public DbSet<Report> Reports => Set<Report>();
 
     public DbSet<Appeal> Appeals => Set<Appeal>();
@@ -64,6 +66,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Ignore(p => p.Types);
         builder.Property(p => p.VehicleType).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.VehicleColour).HasConversion<string>().HasMaxLength(20);
+        builder.Property(p => p.CommentSetting).HasConversion<string>().HasMaxLength(20).HasDefaultValue(CommentSetting.Everyone);
         builder.Property(p => p.VehicleMake).HasMaxLength(VehicleCatalogue.NameMaxLength);
         builder.Property(p => p.VehicleModel).HasMaxLength(VehicleCatalogue.NameMaxLength);
         builder.Ignore(p => p.IsMediaPending);
@@ -220,6 +223,22 @@ internal sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
         // A comment's replies, oldest first. No foreign key: a reply stays (under a "comment removed" placeholder)
         // when its top-level comment is deleted, including when that comment's author deletes their account.
         builder.HasIndex(c => new { c.ParentCommentId, c.Status, c.CreatedAt });
+    }
+}
+
+internal sealed class CommentEditConfiguration : IEntityTypeConfiguration<CommentEdit>
+{
+    public void Configure(EntityTypeBuilder<CommentEdit> builder)
+    {
+        builder.ToTable("CommentEdits");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).ValueGeneratedNever();
+        builder.Property(e => e.Body).HasMaxLength(Comment.BodyMaxLength).IsRequired();
+
+        builder.HasOne<Comment>().WithMany().HasForeignKey(e => e.CommentId).OnDelete(DeleteBehavior.Cascade);
+
+        // A comment's history, newest first.
+        builder.HasIndex(e => new { e.CommentId, e.ReplacedAt });
     }
 }
 

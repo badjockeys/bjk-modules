@@ -91,7 +91,8 @@ public sealed record PostDto(
     IReadOnlyList<IncidentCategory>? Types = null,
     IReadOnlyList<PassengerDto>? Passengers = null,
     VehicleDto? Vehicle = null,
-    bool? ReportedToPolice = null)
+    bool? ReportedToPolice = null,
+    CommentSetting CommentSetting = CommentSetting.Everyone)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -101,7 +102,10 @@ public sealed record PostDto(
 /// A comment or reply. <c>Status</c> is HeldForReview only for its author, while a moderator reviews it.
 /// <c>IsRemoved</c> marks a top-level comment that was hidden or deleted but still has visible replies: it's shown as
 /// a "comment removed" placeholder, with no author and an empty body. Top-level comments in a list carry their
-/// <c>ReplyCount</c> and the first few <c>Replies</c>; the rest come from the replies endpoint.
+/// <c>ReplyCount</c> and the first few <c>Replies</c>; the rest come from the replies endpoint. <c>EditedAt</c> is set
+/// once its author has changed the text (the earlier versions come from the history endpoint).
+/// <c>IsHiddenByPostAuthor</c>: the post's author hid it. Everyone else gets it with no author, an empty body and no
+/// replies, shown as a "Hidden by the post's author" placeholder; the commenter and the post's author get it in full.
 /// </summary>
 public sealed record CommentDto(
     Guid Id,
@@ -116,7 +120,15 @@ public sealed record CommentDto(
     IReadOnlyDictionary<ReactionType, int>? Reactions = null,
     ReactionType? MyReaction = null,
     int ReplyCount = 0,
-    IReadOnlyList<CommentDto>? Replies = null);
+    IReadOnlyList<CommentDto>? Replies = null,
+    DateTimeOffset? EditedAt = null,
+    bool IsHiddenByPostAuthor = false);
+
+/// <summary>A version of a comment's text, for its edit history.</summary>
+/// <param name="Body">The text.</param>
+/// <param name="WrittenAt">When this version was written.</param>
+/// <param name="IsCurrent">True for the text as it is now.</param>
+public sealed record CommentVersionDto(string Body, DateTimeOffset WrittenAt, bool IsCurrent);
 
 /// <summary>A report, as moderators see it, including the public reporter's contact details.</summary>
 public sealed record ReportDto(
@@ -289,7 +301,8 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 Types: p.Types,
                 Passengers: PassengersFor(p, tags[p.Id], authors, viewerId),
                 Vehicle: p.VehicleType is { } type ? new VehicleDto(type, p.VehicleMake, p.VehicleModel, p.VehicleColour) : null,
-                ReportedToPolice: p.ReportedToPolice);
+                ReportedToPolice: p.ReportedToPolice,
+                CommentSetting: p.CommentSetting);
         }).ToList();
     }
 

@@ -361,7 +361,7 @@ public sealed class PostHandlerTests
         new(_profiles, _posts, _comments, Options.Create(options ?? new SafetyOptions()), _clock);
 
     private ModerationNotifications Notifications() =>
-        new(_email, Options.Create(new EmailOptions()), _clock, NullLogger<ModerationNotifications>.Instance);
+        new(_email, Options.Create(new EmailOptions()), Options.Create(new PostsOptions { ReportsInbox = "" }), _clock, NullLogger<ModerationNotifications>.Instance);
 
     private static CreatePostCommand Command(params Guid[] mediaIds)
     {

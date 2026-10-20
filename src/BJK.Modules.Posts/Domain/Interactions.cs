@@ -69,7 +69,8 @@ public sealed class CommentReaction
 
 /// <summary>
 /// A comment on a post, or a reply to one. Replies go one level deep only: a reply's <see cref="ParentCommentId"/>
-/// is a top-level comment on the same post, and replies can't be replied to. Editable and deletable by the author.
+/// is a top-level comment on the same post, and replies can't be replied to. Editable and deletable by the author;
+/// every edit keeps the earlier text in <see cref="CommentEdit"/>. The post's author can hide it from everyone else.
 /// </summary>
 public sealed class Comment
 {
@@ -97,6 +98,17 @@ public sealed class Comment
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? UpdatedAt { get; private set; }
+
+    /// <summary>When its author last changed the text; null if never. Earlier versions are in <see cref="CommentEdit"/>.</summary>
+    public DateTimeOffset? EditedAt { get; private set; }
+
+    /// <summary>
+    /// The post's author hid it: everyone else sees a "Hidden by the post's author" placeholder (and, for a top-level
+    /// comment, none of its replies). The commenter and the post's author still see it, marked hidden.
+    /// </summary>
+    public bool IsHiddenByPostAuthor { get; private set; }
+
+    public DateTimeOffset? HiddenByPostAuthorAt { get; private set; }
 
     public string? HiddenReason { get; private set; }
 
@@ -148,16 +160,62 @@ public sealed class Comment
 
     public bool IsOwnedBy(Guid userId) => AuthorId == userId;
 
-    public void Edit(string body, DateTimeOffset now)
+    /// <summary>
+    /// Changes the text. Returns the earlier version to keep in the history, or null if the text is the same (nothing
+    /// changes then).
+    /// </summary>
+    public CommentEdit? Edit(string body, DateTimeOffset now)
     {
         if (Status != CommentStatus.Visible)
         {
             throw new InvalidOperationException($"The comment is {Status}.");
         }
 
-        Body = CheckedBody(body);
+        var checkedBody = CheckedBody(body);
+        if (checkedBody == Body)
+        {
+            return null;
+        }
+
+        var earlier = CommentEdit.Create(this, now);
+        Body = checkedBody;
+        EditedAt = now;
+        UpdatedAt = now;
+        return earlier;
+    }
+
+    /// <summary>The post's author hides the comment from everyone but themselves and the commenter.</summary>
+    public void HideByPostAuthor(DateTimeOffset now)
+    {
+        if (IsHiddenByPostAuthor)
+        {
+            return;
+        }
+
+        IsHiddenByPostAuthor = true;
+        HiddenByPostAuthorAt = now;
         UpdatedAt = now;
     }
+
+    /// <summary>The post's author shows the comment again.</summary>
+    public void ShowByPostAuthor(DateTimeOffset now)
+    {
+        if (!IsHiddenByPostAuthor)
+        {
+            return;
+        }
+
+        IsHiddenByPostAuthor = false;
+        HiddenByPostAuthorAt = null;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="viewerId"/> sees the comment itself rather than the "Hidden by the post's author"
+    /// placeholder: always, unless the post's author hid it and the viewer is neither them nor the commenter.
+    /// </summary>
+    public bool IsShownTo(Guid viewerId, Guid postAuthorId) =>
+        !IsHiddenByPostAuthor || viewerId == AuthorId || viewerId == postAuthorId;
 
     /// <summary>
     /// Applies a content screening result. <see cref="ScreeningVerdict.Hold"/> holds a visible comment for review
@@ -244,6 +302,40 @@ public sealed class Comment
             ? trimmed
             : throw new ArgumentException($"Comments are {BodyMaxLength} characters or fewer.", nameof(body));
     }
+}
+
+/// <summary>
+/// An earlier version of a comment, kept when its author edits it. Anyone who can see the comment can see its
+/// earlier versions ("Edited"). Deleted with the comment.
+/// </summary>
+public sealed class CommentEdit
+{
+    // For EF Core.
+    private CommentEdit()
+    {
+    }
+
+    public Guid Id { get; private set; }
+
+    public Guid CommentId { get; private set; }
+
+    /// <summary>The text as it was.</summary>
+    public string Body { get; private set; } = string.Empty;
+
+    /// <summary>When this version was written: the comment's creation or its previous edit.</summary>
+    public DateTimeOffset WrittenAt { get; private set; }
+
+    /// <summary>When it was replaced by the next version.</summary>
+    public DateTimeOffset ReplacedAt { get; private set; }
+
+    internal static CommentEdit Create(Comment comment, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(now),
+        CommentId = comment.Id,
+        Body = comment.Body,
+        WrittenAt = comment.EditedAt ?? comment.CreatedAt,
+        ReplacedAt = now,
+    };
 }
 
 

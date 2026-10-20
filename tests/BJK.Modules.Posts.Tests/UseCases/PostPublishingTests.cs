@@ -104,7 +104,7 @@ public sealed class PostPublishingTests
     }
 
     private ModerationNotifications Notifications() =>
-        new(_email, Options.Create(new EmailOptions()), _clock, NullLogger<ModerationNotifications>.Instance);
+        new(_email, Options.Create(new EmailOptions()), Options.Create(new PostsOptions { ReportsInbox = "" }), _clock, NullLogger<ModerationNotifications>.Instance);
 
     private PostMediaPublisher Publisher() => new(_posts, _media, Notifications(), _clock, NullLogger<PostMediaPublisher>.Instance, _audit);
 

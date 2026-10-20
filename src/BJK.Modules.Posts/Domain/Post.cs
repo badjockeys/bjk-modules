@@ -65,6 +65,9 @@ public sealed class Post
     /// <summary>The author reported it to the police (true), didn't (false), or didn't say (null).</summary>
     public bool? ReportedToPolice { get; private set; }
 
+    /// <summary>Who can comment, chosen by the author. Everyone by default.</summary>
+    public CommentSetting CommentSetting { get; private set; }
+
     /// <summary>
     /// The sun was down at the incident's time and place (<see cref="Daylight"/>). Worked out when the details are
     /// saved; null for posts saved before it existed.
@@ -290,6 +293,19 @@ public sealed class Post
 
     /// <summary>Forgets the author's email address once they've been told (or it couldn't be sent).</summary>
     public void ClearNotifyEmail() => NotifyEmail = null;
+
+    /// <summary>The author changes who can comment. Comments already there stay.</summary>
+    public void SetCommentSetting(CommentSetting setting, DateTimeOffset now)
+    {
+        EnsureNotDeleted();
+        if (CommentSetting == setting)
+        {
+            return;
+        }
+
+        CommentSetting = setting;
+        UpdatedAt = now;
+    }
 
     public void Update(PostDetails details, DateTimeOffset now)
     {
