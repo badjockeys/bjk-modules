@@ -176,5 +176,6 @@ public static class NotificationDefaults
         NotificationType.CommentOnPost,
         NotificationType.ReplyToComment,
         NotificationType.ReactionOnPost,
+        NotificationType.NewFollower,
     ];
 }

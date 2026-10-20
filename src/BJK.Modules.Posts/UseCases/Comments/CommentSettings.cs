@@ -7,8 +7,8 @@ using MediatR;
 namespace BJK.Modules.Posts.UseCases.Comments;
 
 /// <summary>
-/// The post's author chooses who can comment: everyone, or nobody (comments off). Comments already there stay, and
-/// the author can turn comments back on at any time.
+/// The post's author chooses who can comment: everyone, only people they follow, or nobody (comments off). Comments
+/// already there stay, and the author can change it at any time.
 /// </summary>
 /// <param name="PostId">The post.</param>
 /// <param name="Setting">Who can comment.</param>

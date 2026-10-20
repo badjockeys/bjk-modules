@@ -125,6 +125,10 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<UseCases.Hashtags.HashtagSync>();
         services.AddHostedService<HashtagMaintenance>();
 
+        // Home timelines: For you (ranked, boosted near the home area), Following and custom timelines.
+        services.AddScoped<ITimelineRepository, TimelineRepository>();
+        services.AddHomeAreasFallback();
+
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();
         services.AddMediaEventHandler<PostsMediaEventHandler>(configuration, connectionStringName);

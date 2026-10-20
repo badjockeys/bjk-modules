@@ -39,6 +39,39 @@ public interface IProfileRepository
     /// <summary>Deletes every block made by or against the user, when their account is deleted.</summary>
     Task DeleteBlocksForUserAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>The follow, or null (tracked).</summary>
+    Task<Follow?> GetFollowAsync(Guid followerId, Guid followeeId, CancellationToken cancellationToken);
+
+    void AddFollow(Follow follow);
+
+    void RemoveFollow(Follow follow);
+
+    /// <summary>Removes follows between two users, either way (when one blocks the other).</summary>
+    Task RemoveFollowsBetweenAsync(Guid userId, Guid otherId, CancellationToken cancellationToken);
+
+    /// <summary>Removes every follow to or from a user (when the account is deleted).</summary>
+    Task DeleteFollowsForUserAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>How many follow the user, and how many they follow (active profiles only).</summary>
+    Task<(int Followers, int Following)> CountFollowsAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Everyone the user follows (ids only), most recent first.</summary>
+    Task<IReadOnlyList<Guid>> GetFollowingIdsAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Of <paramref name="userIds"/>, those <paramref name="followerId"/> follows.</summary>
+    Task<IReadOnlyCollection<Guid>> FollowingAmongAsync(Guid followerId, IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+
+    /// <summary>A page of a user's followers or of who they follow, most recent first, with active profiles only.</summary>
+    Task<(IReadOnlyList<Profile> Items, int TotalCount)> ListFollowsAsync(
+        Guid userId,
+        bool followers,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>Of <paramref name="ids"/>, the active adults (known to be 18 or over), for suggestions.</summary>
+    Task<IReadOnlyList<Profile>> GetSuggestableAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
@@ -93,6 +126,81 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
 
     public Task DeleteBlocksForUserAsync(Guid userId, CancellationToken cancellationToken) =>
         db.Blocks.Where(b => b.BlockerId == userId || b.BlockedId == userId).ExecuteDeleteAsync(cancellationToken);
+
+    public Task<Follow?> GetFollowAsync(Guid followerId, Guid followeeId, CancellationToken cancellationToken) =>
+        db.Follows.FirstOrDefaultAsync(f => f.FollowerId == followerId && f.FolloweeId == followeeId, cancellationToken);
+
+    public void AddFollow(Follow follow) => db.Follows.Add(follow);
+
+    public void RemoveFollow(Follow follow) => db.Follows.Remove(follow);
+
+    public Task RemoveFollowsBetweenAsync(Guid userId, Guid otherId, CancellationToken cancellationToken) =>
+        db.Follows
+            .Where(f => (f.FollowerId == userId && f.FolloweeId == otherId) || (f.FollowerId == otherId && f.FolloweeId == userId))
+            .ExecuteDeleteAsync(cancellationToken);
+
+    public Task DeleteFollowsForUserAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.Follows.Where(f => f.FollowerId == userId || f.FolloweeId == userId).ExecuteDeleteAsync(cancellationToken);
+
+    public async Task<(int Followers, int Following)> CountFollowsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var followers = await db.Follows
+            .Where(f => f.FolloweeId == userId && db.Profiles.Any(p => p.Id == f.FollowerId && p.DeactivatedAt == null))
+            .CountAsync(cancellationToken);
+        var following = await db.Follows
+            .Where(f => f.FollowerId == userId && db.Profiles.Any(p => p.Id == f.FolloweeId && p.DeactivatedAt == null))
+            .CountAsync(cancellationToken);
+        return (followers, following);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetFollowingIdsAsync(Guid userId, CancellationToken cancellationToken) =>
+        await db.Follows.AsNoTracking()
+            .Where(f => f.FollowerId == userId)
+            .OrderByDescending(f => f.CreatedAt)
+            .Select(f => f.FolloweeId)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyCollection<Guid>> FollowingAmongAsync(
+        Guid followerId,
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken) =>
+        userIds.Count == 0
+            ? []
+            : await db.Follows.AsNoTracking()
+                .Where(f => f.FollowerId == followerId && userIds.Contains(f.FolloweeId))
+                .Select(f => f.FolloweeId)
+                .ToListAsync(cancellationToken);
+
+    public async Task<(IReadOnlyList<Profile> Items, int TotalCount)> ListFollowsAsync(
+        Guid userId,
+        bool followers,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var follows = followers
+            ? db.Follows.Where(f => f.FolloweeId == userId).Select(f => new { OtherId = f.FollowerId, f.CreatedAt })
+            : db.Follows.Where(f => f.FollowerId == userId).Select(f => new { OtherId = f.FolloweeId, f.CreatedAt });
+        var query = follows
+            .Join(db.Profiles.Where(p => p.DeactivatedAt == null), f => f.OtherId, p => p.Id, (f, p) => new { f.CreatedAt, Profile = p });
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenBy(x => x.Profile.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => x.Profile)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        return (items, total);
+    }
+
+    public async Task<IReadOnlyList<Profile>> GetSuggestableAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        ids.Count == 0
+            ? []
+            : await db.Profiles.AsNoTracking()
+                .Where(p => ids.Contains(p.Id) && p.DeactivatedAt == null && p.IsMinor == false)
+                .ToListAsync(cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

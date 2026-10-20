@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace BJK.Modules.Posts.Infrastructure;
 
 /// <summary>Hides a deactivated user's posts and comments, shows them again on return, and deletes them with the account.</summary>
-internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRepository drafts) : IUserLifecycleHandler
+internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRepository drafts, ITimelineRepository? timelines = null)
+    : IUserLifecycleHandler
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
     {
@@ -22,6 +23,11 @@ internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRep
             case UserLifecycleEventType.Deleted:
                 // Their uploads, drafts' included, are deleted by the Media module's own handler.
                 await drafts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+                if (timelines is not null)
+                {
+                    await timelines.DeleteForUserAsync(userEvent.UserId, cancellationToken);
+                }
+
                 await posts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
                 break;
         }
@@ -143,6 +149,14 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
         // Every type of bad driving on each post, by name.
         var postTypes = posts.Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(p.TypeFlags, p.Category) }).ToList();
 
-        return new { posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays };
+        // Custom timelines (their place is the owner's own choice).
+        var timelines = (await db.Timelines.AsNoTracking()
+                .Where(t => t.UserId == userId)
+                .OrderBy(t => t.Position)
+                .ToListAsync(cancellationToken))
+            .Select(t => new { t.Id, t.Name, Types = t.Types.Select(x => x.ToString()).ToList(), t.PlaceName, t.Latitude, t.Longitude, t.RadiusKm, t.CreatedAt })
+            .ToList();
+
+        return new { posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays, timelines };
     }
 }

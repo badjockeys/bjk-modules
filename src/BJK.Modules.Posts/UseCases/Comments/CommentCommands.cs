@@ -41,7 +41,8 @@ public sealed class AddCommentCommandHandler(
     NewAccountLimits limits,
     ICurrentUser caller,
     TimeProvider clock,
-    INotificationSender? notifications = null)
+    INotificationSender? notifications = null,
+    IFollowDirectory? follows = null)
     : IRequestHandler<AddCommentCommand, CommentDto>
 {
     public async Task<CommentDto> Handle(AddCommentCommand request, CancellationToken cancellationToken)
@@ -53,6 +54,12 @@ public sealed class AddCommentCommandHandler(
         if (post.CommentSetting == CommentSetting.Off && post.AuthorId != userId)
         {
             throw new ForbiddenException("The author has turned comments off on this post.");
+        }
+
+        if (post.CommentSetting == CommentSetting.Following && post.AuthorId != userId
+            && (follows is null || !await follows.IsFollowingAsync(post.AuthorId, userId, cancellationToken)))
+        {
+            throw new ForbiddenException("Only people the author follows can comment on this post.");
         }
 
         var author = await profiles.GetSummariesAsync([userId], cancellationToken);

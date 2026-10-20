@@ -11,8 +11,9 @@ internal sealed class ProfilesUserLifecycleHandler(IProfileRepository profiles, 
     {
         if (userEvent.Type == UserLifecycleEventType.Deleted)
         {
-            // Blocks can exist without a profile on either side, so they go first.
+            // Blocks and follows can exist without a profile on either side, so they go first.
             await profiles.DeleteBlocksForUserAsync(userEvent.UserId, cancellationToken);
+            await profiles.DeleteFollowsForUserAsync(userEvent.UserId, cancellationToken);
         }
 
         var profile = await profiles.GetByIdAsync(userEvent.UserId, cancellationToken);
@@ -49,8 +50,9 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
         var blocks = (await profiles.ListBlocksAsync(userId, cancellationToken))
             .Select(b => new { b.BlockedId, b.CreatedAt })
             .ToList();
+        var following = await profiles.GetFollowingIdsAsync(userId, cancellationToken);
         return p is null
-            ? (object)new { blocks }
+            ? (object)new { blocks, following }
             : new
             {
                 p.Id,
@@ -66,6 +68,7 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
                 p.ShowRoadUser,
                 p.IsMinor,
                 blocks,
+                following,
             };
     }
 }

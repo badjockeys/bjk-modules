@@ -38,6 +38,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<HashtagHourlyCount> HashtagHourlyCounts => Set<HashtagHourlyCount>();
 
+    public DbSet<Timeline> Timelines => Set<Timeline>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -157,6 +159,22 @@ internal sealed class ReelPlayDailyCountConfiguration : IEntityTypeConfiguration
         builder.ToTable("ReelPlayDailyCounts");
         builder.HasKey(c => new { c.PostId, c.Day });
         builder.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
+{
+    public void Configure(EntityTypeBuilder<Timeline> builder)
+    {
+        builder.ToTable("Timelines");
+        builder.HasKey(t => t.Id);
+        builder.Property(t => t.Id).ValueGeneratedNever();
+        builder.Property(t => t.Name).HasMaxLength(Timeline.NameMaxLength).IsRequired();
+        builder.Property(t => t.PlaceName).HasMaxLength(Timeline.PlaceNameMaxLength);
+        builder.Property(t => t.Latitude).HasPrecision(9, 6);
+        builder.Property(t => t.Longitude).HasPrecision(9, 6);
+        builder.Ignore(t => t.Types);
+        builder.HasIndex(t => new { t.UserId, t.Position });
     }
 }
 

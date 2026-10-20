@@ -3,6 +3,7 @@ using BJK.Modules.Profiles.Infrastructure;
 using BJK.Modules.Profiles.Infrastructure.Data;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
@@ -59,6 +60,9 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
         services.AddScoped<IProfileRepository, ProfileRepository>();
         services.AddScoped<IProfileDirectory, ProfileDirectory>();
         services.AddScoped<IBlockDirectory, BlockDirectory>();
+        services.AddScoped<IFollowDirectory, FollowDirectory>();
+        services.AddNotificationSenderFallback();
+        services.AddHomeAreasFallback();
         services.AddScoped<IProfileModeration, ProfileModeration>();
         services.AddScoped<IPersonalDataExporter, ProfilePersonalDataExporter>();
         services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration, connectionStringName);

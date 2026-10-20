@@ -180,7 +180,8 @@ public sealed class ReelsTests
         Assert.True(fresh > dayOld);
         Assert.True(popularDayOld > fresh);
         Assert.Equal(1 / Math.Pow(2, 1.5), Post.Create(UserId, Details(), [Guid.NewGuid()], Now, hasVideo: true).ReelScore, 10);
-        Assert.Equal(0, Post.Create(UserId, Details(), [Guid.NewGuid()], Now).ReelScore);
+        // Photo posts are ranked the same way, for the For you timeline.
+        Assert.Equal(1 / Math.Pow(2, 1.5), Post.Create(UserId, Details(), [Guid.NewGuid()], Now).ReelScore, 10);
     }
 
     [Fact]

@@ -167,9 +167,9 @@ public sealed class Post
     public bool HasVideo { get; private set; }
 
     /// <summary>
-    /// Reels ranking ("recent and popular"), for video posts: (1 + reactions + 2 × comments) / (age in hours + 2)^1.5
-    /// (<see cref="ReelRanking"/>). Refreshed in the database every few minutes by the reels background job; 0 for
-    /// photo posts and once a video is older than the ranking window.
+    /// Ranking ("recent and popular") for reels and the For you timeline: (1 + reactions + 2 × comments) / (age in
+    /// hours + 2)^1.5 (<see cref="ReelRanking"/>). Refreshed in the database every few minutes by the reels background
+    /// job for every post; 0 once a post is older than the ranking window.
     /// </summary>
     public double ReelScore { get; private set; }
 
@@ -223,7 +223,7 @@ public sealed class Post
             SensitiveSource = isSensitive ? PostSensitiveSource.Author : PostSensitiveSource.None,
             MediaState = mediaPending ? PostMediaState.Pending : PostMediaState.Ready,
             HasVideo = hasVideo,
-            ReelScore = hasVideo ? ReelRanking.Score(0, 0, TimeSpan.Zero) : 0,
+            ReelScore = ReelRanking.Score(0, 0, TimeSpan.Zero),
             NotifyEmail = mediaPending && !string.IsNullOrWhiteSpace(notifyEmail) && notifyEmail.Trim().Length <= NotifyEmailMaxLength
                 ? notifyEmail.Trim()
                 : null,
