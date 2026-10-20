@@ -16,8 +16,10 @@ namespace BJK.Modules.Posts.UseCases.Comments;
 /// <summary>
 /// Adds a comment to a published post, or (with <c>ParentCommentId</c>) a reply to one of its top-level comments.
 /// Replies go one level deep: replying to a reply is refused with a 400. The commenter needs a profile and a passed
-/// age check, and can't comment on the posts of someone who has blocked them, or reply to someone who has. The text is
-/// screened: high scores are held for review (only the commenter sees it), medium scores are published but flagged.
+/// age check, and can't comment on the posts of someone who has blocked them, or reply to someone who has. Nobody but
+/// the post's author can comment when its author has turned comments off, and only the post's author can reply to a
+/// comment they hid. The text is screened: high scores are held for review (only the commenter sees it), medium scores
+/// are published but flagged.
 /// </summary>
 public sealed record AddCommentCommand(Guid PostId, string Body, Guid? ParentCommentId = null)
     : IRequest<CommentDto>, IRequiresAgeVerification;
@@ -48,6 +50,10 @@ public sealed class AddCommentCommandHandler(
         PostAccess.RequireVerifiedEmail(caller, "commenting");
         var post = await PostAccess.GetPublishedAsync(posts, request.PostId, cancellationToken);
         await PostAccess.EnsureNotBlockedByAuthorAsync(blocks, post, userId, cancellationToken);
+        if (post.CommentSetting == CommentSetting.Off && post.AuthorId != userId)
+        {
+            throw new ForbiddenException("The author has turned comments off on this post.");
+        }
 
         var author = await profiles.GetSummariesAsync([userId], cancellationToken);
         if (author.Count == 0)
@@ -59,9 +65,14 @@ public sealed class AddCommentCommandHandler(
         if (request.ParentCommentId is { } parentId)
         {
             parent = await comments.GetAsync(post.Id, parentId, cancellationToken);
-            if (parent is not { Status: CommentStatus.Visible, IsAuthorDeactivated: false })
+            if (parent is not { Status: CommentStatus.Visible, IsAuthorDeactivated: false } || !parent.IsShownTo(userId, post.AuthorId))
             {
                 throw new NotFoundException("Comment", parentId);
+            }
+
+            if (parent.IsHiddenByPostAuthor && userId != post.AuthorId)
+            {
+                throw new ForbiddenException("The post's author hid this comment, so it can't be replied to.");
             }
 
             if (parent.IsReply)
@@ -100,7 +111,91 @@ public sealed class AddCommentCommandHandler(
     }
 }
 
-/// <summary>Changes a comment's text. Only its author can. The new text is screened again.</summary>
+/// <summary>
+/// A comment's text now and before each edit, newest first ("Edited"). Signed-in users who can see the comment.
+/// </summary>
+public sealed record GetCommentHistoryQuery(Guid PostId, Guid CommentId) : IRequest<IReadOnlyList<CommentVersionDto>>;
+
+public sealed class GetCommentHistoryQueryHandler(
+    IPostRepository posts,
+    ICommentRepository comments,
+    IBlockDirectory blocks,
+    ICurrentUser caller)
+    : IRequestHandler<GetCommentHistoryQuery, IReadOnlyList<CommentVersionDto>>
+{
+    public async Task<IReadOnlyList<CommentVersionDto>> Handle(GetCommentHistoryQuery request, CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken);
+        await PostAccess.EnsureAuthorNotBlockedByViewerAsync(blocks, post, caller, cancellationToken);
+
+        var comment = await comments.GetAsync(post.Id, request.CommentId, cancellationToken);
+        var visible = comment is { IsAuthorDeactivated: false }
+            && (comment.Status == CommentStatus.Visible || comment.AuthorId == userId)
+            && comment.IsShownTo(userId, post.AuthorId)
+            && (comment.AuthorId == userId || !(await blocks.GetBlockedIdsAsync(userId, cancellationToken)).Contains(comment.AuthorId));
+        if (!visible)
+        {
+            throw new NotFoundException("Comment", request.CommentId);
+        }
+
+        var earlier = await comments.ListEditsAsync(comment!.Id, cancellationToken);
+        return
+        [
+            new CommentVersionDto(comment.Body, comment.EditedAt ?? comment.CreatedAt, IsCurrent: true),
+            .. earlier.Select(e => new CommentVersionDto(e.Body, e.WrittenAt, IsCurrent: false)),
+        ];
+    }
+}
+
+/// <summary>
+/// The post's author hides a comment or reply on their post (<c>Hidden</c> true), or shows it again. Everyone else
+/// then sees a "Hidden by the post's author" placeholder, and none of a hidden comment's replies. Not their own.
+/// </summary>
+public sealed record SetCommentHiddenByPostAuthorCommand(Guid PostId, Guid CommentId, bool Hidden) : IRequest<CommentDto>;
+
+public sealed class SetCommentHiddenByPostAuthorCommandHandler(
+    IPostRepository posts,
+    ICommentRepository comments,
+    IProfileDirectory profiles,
+    ICurrentUser caller,
+    TimeProvider clock)
+    : IRequestHandler<SetCommentHiddenByPostAuthorCommand, CommentDto>
+{
+    public async Task<CommentDto> Handle(SetCommentHiddenByPostAuthorCommand request, CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        var post = await PostAccess.GetPublishedAsync(posts, request.PostId, cancellationToken);
+        if (post.AuthorId != userId)
+        {
+            throw new ForbiddenException("Only the post's author can hide comments on it.");
+        }
+
+        var comment = await comments.GetAsync(post.Id, request.CommentId, cancellationToken)
+            ?? throw new NotFoundException("Comment", request.CommentId);
+        if (comment.IsOwnedBy(userId))
+        {
+            throw PostAccess.Invalid(nameof(request.CommentId), "That's your own comment: delete it instead.");
+        }
+
+        if (request.Hidden)
+        {
+            comment.HideByPostAuthor(clock.GetUtcNow());
+        }
+        else
+        {
+            comment.ShowByPostAuthor(clock.GetUtcNow());
+        }
+
+        await comments.SaveChangesAsync(cancellationToken);
+        return CommentViews.From(comment, await profiles.GetSummariesAsync([comment.AuthorId], cancellationToken));
+    }
+}
+
+/// <summary>
+/// Changes a comment's text. Only its author can. The earlier text is kept (anyone can see it, with "Edited"), and the
+/// new text is screened again.
+/// </summary>
 public sealed record EditCommentCommand(Guid PostId, Guid CommentId, string Body) : IRequest<CommentDto>, IRequiresAgeVerification;
 
 public sealed class EditCommentCommandValidator : AbstractValidator<EditCommentCommand>
@@ -136,9 +231,12 @@ public sealed class EditCommentCommandHandler(
             throw new ForbiddenException("You can only edit your own comments.");
         }
 
-        comment.Edit(request.Body, clock.GetUtcNow());
-        comment.ApplyScreening(await screener.ScreenAsync(comment.Body, cancellationToken));
-        await comments.SaveChangesAsync(cancellationToken);
+        if (comment.Edit(request.Body, clock.GetUtcNow()) is { } earlier)
+        {
+            comments.AddEdit(earlier);
+            comment.ApplyScreening(await screener.ScreenAsync(comment.Body, cancellationToken));
+            await comments.SaveChangesAsync(cancellationToken);
+        }
 
         return CommentViews.From(comment, await profiles.GetSummariesAsync([userId], cancellationToken));
     }
@@ -234,7 +332,7 @@ public sealed class ListCommentsQueryHandler(
         var (items, total) = await comments.ListTopLevelAsync(request.PostId, blocked, request.Page, request.PageSize, cancellationToken);
 
         return new PagedResult<CommentDto>(
-            await threads.BuildTopLevelAsync(items, userId, blocked, cancellationToken),
+            await threads.BuildTopLevelAsync(items, userId, post.AuthorId, blocked, cancellationToken),
             request.Page,
             request.PageSize,
             total);
@@ -274,11 +372,17 @@ public sealed class ListRepliesQueryHandler(
             throw new NotFoundException("Comment", request.CommentId);
         }
 
+        // The replies to a comment the post's author hid are hidden too, except from them and the commenter.
+        if (!parent.IsShownTo(userId, post.AuthorId))
+        {
+            return new PagedResult<CommentDto>([], request.Page, request.PageSize, 0);
+        }
+
         var blocked = await blocks.GetBlockedIdsAsync(userId, cancellationToken);
         var (items, total) = await comments.ListRepliesPageAsync(parent.Id, blocked, request.Page, request.PageSize, cancellationToken);
 
         return new PagedResult<CommentDto>(
-            await threads.BuildRepliesAsync(items, userId, cancellationToken),
+            await threads.BuildRepliesAsync(items, userId, cancellationToken, post.AuthorId),
             request.Page,
             request.PageSize,
             total);
@@ -300,6 +404,7 @@ public sealed class CommentThreads(ICommentRepository comments, ICommentReaction
     public async Task<IReadOnlyList<CommentDto>> BuildTopLevelAsync(
         IReadOnlyList<Comment> topLevel,
         Guid viewerId,
+        Guid postAuthorId,
         IReadOnlyCollection<Guid> blocked,
         CancellationToken cancellationToken)
     {
@@ -321,23 +426,36 @@ public sealed class CommentThreads(ICommentRepository comments, ICommentReaction
         return topLevel.Select(c =>
         {
             var removed = c.Status != CommentStatus.Visible || c.IsAuthorDeactivated || blocked.Contains(c.AuthorId);
-            var shownReplies = replies.TryGetValue(c.Id, out var found)
-                ? found.Select(r => CommentViews.From(r, authors, stats.GetValueOrDefault(r.Id))).ToList()
+            var hidden = !removed && !c.IsShownTo(viewerId, postAuthorId);
+            var shownReplies = !hidden && replies.TryGetValue(c.Id, out var found)
+                ? found.Select(r => CommentViews.From(
+                    r,
+                    authors,
+                    stats.GetValueOrDefault(r.Id),
+                    hiddenFromViewer: !r.IsShownTo(viewerId, postAuthorId))).ToList()
                 : new List<CommentDto>();
             return CommentViews.From(
                 c,
                 authors,
                 stats.GetValueOrDefault(c.Id),
-                replyCounts.GetValueOrDefault(c.Id),
+                hidden ? 0 : replyCounts.GetValueOrDefault(c.Id),
                 shownReplies,
-                removed);
+                removed,
+                hidden);
         }).ToList();
     }
 
+    /// <param name="items">The comments.</param>
+    /// <param name="viewerId">Who's looking.</param>
+    /// <param name="cancellationToken">Cancels the queries.</param>
+    /// <param name="postAuthorId">
+    /// The post's author, when all the comments are on one post: comments they hid show as placeholders to others.
+    /// </param>
     public async Task<IReadOnlyList<CommentDto>> BuildRepliesAsync(
         IReadOnlyList<Comment> items,
         Guid viewerId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? postAuthorId = null)
     {
         if (items.Count == 0)
         {
@@ -346,7 +464,11 @@ public sealed class CommentThreads(ICommentRepository comments, ICommentReaction
 
         var authors = await profiles.GetSummariesAsync(items.Select(c => c.AuthorId).Distinct().ToList(), cancellationToken);
         var stats = await reactions.GetStatsAsync(items.Select(c => c.Id).ToList(), viewerId, cancellationToken);
-        return items.Select(c => CommentViews.From(c, authors, stats.GetValueOrDefault(c.Id))).ToList();
+        return items.Select(c => CommentViews.From(
+            c,
+            authors,
+            stats.GetValueOrDefault(c.Id),
+            hiddenFromViewer: postAuthorId is { } postAuthor && !c.IsShownTo(viewerId, postAuthor))).ToList();
     }
 }
 
@@ -358,23 +480,27 @@ internal static class CommentViews
         CommentReactionStats? stats = null,
         int replyCount = 0,
         IReadOnlyList<CommentDto>? replies = null,
-        bool removed = false)
+        bool removed = false,
+        bool hiddenFromViewer = false)
     {
         var s = stats ?? CommentReactionStats.Empty;
+        var blank = removed || hiddenFromViewer;
         return new CommentDto(
             comment.Id,
             comment.PostId,
-            removed ? null : AuthorDto.From(comment.AuthorId, authors),
-            removed ? string.Empty : comment.Body,
+            blank ? null : AuthorDto.From(comment.AuthorId, authors),
+            blank ? string.Empty : comment.Body,
             comment.CreatedAt,
-            removed ? null : comment.UpdatedAt,
-            removed ? CommentStatus.Visible : comment.Status,
+            blank ? null : comment.UpdatedAt,
+            blank ? CommentStatus.Visible : comment.Status,
             comment.ParentCommentId,
             removed,
-            removed ? new Dictionary<ReactionType, int>() : s.Reactions,
-            removed ? null : s.MyReaction,
+            blank ? new Dictionary<ReactionType, int>() : s.Reactions,
+            blank ? null : s.MyReaction,
             replyCount,
-            replies);
+            replies,
+            blank ? null : comment.EditedAt,
+            !removed && comment.IsHiddenByPostAuthor);
     }
 
     public static IRuleBuilderOptions<T, string> CommentBody<T>(this IRuleBuilder<T, string> rule) =>

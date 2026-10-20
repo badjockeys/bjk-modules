@@ -144,6 +144,22 @@ public enum ReportReason
 
     /// <summary>The reporter owns the copyright in the photos or video.</summary>
     Copyright,
+
+    /// <summary>The account pretends to be someone else. Accounts only.</summary>
+    Impersonation,
+
+    /// <summary>The account belongs to someone under 13 (too young for Bad Jockeys). Accounts only.</summary>
+    UnderThirteen,
+}
+
+/// <summary>Who can comment on a post, chosen by its author. Stored by name.</summary>
+public enum CommentSetting
+{
+    /// <summary>Anyone who can comment (the default).</summary>
+    Everyone,
+
+    /// <summary>Nobody can add comments or replies; the ones already there stay.</summary>
+    Off,
 }
 
 /// <summary>How quickly a report needs a decision; see <see cref="Report.UrgentResponseTime"/>.</summary>

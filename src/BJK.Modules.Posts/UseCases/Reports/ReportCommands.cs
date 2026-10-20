@@ -28,7 +28,7 @@ public sealed class ReportPostCommandValidator : AbstractValidator<ReportPostCom
 {
     public ReportPostCommandValidator()
     {
-        RuleFor(c => c.Reason).IsInEnum();
+        RuleFor(c => c.Reason).IsInEnum().NotForContent();
         RuleFor(c => c.Details).ReportDetails();
     }
 }
@@ -37,7 +37,7 @@ public sealed class ReportCommentCommandValidator : AbstractValidator<ReportComm
 {
     public ReportCommentCommandValidator()
     {
-        RuleFor(c => c.Reason).IsInEnum();
+        RuleFor(c => c.Reason).IsInEnum().NotForContent();
         RuleFor(c => c.Details).ReportDetails();
     }
 }
@@ -119,7 +119,7 @@ public sealed class ReportProfileCommandHandler(
         await ReportRules.EnsureFirstReportAsync(reports, userId, ReportTargetType.Profile, profile.UserId, cancellationToken);
 
         var report = Report.Create(userId, ReportTargetType.Profile, profile.UserId, null, request.Reason, request.Details, clock.GetUtcNow(), caller.Email);
-        await ReportRules.SaveAndAcknowledgeAsync(reports, notifications, report, cancellationToken);
+        await ReportRules.SaveAndAcknowledgeAsync(reports, notifications, report, cancellationToken, profile.Handle);
     }
 }
 
@@ -428,15 +428,20 @@ internal static class ReportRules
         }
     }
 
-    /// <summary>Saves a new report, emails the acknowledgement, and records that it was sent. True if it was.</summary>
+    /// <summary>
+    /// Saves a new report, emails it to the support inbox, emails the acknowledgement, and records that it was sent.
+    /// True if the acknowledgement was sent.
+    /// </summary>
     public static async Task<bool> SaveAndAcknowledgeAsync(
         IReportRepository reports,
         ModerationNotifications notifications,
         Report report,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? profileHandle = null)
     {
         reports.Add(report);
         await reports.SaveChangesAsync(cancellationToken);
+        await notifications.TellModeratorsAsync(report, profileHandle, cancellationToken);
 
         if (!await notifications.ReportReceivedAsync(report, cancellationToken))
         {
@@ -447,8 +452,42 @@ internal static class ReportRules
         return true;
     }
 
+    /// <summary>Impersonation and under 13 are about accounts, not posts or comments.</summary>
+    public static IRuleBuilderOptions<T, ReportReason> NotForContent<T>(this IRuleBuilderOptions<T, ReportReason> rule) =>
+        rule
+            .Must(r => !ReportReasons.AccountOnly.Contains(r))
+            .WithMessage("Impersonation and under 13 can only be reported on an account. Report the account instead.");
+
     public static IRuleBuilderOptions<T, string?> ReportDetails<T>(this IRuleBuilder<T, string?> rule) =>
         rule
             .Must(d => d is null || d.Trim().Length <= Report.DetailsMaxLength)
             .WithMessage($"Details are {Report.DetailsMaxLength} characters or fewer.");
+}
+
+/// <summary>Report reasons in words, and which are only for accounts.</summary>
+public static class ReportReasons
+{
+    /// <summary>Reasons only an account (profile) can be reported for.</summary>
+    public static readonly IReadOnlySet<ReportReason> AccountOnly = new HashSet<ReportReason>
+    {
+        ReportReason.Impersonation,
+        ReportReason.UnderThirteen,
+    };
+
+    /// <summary>The reason as people would say it, for emails.</summary>
+    public static string Describe(ReportReason reason) => reason switch
+    {
+        ReportReason.DangerousOrIllegal => "dangerous or illegal",
+        ReportReason.PersonalInformation => "personal information",
+        ReportReason.HarassmentOrHate => "harassment or hate",
+        ReportReason.Spam => "spam",
+        ReportReason.NotADrivingIncident => "not a driving incident",
+        ReportReason.IllegalContent => "illegal content",
+        ReportReason.Threat => "a threat",
+        ReportReason.InThisClip => "I'm in this clip",
+        ReportReason.Copyright => "copyright",
+        ReportReason.Impersonation => "impersonation",
+        ReportReason.UnderThirteen => "under 13",
+        _ => "something else",
+    };
 }

@@ -17,6 +17,15 @@ public sealed class PostsOptions
 
     /// <summary>The regions in force: <see cref="AllowedRegions"/>, or the UK if none are set.</summary>
     public IReadOnlyList<string> EffectiveRegions => AllowedRegions.Length == 0 ? ServiceRegions.Default : AllowedRegions;
+
+    /// <summary>
+    /// Where every new report is emailed, as well as going to the moderation queue (until there's a ticketing system).
+    /// Default support@badjockeys.com. Empty turns the emails off.
+    /// </summary>
+    public string? ReportsInbox { get; set; } = "support@badjockeys.com";
+
+    /// <summary>The web app's address, for links in the report emails (e.g. https://badjockeys.com). Optional.</summary>
+    public Uri? AppUrl { get; set; }
 }
 
 internal sealed class PostsOptionsValidator : IValidateOptions<PostsOptions>
@@ -26,10 +35,23 @@ internal sealed class PostsOptionsValidator : IValidateOptions<PostsOptions>
         var unknown = options.AllowedRegions
             .Where(r => !ServiceRegions.Known.Contains(r, StringComparer.OrdinalIgnoreCase))
             .ToList();
-        return unknown.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(
+        if (unknown.Count > 0)
+        {
+            return ValidateOptionsResult.Fail(
                 $"Posts:AllowedRegions has unknown regions ({string.Join(", ", unknown)}). Known: {string.Join(", ", ServiceRegions.Known)}.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.ReportsInbox) && !System.Net.Mail.MailAddress.TryCreate(options.ReportsInbox, out _))
+        {
+            return ValidateOptionsResult.Fail("Posts:ReportsInbox must be an email address, or empty to turn the report emails off.");
+        }
+
+        if (options.AppUrl is { } app && (!app.IsAbsoluteUri || (app.Scheme != Uri.UriSchemeHttps && app.Scheme != Uri.UriSchemeHttp)))
+        {
+            return ValidateOptionsResult.Fail("Posts:AppUrl must be an absolute http or https address.");
+        }
+
+        return ValidateOptionsResult.Success;
     }
 }
 

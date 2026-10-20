@@ -1,0 +1,34 @@
+# Temporary: generates the EF migration for this branch's model changes. Removed before review.
+name: tmp-migrations
+on:
+  push:
+    branches: [feature/comment-controls]
+permissions:
+  contents: write
+  packages: read
+env:
+  NuGetPackageSourceCredentials_badjockeys: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }}
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Build and add the migration
+        continue-on-error: true
+        run: |
+          exec > >(tee migration.log) 2>&1
+          set -e
+          dotnet restore BJK.Modules.slnx && dotnet tool restore
+          dotnet build BJK.Modules.slnx --configuration Release --no-restore 2>&1 | grep -E "error|Build succeeded" || true
+          dotnet test BJK.Modules.slnx --configuration Release --no-build 2>&1 | grep -E "error|Failed|failed|Passed!|Total tests" | head -60 || true
+          dotnet ef migrations add CommentControls --project src/BJK.Modules.Posts --context PostsDbContext --output-dir Infrastructure/Data/Migrations --configuration Release
+      - name: Push
+        if: ${{ always() }}
+        run: |
+          git add -f migration.log
+          git add -A src || true
+          git -c user.name=ci -c user.email=ci@example.com commit -m "Generated migration"
+          git push origin HEAD:refs/heads/tmp/comment-controls-migrations --force

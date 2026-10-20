@@ -54,7 +54,8 @@ public interface ICommentRepository
 
     /// <summary>
     /// One person's comments and replies, newest first, on posts everyone can see, leaving out posts by the given
-    /// authors. Only visible comments, unless <paramref name="includeOwnHidden"/> (the person looking at their own).
+    /// authors. Only visible comments not hidden by the post's author, unless <paramref name="includeOwnHidden"/> (the
+    /// person looking at their own).
     /// </summary>
     Task<(IReadOnlyList<Comment> Items, int TotalCount)> ListByAuthorAsync(
         Guid authorId,
@@ -81,6 +82,12 @@ public interface ICommentRepository
     Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken);
 
     void Add(Comment comment);
+
+    /// <summary>Keeps an earlier version of an edited comment.</summary>
+    void AddEdit(CommentEdit edit);
+
+    /// <summary>A comment's earlier versions, newest first.</summary>
+    Task<IReadOnlyList<CommentEdit>> ListEditsAsync(Guid commentId, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
@@ -168,7 +175,7 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
             && !excludePostAuthorIds.Contains(p.AuthorId));
         var query = db.Comments.AsNoTracking()
             .Where(c => c.AuthorId == authorId && !c.IsAuthorDeactivated && c.Status != CommentStatus.Deleted)
-            .Where(c => includeOwnHidden || c.Status == CommentStatus.Visible)
+            .Where(c => includeOwnHidden || (c.Status == CommentStatus.Visible && !c.IsHiddenByPostAuthor))
             .Where(c => publicPosts.Any(p => p.Id == c.PostId));
         var total = await query.CountAsync(cancellationToken);
         var items = await query
@@ -272,6 +279,15 @@ internal sealed class CommentRepository(PostsDbContext db) : ICommentRepository
             && !excludeAuthorIds.Contains(r.AuthorId));
 
     public void Add(Comment comment) => db.Comments.Add(comment);
+
+    public void AddEdit(CommentEdit edit) => db.CommentEdits.Add(edit);
+
+    public async Task<IReadOnlyList<CommentEdit>> ListEditsAsync(Guid commentId, CancellationToken cancellationToken) =>
+        await db.CommentEdits.AsNoTracking()
+            .Where(e => e.CommentId == commentId)
+            .OrderByDescending(e => e.ReplacedAt)
+            .ThenByDescending(e => e.Id)
+            .ToListAsync(cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

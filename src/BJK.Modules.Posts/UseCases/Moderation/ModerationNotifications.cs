@@ -16,9 +16,48 @@ namespace BJK.Modules.Posts.UseCases.Moderation;
 public sealed class ModerationNotifications(
     IEmailSender email,
     IOptions<EmailOptions> emailOptions,
+    IOptions<PostsOptions> postsOptions,
     TimeProvider clock,
     ILogger<ModerationNotifications> logger)
 {
+    /// <summary>
+    /// Emails a new report to the support inbox (<see cref="PostsOptions.ReportsInbox"/>) with a link to the content.
+    /// False if it's turned off or couldn't be sent; the report is in the moderation queue either way.
+    /// </summary>
+    /// <param name="report">The saved report.</param>
+    /// <param name="profileHandle">For a profile report: the @handle, for the link.</param>
+    /// <param name="cancellationToken">Cancels sending.</param>
+    public Task<bool> TellModeratorsAsync(Report report, string? profileHandle, CancellationToken cancellationToken)
+    {
+        var options = postsOptions.Value;
+        var what = report.TargetType switch
+        {
+            ReportTargetType.Comment => "a comment",
+            ReportTargetType.Profile => profileHandle is null ? "an account" : $"the account @{profileHandle}",
+            _ => "a post",
+        };
+        var path = report.TargetType switch
+        {
+            ReportTargetType.Profile => profileHandle is null ? null : $"/u/{Uri.EscapeDataString(profileHandle)}",
+            _ => report.PostId is { } postId ? $"/p/{postId}" : null,
+        };
+        var link = options.AppUrl is { } app && path is not null ? new Uri(app, path).ToString() : null;
+        var reporter = report.Source == ReportSource.PublicForm
+            ? $"{report.ReporterName} ({report.ContactEmail}), on the public form"
+            : "a signed-in member";
+
+        var template = EmailTemplates.ReportForModerators(
+            report.Reference,
+            what,
+            ReportReasons.Describe(report.Reason),
+            report.Priority == ReportPriority.Urgent,
+            report.DueAt,
+            report.Details,
+            reporter,
+            link);
+        return SendAsync(options.ReportsInbox, template, report.Reference, cancellationToken);
+    }
+
     /// <summary>Acknowledges a new report and marks it acknowledged. The caller saves the report.</summary>
     public async Task<bool> ReportReceivedAsync(Report report, CancellationToken cancellationToken)
     {
