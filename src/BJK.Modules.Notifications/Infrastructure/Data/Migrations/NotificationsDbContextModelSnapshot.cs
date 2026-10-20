@@ -23,6 +23,92 @@ namespace BJK.Modules.Notifications.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BJK.Modules.Notifications.Domain.AreaAlertItem", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PlaceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("UserId", "PostId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("AreaAlertItems", "notifications");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Notifications.Domain.AreaSubscription", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Email")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPremium")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastSummaryAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PlaceName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("PlanRecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RadiusKm")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("SentDay")
+                        .HasColumnType("date");
+
+                    b.Property<int>("SentToday")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("Latitude", "Longitude")
+                        .HasDatabaseName("IX_AreaSubscriptions_Active")
+                        .HasFilter("[Enabled] = 1 AND [IsPremium] = 1");
+
+                    b.ToTable("AreaSubscriptions", "notifications");
+                });
+
             modelBuilder.Entity("BJK.Modules.Notifications.Domain.Notification", b =>
                 {
                     b.Property<Guid>("Id")
