@@ -235,6 +235,63 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("DraftMedia", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.Hashtag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Display")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("FirstUsedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsHiddenFromTrends")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("TotalUses")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("Key"), new[] { "Display", "TotalUses", "IsHiddenFromTrends" });
+
+                    b.ToTable("Hashtags", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.HashtagHourlyCount", b =>
+                {
+                    b.Property<Guid>("HashtagId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("Hour")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Authors")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Posts")
+                        .HasColumnType("int");
+
+                    b.HasKey("HashtagId", "Hour");
+
+                    b.HasIndex("Hour");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("Hour"), new[] { "HashtagId", "Posts" });
+
+                    b.ToTable("HashtagHourlyCounts", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.ModerationAuditRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -573,6 +630,31 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Drafts", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostHashtag", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("HashtagId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("PostedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "HashtagId");
+
+                    b.HasIndex("PostedAt");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("PostedAt"), new[] { "HashtagId", "AuthorId" });
+
+                    b.HasIndex("HashtagId", "PostedAt");
+
+                    b.ToTable("PostHashtags", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostMedia", b =>
                 {
                     b.Property<Guid>("PostId")
@@ -818,6 +900,30 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasOne("BJK.Modules.Posts.Domain.PostDraft", null)
                         .WithMany("Media")
                         .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.HashtagHourlyCount", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Hashtag", null)
+                        .WithMany()
+                        .HasForeignKey("HashtagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostHashtag", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Hashtag", null)
+                        .WithMany()
+                        .HasForeignKey("HashtagId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -92,9 +92,9 @@ public sealed class HashtagTests
     [Fact]
     public async Task Trending_asks_for_the_last_day_against_the_week_before_with_the_minimums()
     {
-        _hashtags.TrendingTagsAsync(default, default, default, default, default, default, default)
+        _hashtags.TrendingTagsAsync(default, default, default, default, default, default, Ct)
             .ReturnsForAnyArgs(new List<TrendingRow> { new() { Name = "M62", Posts = 12, Authors = 5, BaselinePosts = 7 } });
-        _hashtags.TrendingPlacesAsync(default, default, default, default, default, default, default)
+        _hashtags.TrendingPlacesAsync(default, default, default, default, default, default, Ct)
             .ReturnsForAnyArgs(new List<TrendingRow> { new() { Name = "Prescot", Posts = 9, Authors = 4 } });
 
         var trending = await new GetTrendingQueryHandler(_hashtags, Options.Create(_settings), new FixedTimeProvider(Now))
