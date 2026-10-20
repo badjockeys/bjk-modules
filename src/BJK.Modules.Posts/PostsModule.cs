@@ -116,6 +116,15 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<HeatmapAccess>();
         services.AddHostedService<ReelsMaintenance>();
 
+        // Hashtags and Trending: tags linked when posts are saved, hourly counts rebuilt in the background.
+        services.AddOptions<HashtagOptions>()
+            .Bind(configuration.GetSection(HashtagOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<HashtagOptions>, HashtagOptionsValidator>();
+        services.AddScoped<IHashtagRepository, HashtagRepository>();
+        services.AddScoped<UseCases.Hashtags.HashtagSync>();
+        services.AddHostedService<HashtagMaintenance>();
+
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();
         services.AddMediaEventHandler<PostsMediaEventHandler>(configuration, connectionStringName);

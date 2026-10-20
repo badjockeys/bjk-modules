@@ -43,7 +43,8 @@ public sealed record ListPostsQuery(
     decimal? Longitude = null,
     int? RadiusKm = null,
     int Page = 1,
-    int PageSize = 20) : IRequest<PagedResult<PostDto>>;
+    int PageSize = 20,
+    string? Hashtag = null) : IRequest<PagedResult<PostDto>>;
 
 public sealed class ListPostsQueryValidator : AbstractValidator<ListPostsQuery>
 {
@@ -57,6 +58,9 @@ public sealed class ListPostsQueryValidator : AbstractValidator<ListPostsQuery>
         RuleFor(q => q.Latitude).InclusiveBetween(-90m, 90m);
         RuleFor(q => q.Longitude).InclusiveBetween(-180m, 180m);
         RuleFor(q => q.RadiusKm).InclusiveBetween(1, MaxRadiusKm);
+        RuleFor(q => q.Hashtag)
+            .Must(h => h is null || HashtagParser.IsPrefix(HashtagParser.KeyOf(h)))
+            .WithMessage("Give a hashtag, e.g. M62.");
         RuleFor(q => q)
             .Must(q => (q.Latitude is null) == (q.Longitude is null) && (q.Latitude is null) == (q.RadiusKm is null))
             .OverridePropertyName("Area")
@@ -69,7 +73,8 @@ public sealed class ListPostsQueryHandler(
     IProfileDirectory profiles,
     IBlockDirectory blocks,
     PostViews views,
-    ICurrentUser caller)
+    ICurrentUser caller,
+    IHashtagRepository? hashtags = null)
     : IRequestHandler<ListPostsQuery, PagedResult<PostDto>>
 {
     public async Task<PagedResult<PostDto>> Handle(ListPostsQuery request, CancellationToken cancellationToken)
@@ -86,6 +91,18 @@ public sealed class ListPostsQueryHandler(
             authorId = author.UserId;
         }
 
+        Guid? hashtagId = null;
+        if (!string.IsNullOrWhiteSpace(request.Hashtag) && hashtags is not null)
+        {
+            var hashtag = await hashtags.FindAsync(HashtagParser.KeyOf(request.Hashtag), cancellationToken);
+            if (hashtag is null)
+            {
+                return new PagedResult<PostDto>([], request.Page, request.PageSize, 0);
+            }
+
+            hashtagId = hashtag.Id;
+        }
+
         var area = request is { Latitude: { } lat, Longitude: { } lng, RadiusKm: { } radius }
             ? GeoBox.Around(lat, lng, radius)
             : null;
@@ -99,7 +116,8 @@ public sealed class ListPostsQueryHandler(
                 request.Category,
                 area,
                 IncludeHidden: false,
-                ExcludeAuthorIds: blocked),
+                ExcludeAuthorIds: blocked,
+                HashtagId: hashtagId),
             request.Page,
             request.PageSize,
             cancellationToken);

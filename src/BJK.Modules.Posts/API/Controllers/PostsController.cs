@@ -34,6 +34,7 @@ public sealed class PostsController(ISender sender) : ControllerBase
     /// <param name="radiusKm">Radius of the area, 1 to 200 km.</param>
     /// <param name="page">Page number, from 1.</param>
     /// <param name="pageSize">Posts per page, up to 50.</param>
+    /// <param name="hashtag">Only posts with this hashtag (with or without the #, any case).</param>
     /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
     [HttpGet]
     [Authorize(Policy = PostsModule.ReadPolicy)]
@@ -48,8 +49,9 @@ public sealed class PostsController(ISender sender) : ControllerBase
         [FromQuery] int? radiusKm,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] string? hashtag = null,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListPostsQuery(type ?? category, author, lat, lng, radiusKm, page, pageSize), cancellationToken);
+        await sender.Send(new ListPostsQuery(type ?? category, author, lat, lng, radiusKm, page, pageSize, hashtag), cancellationToken);
 
     /// <summary>The signed-in user's posts, including hidden ones.</summary>
     [HttpGet("mine")]

@@ -245,6 +245,42 @@ public static class ScreeningKeywords
         ("muppet", Insult, Low), ("tosser", Insult, Low),
     ];
 
+    /// <summary>
+    /// Whether a hashtag (letters, digits and underscores, no spaces) is offensive: it is, starts or ends with any
+    /// threat, slur or flagged insult on the list (spaces removed), e.g. <c>killhim</c>; words of four letters or fewer
+    /// only when they're the whole tag. Words inside a tag don't count, so place names such as Scunthorpe are fine.
+    /// Low-severity insults (idiot, muppet) are allowed. Moderators can hide anything this misses from Trending.
+    /// </summary>
+    /// <param name="tag">The tag, without the #.</param>
+    public static bool IsOffensiveTag(string tag)
+    {
+        var squashed = Normalise(tag).Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (squashed.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var entry in Entries)
+        {
+            if (entry.Score < Medium)
+            {
+                continue;
+            }
+
+            var phrase = Normalise(entry.Phrase).Replace(" ", string.Empty, StringComparison.Ordinal);
+            // Short words only count as the whole tag: "spic" and "paki" start everyday words (spicy, Pakistan).
+            var matches = phrase.Length <= 4
+                ? squashed == phrase
+                : squashed.StartsWith(phrase, StringComparison.Ordinal) || squashed.EndsWith(phrase, StringComparison.Ordinal);
+            if (phrase.Length > 0 && matches)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Every entry, with its pattern normalised the same way as screened text.</summary>
     internal static readonly IReadOnlyList<Keyword> All =
         Entries.Select(e => new Keyword(Normalise(e.Phrase), e.Label, e.Score)).ToList();

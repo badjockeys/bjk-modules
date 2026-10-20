@@ -10,13 +10,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 /// <param name="IncludeHidden">Include hidden and held posts, and ones still waiting for their media (for an author's own list).</param>
 /// <param name="ExcludeSensitive">Leave out sensitive posts. (The public feed no longer does: they show blurred.)</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
+/// <param name="HashtagId">Only posts with this hashtag.</param>
 public sealed record PostSearch(
     Guid? AuthorId,
     IncidentCategory? Category,
     GeoBox? Area,
     bool IncludeHidden,
     bool ExcludeSensitive = false,
-    IReadOnlyCollection<Guid>? ExcludeAuthorIds = null);
+    IReadOnlyCollection<Guid>? ExcludeAuthorIds = null,
+    Guid? HashtagId = null);
 
 /// <summary>A latitude/longitude rectangle.</summary>
 public sealed record GeoBox(decimal MinLatitude, decimal MaxLatitude, decimal MinLongitude, decimal MaxLongitude)
@@ -166,6 +168,11 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
         {
             var bit = IncidentTypeFlags.Bit(category);
             query = query.Where(p => (p.TypeFlags & bit) != 0);
+        }
+
+        if (search.HashtagId is { } hashtagId)
+        {
+            query = query.Where(p => db.PostHashtags.Any(t => t.PostId == p.Id && t.HashtagId == hashtagId));
         }
 
         if (search.Area is { } area)
