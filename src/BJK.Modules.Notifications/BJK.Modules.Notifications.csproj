@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
+    <ProjectReference Include="..\BJK.Modules.Queues\BJK.Modules.Queues.csproj" />
     <ProjectReference Include="..\BJK.Modules.Profiles\BJK.Modules.Profiles.csproj" />
     <ProjectReference Include="..\BJK.Modules.Email\BJK.Modules.Email.csproj" />
   </ItemGroup>

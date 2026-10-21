@@ -2,7 +2,7 @@ using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases.Passengers;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using BJK.Modules.Shared.Notifications;
 using MediatR;

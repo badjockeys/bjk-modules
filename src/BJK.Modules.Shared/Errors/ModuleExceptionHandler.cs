@@ -1,5 +1,4 @@
 using BJK.Modules.Shared.Exceptions;
-using BJK.Modules.Shared.Safety;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -33,14 +32,6 @@ public sealed class ModuleExceptionHandler(IProblemDetailsService problemDetails
                 Status = StatusCodes.Status404NotFound,
                 Title = "Resource not found.",
                 Detail = notFound.Message,
-            },
-            AgeVerificationRequiredException ageCheck => new ProblemDetails
-            {
-                Status = StatusCodes.Status403Forbidden,
-                Type = AgeVerificationRequiredException.ProblemType,
-                Title = "Age check needed.",
-                Detail = ageCheck.Message,
-                Extensions = { ["code"] = AgeVerificationRequiredException.Code },
             },
             DailyLimitReachedException daily => new ProblemDetails
             {

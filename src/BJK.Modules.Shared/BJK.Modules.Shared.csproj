@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Shared</PackageId>
-    <Description>Shared building blocks for Bad Jockeys modules: module registration, MediatR pipeline, validation, error handling, durable messaging (SQL Server queues via Rebus, outbox), user lifecycle events, personal data export, and online safety (text checks, content screening, CAPTCHA, age verification, moderation audit contract), deployed-settings checks, and OpenTelemetry logs, traces and metrics.</Description>
+    <Description>The common base every Bad Jockeys module and host builds on: module registration, the MediatR pipeline and validation, error handling, the signed-in caller and sign-in scheme, staff roles and plans, safe startup migrations, deployed-settings checks, personal data export, supplier retries, and the small interfaces modules use to talk to each other (notifications, media usage, the moderation audit log, user lifecycle events). Safety checks, queues and OpenTelemetry are in BJK.Modules.Safety, BJK.Modules.Queues and BJK.Modules.Observability.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,14 +15,6 @@
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="Rebus" />
-    <PackageReference Include="Rebus.SqlServer" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" />
   </ItemGroup>
 
   <ItemGroup>

@@ -81,7 +81,7 @@ public sealed class MediaSqlServerTests : IAsyncLifetime
             var message = await db.Outbox.SingleAsync(Ct);
             Assert.Equal(MediaEvents.FailedType, message.Type);
             Assert.Null(message.PublishedAt);
-            var mediaEvent = System.Text.Json.JsonSerializer.Deserialize<MediaEvent>(message.Payload, BJK.Modules.Shared.Messaging.OutboxMessage.JsonOptions)!;
+            var mediaEvent = System.Text.Json.JsonSerializer.Deserialize<MediaEvent>(message.Payload, BJK.Modules.Queues.OutboxMessage.JsonOptions)!;
             Assert.Equal((saved.Id, MediaEventType.Failed, "Videos can be up to 30 seconds long."), (mediaEvent.MediaId, mediaEvent.Type, mediaEvent.Reason));
             Assert.Equal(message.Id, mediaEvent.EventId);
         }

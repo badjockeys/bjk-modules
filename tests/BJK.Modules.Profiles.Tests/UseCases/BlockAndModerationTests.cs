@@ -8,7 +8,7 @@ using BJK.Modules.Profiles.UseCases.Moderation;
 using BJK.Modules.Profiles.UseCases.Update;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Moderation;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using BJK.Modules.Shared.Users;
 using FluentValidation;

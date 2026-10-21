@@ -8,7 +8,7 @@ using BJK.Modules.Posts.UseCases.Reports;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

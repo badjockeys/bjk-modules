@@ -1,13 +1,14 @@
 using BJK.Modules.Profiles.Contracts;
-using BJK.Modules.Profiles.Infrastructure;
 using BJK.Modules.Profiles.Infrastructure.Data;
-using BJK.Modules.Shared;
+using BJK.Modules.Profiles.Infrastructure;
+using BJK.Modules.Queues;
 using BJK.Modules.Shared.Data;
 using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.PersonalData;
-using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
 using BJK.Modules.Shared.Uploads;
+using BJK.Modules.Shared.Users;
+using BJK.Modules.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

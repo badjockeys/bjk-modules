@@ -1,13 +1,13 @@
 using BJK.Modules.Media.Contracts;
-using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
-using BJK.Modules.Shared;
+using BJK.Modules.Media.Infrastructure;
+using BJK.Modules.Queues;
 using BJK.Modules.Shared.Data;
-using BJK.Modules.Shared.Messaging;
 using BJK.Modules.Shared.PersonalData;
-using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Users;
+using BJK.Modules.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

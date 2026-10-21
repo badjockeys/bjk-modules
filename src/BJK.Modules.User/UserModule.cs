@@ -1,6 +1,6 @@
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Data;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.Shared.Security;

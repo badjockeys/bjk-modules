@@ -23,7 +23,7 @@ namespace BJK.Modules.User.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("BJK.Modules.Shared.Messaging.OutboxMessage", b =>
+            modelBuilder.Entity("BJK.Modules.Queues.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");

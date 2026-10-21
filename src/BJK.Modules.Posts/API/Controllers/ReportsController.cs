@@ -1,6 +1,6 @@
 using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Posts.UseCases.Reports;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;

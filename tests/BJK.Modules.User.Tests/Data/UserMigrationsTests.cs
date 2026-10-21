@@ -35,6 +35,6 @@ public sealed class UserMigrationsTests
 
         Assert.Equal(UserModule.Schema, entity.GetSchema());
         Assert.Equal("Accounts", entity.GetTableName());
-        Assert.Equal(UserModule.Schema, db.Model.FindEntityType(typeof(BJK.Modules.Shared.Messaging.OutboxMessage))!.GetSchema());
+        Assert.Equal(UserModule.Schema, db.Model.FindEntityType(typeof(BJK.Modules.Queues.OutboxMessage))!.GetSchema());
     }
 }

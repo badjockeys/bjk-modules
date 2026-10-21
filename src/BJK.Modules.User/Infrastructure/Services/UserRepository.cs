@@ -1,4 +1,4 @@
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using BJK.Modules.Shared.Users;
 using BJK.Modules.User.Domain;
 using BJK.Modules.User.Infrastructure.Data;

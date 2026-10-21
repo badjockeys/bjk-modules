@@ -1,4 +1,4 @@
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 
 namespace BJK.Modules.Posts.Domain;
 
