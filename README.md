@@ -27,7 +27,7 @@ src/
       AgeChecks/                 Age check (18+, on demand, for sensitive posts): selfie or photo ID, status, admin reset
       AccountLifecycle.cs        Deactivate / reactivate / delete, each with an outbox event
     Infrastructure/Services/     IUserRepository, IIdentityService (implemented by the host)
-    Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; HTTP estimator adapter;
+    Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; Yoti estimator;
                                  Development stand-ins; settings checked at startup
     Contracts/                   IAccountAgeLookup and the age_verified and minor claims, for the identity server's tokens
     Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
@@ -124,7 +124,7 @@ app.MapControllers();
 | Key | Notes |
 |---|---|
 | `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema of the `idsrv` database (the identity server hosts this module). |
-| `Messaging:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server sets `Messaging:ConnectionStringName` and `Messaging:CreateTables=false`. |
+| `Queues:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server puts its queues in bjk-core's database in code (`UseQueuesIn("BadJockeysDatabase", createTables: false)`), not by a setting. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `AgeAssurance:*` | Identity server only. The age check for sensitive posts: see [Age policy](#age-policy-13-and-the-age-check-for-sensitive-posts). |
@@ -135,13 +135,12 @@ app.MapControllers();
 | `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
 | `Posts:ReportsInbox` | Where every new report is emailed, as well as going to the moderation queue (until there's a ticketing system). Default `support@badjockeys.com`; empty turns it off. Must be a valid address. bjk-core only. |
 | `Posts:AppUrl` | The web app's address (e.g. `https://badjockeys.com`), for the "Open it on Bad Jockeys" link in report emails. Optional. bjk-core only. |
-| `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
-| `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
+| `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | bjk-core only. The keyword list always runs; `Endpoint` (optional) adds a classifier service. Thresholds default 0.5 and 0.8; timeout default 3 s. See "Online safety". |
 | `Plans:Overrides:<user id>` | `free`, `premium` or `premium_plus`, for testing paid features before billing exists. See [Plans](#plans-and-entitlements). |
 | `Reels:*` | Daily plays and the ranking job. bjk-core only. See [Reels](#reels). |
 | `Heatmap:*` | Suppression threshold and history by plan. bjk-core only. See [Incident heat map](#incident-heat-map). |
 | `Hashtags:*` | Trending's minimums (`TrendingMinPosts` 3, `TrendingMinAuthors` 3), how many it shows (`TrendingTags` 10, `TrendingPlaces` 5), `BaselineDays` (7), `RebuildInterval` (5 minutes), `HourlyRetention` (90 days) and a `Blocklist` of extra tags never recorded. All optional. bjk-core only. See [Hashtags and Trending](#hashtags-and-trending). |
-| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
+| `Captcha:TurnstileSecretKey` | bjk-core: the public report form, checked with Cloudflare Turnstile. Required (checked at startup); locally Cloudflare's test key. Same key as the identity server. Secret. |
 
 `user-secrets.template.json` lists these with local development values.
 
@@ -152,9 +151,9 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | Setting | Required outside Development | From |
 |---|---|---|
 | `MediatR:LicenseKey` | Set | Every host |
-| `Email:Provider` | `SendGrid` (`Log`, the default, sends nothing; use SendGrid's `SandboxMode` on test servers) | Email module |
-| `SMS:Provider` | `Twilio` (`Log` sends nothing) | SMS module |
-| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | `Turnstile` (or unset); a real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
+| `Email:SendGrid:ApiKey`, `Email:FromAddress` | Set (without the key emails are only logged; use SendGrid's `SandboxMode` on test servers) | Email module |
+| `SMS:Twilio:AccountSid` (and its credentials) | Set (without Twilio texts are only logged) | SMS module |
+| `Captcha:TurnstileSecretKey` | A real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
 | `Notifications:AppUrl` | An https address | Notifications module |
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
@@ -234,13 +233,12 @@ The "highly effective" age check is no longer part of sign-up. A signed-in user 
 | `AgeAssurance:ChallengeAge` | 25 | At least 18 |
 | `AgeAssurance:MaxAttemptsPerDay` | 3 | |
 | `AgeAssurance:MaxVideoBytes`, `MaxImageBytes` | 15 MB, 10 MB | |
-| `AgeAssurance:Liveness:Provider` | `Development` | `YuNet` (identity server) for real checks |
-| `AgeAssurance:Estimator:Provider` | `Development` | `Http` for a real provider |
-| `AgeAssurance:Estimator:Http:Name`, `Endpoint`, `ApiKey` (secret), `ApiKeyHeader`, `ApiKeyPrefix`, `VideoField`, `AgePath`, `UncertaintyPath`, `Timeout` | | Generic adapter. It POSTs the video as multipart/form-data and reads the age (and an optional margin of error) from the JSON response by dot path, e.g. `result.age.estimate`. A vendor with a different API gets its own `IAgeEstimator`. |
-| `AgeAssurance:Document:Provider` | `Development` | No real photo-ID provider is built yet. Plug one in by registering an `IDocumentAgeCheck`. |
-| `AgeAssurance:*:Development:Age`, `AgeAssurance:Liveness:Development:Pass` | 30, true | What the Development stand-ins answer, for trying every path locally |
+| `AgeAssurance:Liveness:ModelPath` | | OpenCV Zoo's `face_detection_yunet_2023mar.onnx`. Set: the identity server's YuNet head-turn check runs (it reads the rest of `AgeAssurance:Liveness`) |
+| `AgeAssurance:Yoti:SdkId`, `PrivateKey` (secret) | | Yoti's facial age estimation with anti-spoofing (`YotiAgeEstimator`), used when both are set. One frame from the start of the selfie video goes to Yoti's `/age-antispoofing`, with each request signed (SHA256withRSA over the method, path with `nonce` and `timestamp`, and base64 body). A spoof, a margin over `MaxUncertainty`, or a picture Yoti can't use (no face, too dark...) counts as "couldn't tell", so photo ID is offered |
+| `AgeAssurance:Yoti:BaseUrl`, `Timeout`, `MaxUncertainty`, `FfmpegPath` | `https://api.yoti.com/ai/v1`, 20 s, 6, `ffmpeg` | |
+| `AgeAssurance:Development:LivenessPasses`, `EstimatedAge`, `DocumentAge` | true, 30, 30 | What the stand-ins answer locally, for trying every path. Ignored outside Development |
 
-**Development providers never run anywhere else.** They don't check anything real, so startup refuses them outside the Development environment, along with an unknown provider name or an Http estimator with no HTTPS endpoint or key. A host adds a provider by registering another `ILivenessChecker`, `IAgeEstimator` or `IDocumentAgeCheck` singleton with its own `Name`.
+**No provider switches.** Each step uses the real provider whose settings are filled in. Without one, the Development environment uses a stand-in (and logs that it does); anywhere else the app refuses to start and names what's missing. Photo ID has no real provider yet (Yoti's document check needs their hosted session flow, still to build), so for now **deployed environments won't start** until it is. A host adds a provider by registering another `ILivenessChecker`, `IAgeEstimator` or `IDocumentAgeCheck` singleton that reports `IsConfigured`.
 
 ## Deactivation, retention and deletion
 
@@ -286,7 +284,7 @@ Durable jobs and events are rows in SQL Server, in the `messaging` schema of the
 
 Rebus only appears in `Messaging/SqlServer/`. Going back to a broker later (Rebus has RabbitMQ and Azure Service Bus transports) is a change there and in configuration, not in the modules.
 
-**Tables**, created on first use (`Messaging:CreateTables`):
+**Tables**, created on first use (except by the identity server, below):
 
 | Table | What |
 |---|---|
@@ -300,14 +298,14 @@ Each queue row has `id`, `priority`, `visible` (hidden until then: delays and re
 
 **How a message is handled.**
 
-- **Competing consumers.** A consumer claims the next visible row with `UPDLOCK, READPAST, ROWLOCK` (others skip locked rows, so each message goes to one consumer) and leases it for `Messaging:LeaseDuration` (60 s), renewed every 20 s while the work goes on. Done: the row is deleted. Replicas share a queue simply by reading the same table.
+- **Competing consumers.** A consumer claims the next visible row with `UPDLOCK, READPAST, ROWLOCK` (others skip locked rows, so each message goes to one consumer) and leases it for `Queues:LeaseDuration` (60 s), renewed every 20 s while the work goes on. Done: the row is deleted. Replicas share a queue simply by reading the same table.
 - **Attempts.** `deliverycount` goes up on every claim, including claims by a worker that then crashed, like RabbitMQ's `x-delivery-count`; it reaches the code as `ReceivedMessage.Attempt` (Rebus's `rbs2-delivery-count` header). A host that stops cleanly hands its message back without using up an attempt.
-- **Retries.** A failure (an exception or `Retry`) hides the message for `Messaging:RetryDelay` (5 s), doubling each time up to `Messaging:MaxRetryDelay` (5 min).
+- **Retries.** A failure (an exception or `Retry`) hides the message for `Queues:RetryDelay` (5 s), doubling each time up to `Queues:MaxRetryDelay` (5 min).
 - **Dead letters.** If the last attempt fails, `OnGivenUpAsync` runs (the media worker marks the media `Failed`) and the message moves to `<queue>.failed`. If a worker crashed on the last attempt, the next delivery gives up straight away without running the work again. A consumer can also dead-letter an unreadable message at once.
 - **Crashes.** A worker that dies stops renewing its lease, so the message is delivered again when the lease ends (within about a minute).
 - **At least once.** A message can occasionally be handled twice (a crash after the work but before the delete), so every handler is idempotent.
 
-**The identity server (another database).** The identity server's data is in `idsrv`; the queues are in `badjockeys` on the same server. The identity server keeps its transactional outbox (`users.Outbox`, in the same transaction as the account change) and its outbox publisher writes the events straight into bjk-core's queue tables through a second connection string, `ConnectionStrings:Messaging`, chosen with `Messaging:ConnectionStringName=Messaging`. Because that's another database, an event is published first and then marked as published, so it may very occasionally be delivered twice (handlers are idempotent). Events wait in the outbox while no queue subscribes to `bjk.users`, so a fresh environment loses nothing before bjk-core's first start. The identity server sets `Messaging:CreateTables=false`; bjk-core creates the tables.
+**The identity server (another database).** The identity server's data is in `idsrv`; the queues are in `badjockeys` on the same server. The identity server keeps its transactional outbox (`users.Outbox`, in the same transaction as the account change) and its outbox publisher writes the events straight into bjk-core's queue tables through a second connection string, `ConnectionStrings:BadJockeysDatabase`, chosen in code with `services.UseQueuesIn("BadJockeysDatabase", createTables: false)`. Because that's another database, an event is published first and then marked as published, so it may very occasionally be delivered twice (handlers are idempotent). Events wait in the outbox while no queue subscribes to `bjk.users`, so a fresh environment loses nothing before bjk-core's first start. The identity server never creates tables; bjk-core does.
 
 That connection uses its own database user in `badjockeys`, allowed to read the subscriptions and add rows to the queue tables, and nothing else (no access to bjk-core's data, no deletes, no schema changes):
 
@@ -320,17 +318,15 @@ GRANT SELECT ON OBJECT::[messaging].[subscriptions] TO [bjk-identity-server];
 GRANT INSERT ON SCHEMA::[messaging] TO [bjk-identity-server];
 ```
 
-**Settings** (section `Messaging`, all optional):
+**Settings** (section `Queues`, all optional):
 
 | Key | Default | Notes |
 |---|---|---|
-| `ConnectionStringName` | the module's own | The connection string holding the queues. bjk-core: leave empty (`AppDatabase`). Identity server: `Messaging`. |
 | `Schema` | `messaging` | |
 | `PollingInterval` | `00:00:01` | How often an idle consumer looks for new messages. |
 | `LeaseDuration` | `00:01:00` | How soon a crashed worker's message is retried. |
 | `RetryDelay`, `MaxRetryDelay` | `00:00:05`, `00:05:00` | Waits between attempts. |
-| `CreateTables` | `true` | `false` where the login can't create tables (the identity server). |
-| `UserEventsQueue`, `MediaEventsQueue` | `bjk-core.user-events`, `bjk-core.media-events` | bjk-core's queues. |
+| `UserEvents`, `MediaEvents`, `MediaProcessing` | `bjk-core.user-events`, `bjk-core.media-events`, `media.process` | bjk-core's queues. |
 
 **Why Rebus, not Wolverine.** Both are MIT, support .NET 10 and have a SQL Server transport with row locking, retries, dead letters, delayed messages and pub/sub. Rebus is a small bus that sits next to MediatR rather than replacing it, has a stable API (v8; the project is over ten years old), needs no code generation at startup (the media worker scales from zero), stores the queues in plain tables we can query (and scale on with KEDA), and its transport's connection is independent of the app database, which makes the identity server's cross-database publishing simple. Wolverine has more built in (durable attempt counts, an EF Core outbox) but is a whole application framework: a second handler model alongside MediatR, runtime code generation, a dozen tables plus node and leader agents, its transport tied to its own message store's database, and crash recovery that depends on detecting dead nodes. Rebus's SQL transport doesn't keep a delivery count or delay retries, so `SqlServerQueueTransport` adds both (about 200 lines over Rebus's lease transport).
 
@@ -410,10 +406,10 @@ Configuration (user secrets locally, container settings and secrets when deploye
 | `Media:Processing:SensitivePreviewSourceSize`, `SensitivePreviewSize` | Blurred preview: shrink to 64 px, then enlarge to 480 px (worker) |
 | `Media:SensitiveDetection:*` | Automatic graphic content and nudity checks (worker; required when deployed; see below) |
 | `Media:KnownImages:*` | Checking uploads against known illegal images (worker; see below) |
-| `Media:Queue:QueueName` | Default `media.process` (table `[messaging].[media.process]`); jobs given up on go to `[messaging].[media.process.failed]` |
+| `Queues:MediaProcessing` | Default `media.process` (table `[messaging].[media.process]`); jobs given up on go to `[messaging].[media.process.failed]` |
 | `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime` | Defaults: 150 MB (157286400), 25 MB, 30 s, 15 min |
 | `Media:UnusedOriginalRetention`, `Media:OriginalSweepInterval` | Defaults 24 hours and 1 hour: the most an original is kept when nothing releases it sooner, and how often the API host sweeps (see "Originals"). `Media:OriginalRetention` (90 days) is gone |
-| `Messaging:MediaEventsQueue` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (dead-lettered to `.failed` after 5 attempts) |
+| `Queues:MediaEvents` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (dead-lettered to `.failed` after 5 attempts) |
 
 ### Originals (deleted as soon as they're not needed)
 
@@ -436,7 +432,7 @@ A 30-second video is processed as six 5-second pieces by up to six worker replic
 
 ### Media events (`media.ready`, `media.failed`)
 
-When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the topic **`bjk.media`** (message type `media.ready` or `media.failed`) using Shared's outbox publisher, as for user events; the queues are in the same database, so each batch is published and marked as published in one transaction. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration, connectionStringName)`; the host reads them from `Messaging:MediaEventsQueue` (5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
+When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the topic **`bjk.media`** (message type `media.ready` or `media.failed`) using Shared's outbox publisher, as for user events; the queues are in the same database, so each batch is published and marked as published in one transaction. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration, connectionStringName)`; the host reads them from `Queues:MediaEvents` (5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
 
 ### Automatic blurring (faces and number plates)
 
@@ -536,17 +532,14 @@ Every photo, and sampled frames of every video, are checked by the media worker 
 | **Nudity** | OpenAI's CLIP (ViT-B/32, MIT licence; Xenova's quantised ONNX export of the vision model) as a zero-shot classifier: the frame's embedding against built-in text embeddings (`clip-prompts.json`) for ordinary road scenes, graphic content and nudity | At or above `NudityThreshold`: **held** (`NeedsReview`, "Possible nudity…"), never public until a moderator approves it |
 | **Graphic content** | The same CLIP run (one model run per frame covers both) | At or above `Threshold`: marked sensitive automatically, so it's shown blurred and its post is queued for a moderator (below) |
 
-Settings in `Media:SensitiveDetection` (worker only; **required when deployed**: `Enabled` must be `true` and `ModelPath` set, or the worker won't start):
+Settings in `Media:SensitiveDetection` (worker only). There's no on/off or provider setting: with `ModelPath` set CLIP runs; without it a stand-in that flags mostly red pictures runs locally, and **deployed workers won't start**. A model that's missing or fails sends every upload to review (fail safe):
 
 | Setting | Default | |
 |---|---|---|
-| `Enabled` | `false` | Must be `true` outside Development. Once on, a missing or failing model sends every upload to review (fail safe) |
-| `Provider` | `Clip` | `Clip` (graphic content and nudity); `Onnx` runs any image classification model at `ModelPath` (graphic content only); `Development` is a stand-in that flags mostly red pictures, refused outside the Development environment |
-| `ModelPath` | | For `Clip`: the quantised CLIP vision model, `https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/onnx/vision_model_quantized.onnx` (89 MB, SHA-256 `583fd111…9299`); bjk-core's `pipelines/scripts/download-redaction-models.sh` and local setup fetch it |
+| `ModelPath` | | The quantised CLIP vision model, `https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/onnx/vision_model_quantized.onnx` (89 MB, SHA-256 `583fd111…9299`); bjk-core's `pipelines/scripts/download-redaction-models.sh` and local setup fetch it |
 | `Threshold` | `0.35` | Graphic content score at or above which media is marked sensitive. Low on purpose: over-flag, moderators confirm or undo |
 | `NudityThreshold` | `0.3` | Nudity score at or above which media is held for a moderator |
 | `SampleEvery` | `3` | Check every Nth frame the blurring pass analyses (it analyses every 5th): about 2 frames a second at 30 fps. Photos are always checked |
-| `InputWidth`, `InputHeight`, `Mean`, `Std`, `Output`, `SensitiveClasses` | 224, 224, ImageNet, `Softmax`, `1` | `Onnx` provider only: how to feed the model and read its first output |
 
 Settings in `Media:KnownImages` (worker only):
 
@@ -685,9 +678,9 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new PostsModule(.
 
 ```csharp
 builder.Services.AddBjkModules(builder.Configuration,
-    new MediaModule("AppDatabase"),
-    new ProfilesModule("AppDatabase"),
-    new PostsModule("AppDatabase"),
+    new MediaModule("BadJockeysDatabase"),
+    new ProfilesModule("BadJockeysDatabase"),
+    new PostsModule("BadJockeysDatabase"),
     new EmailModule()); // report and appeal emails
 ```
 
@@ -822,8 +815,8 @@ await smsSender.SendAsync(SMSTemplates.SignInCode("+447700900123", code), cancel
 
 - **Templates live in code.** The wording of every email is in `BJK.Modules.Email/Templates/EmailTemplates.cs` and of every text in `BJK.Modules.SMS/Templates/SMSTemplates.cs`, so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
 - **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no queue for email or SMS.
-- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `SMS:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
-- **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
+- **No provider switches.** SendGrid sends when `Email:SendGrid:ApiKey` is set, Twilio when `SMS:Twilio:AccountSid` is. Without them nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development the app won't start without them.
+- **Checked at startup.** A SendGrid key without a sender address, or a Twilio account without credentials or a sender, stops the app starting, with a message naming the missing setting.
 - **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds), using `ProviderRetry` from Shared. A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException` (Shared), whose `IsTransient` says which it was.
 - **No click tracking.** Our emails carry sign-in, confirmation and reset codes in links, so SendGrid click and open tracking are switched off for every email.
 - **Privacy.** Outside Development, logs show masked addresses only (`r***@example.com`, `+44********23`) plus the provider's message id, so a delivery can be traced in SendGrid or Twilio without logging personal data.
@@ -833,15 +826,13 @@ Both providers are called over their REST APIs with `HttpClient`, so there are n
 
 | Key | Notes |
 |---|---|
-| `Email:Provider` | `Log` (default) or `SendGrid` |
 | `Email:FromAddress`, `Email:FromName` | Sender. The address (or its domain) must be verified in SendGrid. Name defaults to `Bad Jockeys`. |
 | `Email:ReplyToAddress` | Optional, e.g. `support@badjockeys.com` |
 | `Email:LogoUrl` | Optional absolute URL of a PNG logo for the top of branded emails (Gmail and Outlook don't show SVG) |
-| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. |
+| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. Set: emails go through SendGrid |
 | `Email:SendGrid:BaseUrl` | Default `https://api.sendgrid.com`; `https://api.eu.sendgrid.com` for an EU-pinned subuser |
 | `Email:SendGrid:SandboxMode` | `true` = SendGrid checks each request but delivers nothing |
-| `SMS:Provider` | `Log` (default) or `Twilio` |
-| `SMS:Twilio:AccountSid` | `AC…` |
+| `SMS:Twilio:AccountSid` | `AC…`. Set: texts go through Twilio |
 | `SMS:Twilio:ApiKeySid`, `SMS:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
 | `SMS:Twilio:AuthToken` | Secret. Used only if no API key is set. |
 | `SMS:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |

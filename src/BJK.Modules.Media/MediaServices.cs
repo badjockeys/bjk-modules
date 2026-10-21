@@ -20,7 +20,7 @@ namespace BJK.Modules.Media;
 public static class MediaServices
 {
     /// <summary>
-    /// Registers the media processing worker: reads jobs from the <c>Media:Queue:QueueName</c> queue (a SQL Server
+    /// Registers the media processing worker: reads jobs from the <c>Queues:MediaProcessing</c> queue (a SQL Server
     /// table, read with row locks, so replicas share the work and retries survive crashes), blurs faces and number
     /// plates (ONNX models from <c>Media:Redaction</c>), converts files with ffmpeg and publishes them, or holds them for
     /// review. Longer videos are split into segment jobs on the same queue, so run several replicas. For the worker
@@ -57,20 +57,16 @@ public static class MediaServices
         services.AddOptions<SensitiveDetectionOptions>()
             .Bind(configuration.GetSection(SensitiveDetectionOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => o.IsValid(), "Media:SensitiveDetection: Mean and Std need three comma-separated numbers (Std above 0) and SensitiveClasses at least one class index.")
             .ValidateOnStart();
         services.RequireWhenDeployed(
-            "Media:SensitiveDetection:Enabled",
-            "true: the nudity and graphic content checks are required (Online Safety Act)",
-            v => bool.TryParse(v, out var on) && on);
-        services.RequireWhenDeployed("Media:SensitiveDetection:ModelPath", "the content model's path in the worker image");
+            "Media:SensitiveDetection:ModelPath",
+            "the CLIP model's path in the worker image (the nudity and graphic content checks are required: Online Safety Act)");
+        // CLIP when its model is set; otherwise the Development stand-in, which only runs in Development (elsewhere
+        // the setting above stops the app starting, and the stand-in reports itself unavailable, so media go to review).
         services.TryAddSingleton<ISensitiveContentClassifier>(sp =>
-            sp.GetRequiredService<IOptions<SensitiveDetectionOptions>>().Value.Provider switch
-            {
-                SensitiveClassifierProvider.Development => ActivatorUtilities.CreateInstance<DevelopmentSensitiveContentClassifier>(sp),
-                SensitiveClassifierProvider.Onnx => ActivatorUtilities.CreateInstance<OnnxSensitiveContentClassifier>(sp),
-                _ => ActivatorUtilities.CreateInstance<ClipContentClassifier>(sp),
-            });
+            string.IsNullOrWhiteSpace(sp.GetRequiredService<IOptions<SensitiveDetectionOptions>>().Value.ModelPath)
+                ? ActivatorUtilities.CreateInstance<DevelopmentSensitiveContentClassifier>(sp)
+                : ActivatorUtilities.CreateInstance<ClipContentClassifier>(sp));
         services.AddOptions<KnownImageOptions>()
             .Bind(configuration.GetSection(KnownImageOptions.SectionName))
             .ValidateDataAnnotations()
@@ -90,7 +86,7 @@ public static class MediaServices
         services.AddScoped<MediaProcessor>();
 
         // One job per replica by default (Media:Processing:MaxConcurrentJobs): each job already uses every core.
-        var queue = configuration.GetSection(MediaQueueOptions.SectionName).Get<MediaQueueOptions>()?.QueueName ?? new MediaQueueOptions().QueueName;
+        var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.MediaProcessing ?? new MessagingOptions().MediaProcessing;
         var concurrency = configuration.GetSection(MediaProcessingOptions.SectionName).Get<MediaProcessingOptions>()?.MaxConcurrentJobs ?? 1;
         services.AddMessageConsumer<MediaJobConsumer>(
             configuration,
@@ -128,10 +124,6 @@ public static class MediaServices
             .ValidateOnStart();
         services.AddOptions<MediaStorageOptions>()
             .Bind(configuration.GetSection(MediaStorageOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-        services.AddOptions<MediaQueueOptions>()
-            .Bind(configuration.GetSection(MediaQueueOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.AddBjkMessaging(configuration, connectionStringName);

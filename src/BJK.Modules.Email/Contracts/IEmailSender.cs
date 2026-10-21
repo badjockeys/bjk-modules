@@ -10,7 +10,7 @@ namespace BJK.Modules.Email.Contracts;
 public sealed record EmailMessage(string To, string Subject, string TextBody, string? HtmlBody = null);
 
 /// <summary>
-/// Sends email. The provider is chosen by <c>Email:Provider</c>: <c>SendGrid</c>, or <c>Log</c> for local development.
+/// Sends email. SendGrid when <c>Email:SendGrid:ApiKey</c> is set; otherwise only logged (local development).
 /// </summary>
 public interface IEmailSender
 {

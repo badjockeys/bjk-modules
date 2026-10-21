@@ -226,7 +226,7 @@ internal sealed partial class MediaProcessor(
     private async Task ApplySensitiveScoreAsync(MediaItem item, double? score, CancellationToken cancellationToken)
     {
         item.RecordSensitiveScore(score);
-        if (score is not { } value || !_detection.Enabled || value < _detection.Threshold)
+        if (score is not { } value || value < _detection.Threshold)
         {
             return;
         }

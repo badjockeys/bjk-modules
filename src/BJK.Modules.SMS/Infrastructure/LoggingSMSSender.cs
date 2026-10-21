@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace BJK.Modules.SMS.Infrastructure;
 
 /// <summary>
-/// <c>SMS:Provider</c> = <c>Log</c>: nothing is sent. In Development the message is written to the log; elsewhere
+/// No Twilio settings: nothing is sent. In Development the message is written to the log; elsewhere
 /// only the fact that it was dropped is logged.
 /// </summary>
 internal sealed class LoggingSMSSender(IHostEnvironment environment, ILogger<LoggingSMSSender> logger) : ISMSSender
@@ -21,13 +21,13 @@ internal sealed class LoggingSMSSender(IHostEnvironment environment, ILogger<Log
         if (environment.IsDevelopment())
         {
             logger.LogWarning(
-                "DEVELOPMENT ONLY - SMS not sent (SMS:Provider is Log).\nTo: {To}\n{Body}",
+                "DEVELOPMENT ONLY - SMS not sent (no SMS:Twilio settings).\nTo: {To}\n{Body}",
                 message.To,
                 message.Body);
         }
         else
         {
-            logger.LogError("An SMS was not sent because no SMS provider is configured (SMS:Provider is Log).");
+            logger.LogError("An SMS was not sent because SMS:Twilio isn't set up.");
         }
 
         return Task.CompletedTask;

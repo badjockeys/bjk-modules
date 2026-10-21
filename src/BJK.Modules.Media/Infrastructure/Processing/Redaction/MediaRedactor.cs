@@ -135,8 +135,9 @@ internal sealed class MediaRedactor(
     private readonly IReadOnlyList<IRedactionDetector> _detectors = detectors.ToList();
 
     // Graphic content scoring runs inside the same pass, on the same (scaled-down) frames: nothing is decoded twice.
-    private readonly ISensitiveContentClassifier? _classifier = detectionOptions?.Value.Enabled == true ? classifier : null;
-    private readonly bool _detectSensitive = detectionOptions?.Value.Enabled == true;
+    // Checks run whenever the settings are registered (always in the worker); without a classifier, media go to review.
+    private readonly ISensitiveContentClassifier? _classifier = detectionOptions is not null ? classifier : null;
+    private readonly bool _detectSensitive = detectionOptions is not null;
     private readonly int _sampleEvery = Math.Max(1, detectionOptions?.Value.SampleEvery ?? 1);
     private readonly double _nudityThreshold = detectionOptions?.Value.NudityThreshold ?? 1;
 

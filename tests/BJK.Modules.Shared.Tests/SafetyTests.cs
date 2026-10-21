@@ -4,7 +4,6 @@ using BJK.Modules.Shared.Moderation;
 using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using MediatR;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -104,25 +103,12 @@ public sealed class SafetyTests
     }
 
     [Fact]
-    public async Task The_test_verifier_passes_any_token_but_not_a_missing_one()
-    {
-        var verifier = new AlwaysPassCaptchaVerifier();
-
-        Assert.Equal(CaptchaResult.Passed, await verifier.VerifyAsync("anything", null, Ct));
-        Assert.Equal(CaptchaResult.Failed, await verifier.VerifyAsync(" ", null, Ct));
-    }
-
-    [Fact]
     public void Turnstile_needs_a_secret()
     {
-        var environment = Substitute.For<IHostEnvironment>();
-        environment.EnvironmentName.Returns("Production");
-        var validator = new CaptchaOptionsValidator(environment, NullLogger<CaptchaOptionsValidator>.Instance);
+        var validator = new CaptchaOptionsValidator();
 
         Assert.True(validator.Validate(null, new CaptchaOptions()).Failed);
         Assert.True(validator.Validate(null, new CaptchaOptions { TurnstileSecretKey = "x" }).Succeeded);
-        Assert.True(validator.Validate(null, new CaptchaOptions { Provider = "AlwaysPass" }).Succeeded);
-        Assert.True(validator.Validate(null, new CaptchaOptions { Provider = "Other" }).Failed);
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace BJK.Modules.Shared.Safety;
 public static class SafetyServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers <see cref="IContentScreener"/> from <c>Screening:Provider</c>, with its settings checked at startup.
+    /// Registers <see cref="IContentScreener"/> (keywords, plus the classifier at <c>Screening:Endpoint</c> when set), with its settings checked at startup.
     /// Safe to call more than once.
     /// </summary>
     public static IServiceCollection AddContentScreening(this IServiceCollection services, IConfiguration configuration)
@@ -26,8 +26,7 @@ public static class SafetyServiceCollectionExtensions
         services.AddSingleton<KeywordContentScreener>();
 
         // Text with an address on the blocked list (IBlockedUrlList, if a module registers one) is always held.
-        var provider = configuration[$"{ScreeningOptions.SectionName}:{nameof(ScreeningOptions.Provider)}"] ?? ScreeningOptions.KeywordsProvider;
-        if (provider == ScreeningOptions.HttpProvider)
+        if (!string.IsNullOrWhiteSpace(configuration[$"{ScreeningOptions.SectionName}:{nameof(ScreeningOptions.Endpoint)}"]))
         {
             services.AddHttpClient<HttpContentScreener>((sp, client) =>
                 client.Timeout = sp.GetRequiredService<IOptions<ScreeningOptions>>().Value.Timeout);
@@ -45,7 +44,7 @@ public static class SafetyServiceCollectionExtensions
         services.GetService<IBlockedUrlList>() is { } list ? new BlockedUrlScreener(inner, list) : inner;
 
     /// <summary>
-    /// Registers <see cref="ICaptchaVerifier"/> from <c>Captcha:Provider</c>, with its settings checked at startup.
+    /// Registers <see cref="ICaptchaVerifier"/> (Cloudflare Turnstile), with its settings checked at startup.
     /// Safe to call more than once.
     /// </summary>
     public static IServiceCollection AddCaptchaVerification(this IServiceCollection services, IConfiguration configuration)
@@ -60,24 +59,11 @@ public static class SafetyServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<CaptchaOptions>, CaptchaOptionsValidator>();
         services.RequireWhenDeployed(
-            "Captcha:Provider",
-            "Turnstile (AlwaysPass checks nothing)",
-            v => v == CaptchaOptions.TurnstileProvider,
-            allowMissing: true);
-        services.RequireWhenDeployed(
             "Captcha:TurnstileSecretKey",
             "the real Turnstile secret key, not one of Cloudflare's test keys",
             v => !TurnstileTestKeys.IsTestKey(v));
 
-        var provider = configuration[$"{CaptchaOptions.SectionName}:{nameof(CaptchaOptions.Provider)}"] ?? CaptchaOptions.TurnstileProvider;
-        if (provider == CaptchaOptions.AlwaysPassProvider)
-        {
-            services.AddSingleton<ICaptchaVerifier, AlwaysPassCaptchaVerifier>();
-        }
-        else
-        {
-            services.AddHttpClient<ICaptchaVerifier, TurnstileCaptchaVerifier>(http => http.Timeout = TimeSpan.FromSeconds(10));
-        }
+        services.AddHttpClient<ICaptchaVerifier, TurnstileCaptchaVerifier>(http => http.Timeout = TimeSpan.FromSeconds(10));
 
         return services;
     }

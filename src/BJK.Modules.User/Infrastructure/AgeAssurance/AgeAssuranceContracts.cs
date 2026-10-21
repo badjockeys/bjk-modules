@@ -1,16 +1,20 @@
 namespace BJK.Modules.User.Infrastructure.AgeAssurance;
 
 /// <summary>
-/// A provider used by the age check. Several can be registered; <c>AgeAssurance:*:Provider</c> picks one by
-/// <see cref="Name"/>, and startup refuses development-only providers outside the Development environment.
+/// A provider used by the age check. For each step the real provider whose settings are filled in
+/// (<see cref="IsConfigured"/>) is used; without one, the Development environment uses the stand-in and anywhere
+/// else startup fails. There's no setting to pick a provider by name.
 /// </summary>
 public interface IAgeAssuranceProvider
 {
-    /// <summary>The name used in settings to select this provider, e.g. "Development", "YuNet" or "Http".</summary>
+    /// <summary>Recorded against each result, e.g. "Development", "YuNet" or "Yoti".</summary>
     string Name { get; }
 
-    /// <summary>True for stand-ins that don't really check anything. Never allowed outside Development.</summary>
+    /// <summary>True for stand-ins that don't really check anything. Never used outside Development.</summary>
     bool IsDevelopmentOnly { get; }
+
+    /// <summary>True when this provider's settings are filled in, so it can be used. Stand-ins are always configured.</summary>
+    bool IsConfigured { get; }
 }
 
 /// <summary>
@@ -26,10 +30,7 @@ public interface ILivenessChecker : IAgeAssuranceProvider
     Task<LivenessResult> CheckAsync(SelfieVideo video, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Estimates age from the selfie video. A specialist provider behind an HTTP API (<see cref="HttpAgeEstimator"/>),
-/// or the development stand-in.
-/// </summary>
+/// <summary>Estimates age from the selfie video: Yoti (<see cref="YotiAgeEstimator"/>), or the development stand-in.</summary>
 public interface IAgeEstimator : IAgeAssuranceProvider
 {
     /// <summary>Estimates the person's age. Implementations must not keep, log or store the video.</summary>

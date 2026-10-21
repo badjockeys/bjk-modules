@@ -5,9 +5,8 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 /// <summary>
 /// Scores a picture for graphic content (blood, injuries, the aftermath of serious crashes), so such media can be
 /// marked sensitive automatically before it's published, and (if the classifier can) for nudity, so such media goes to
-/// a moderator before it's published. Swappable: <see cref="ClipContentClassifier"/> (the default) scores both with
-/// one CLIP model; <see cref="OnnxSensitiveContentClassifier"/> runs any image classification model in ONNX format
-/// (graphic content only); <see cref="DevelopmentSensitiveContentClassifier"/> is a stand-in for local testing.
+/// a moderator before it's published. <see cref="ClipContentClassifier"/> scores both with one CLIP model;
+/// <see cref="DevelopmentSensitiveContentClassifier"/> is the stand-in used locally when no model is set.
 /// Implementations must be safe to call from several threads.
 /// </summary>
 public interface ISensitiveContentClassifier

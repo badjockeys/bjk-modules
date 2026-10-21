@@ -5,14 +5,14 @@ public sealed class EmailOptions
 {
     public const string SectionName = "Email";
 
-    public const string LogProvider = "Log";
-    public const string SendGridProvider = "SendGrid";
-
     /// <summary>
-    /// <c>Log</c> (default): nothing is sent. In Development the whole email is written to the log so flows can be
-    /// tested; elsewhere only the fact that it was dropped is logged. <c>SendGrid</c>: sent through SendGrid.
+    /// True when <c>Email:SendGrid:ApiKey</c> is set: emails go through SendGrid. Otherwise nothing is sent and, in
+    /// Development, the whole email is written to the log so flows can be tested. Outside Development the key is
+    /// required (the app won't start without it).
     /// </summary>
-    public string Provider { get; set; } = LogProvider;
+    public bool UsesSendGrid => IsSet(SendGrid.ApiKey);
+
+    internal static bool IsSet(string? value) => !string.IsNullOrWhiteSpace(value) && !value.TrimStart().StartsWith('<');
 
     /// <summary>Sender address, e.g. no-reply@badjockeys.com. Must be a verified sender or domain in SendGrid.</summary>
     public string? FromAddress { get; set; }

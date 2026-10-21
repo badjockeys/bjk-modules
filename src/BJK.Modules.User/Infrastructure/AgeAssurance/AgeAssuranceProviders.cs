@@ -4,31 +4,40 @@ using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.User.Infrastructure.AgeAssurance;
 
-/// <summary>The providers picked by <c>AgeAssurance:*:Provider</c> from everything registered.</summary>
+/// <summary>
+/// The provider for each step of the age check: the real one whose settings are filled in; without one, the stand-in
+/// in Development. Outside Development there's no fallback: startup has already refused to run without a real
+/// provider (<see cref="AgeAssuranceOptionsValidator"/>), and a missing one here throws rather than passing anyone.
+/// </summary>
 public sealed class AgeAssuranceProviders(
     IEnumerable<ILivenessChecker> liveness,
     IEnumerable<IAgeEstimator> estimators,
     IEnumerable<IDocumentAgeCheck> documents,
-    IOptionsMonitor<AgeAssuranceOptions> options)
+    IHostEnvironment environment)
 {
-    /// <summary>The selected liveness checker.</summary>
-    public ILivenessChecker Liveness => Pick(liveness, options.CurrentValue.Liveness.Provider, "Liveness");
+    /// <summary>The liveness checker.</summary>
+    public ILivenessChecker Liveness => Pick(liveness, environment, "Liveness");
 
-    /// <summary>The selected age estimator.</summary>
-    public IAgeEstimator Estimator => Pick(estimators, options.CurrentValue.Estimator.Provider, "Estimator");
+    /// <summary>The age estimator.</summary>
+    public IAgeEstimator Estimator => Pick(estimators, environment, "Estimator");
 
-    /// <summary>The selected photo-ID check.</summary>
-    public IDocumentAgeCheck Document => Pick(documents, options.CurrentValue.Document.Provider, "Document");
+    /// <summary>The photo-ID check.</summary>
+    public IDocumentAgeCheck Document => Pick(documents, environment, "Document");
 
-    private static T Pick<T>(IEnumerable<T> registered, string name, string section)
+    internal static T? Find<T>(IEnumerable<T> registered, IHostEnvironment environment)
         where T : IAgeAssuranceProvider =>
-        registered.LastOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw new InvalidOperationException($"No AgeAssurance:{section} provider called '{name}' is registered.");
+        registered.LastOrDefault(p => !p.IsDevelopmentOnly && p.IsConfigured)
+        ?? (environment.IsDevelopment() ? registered.LastOrDefault(p => p.IsDevelopmentOnly) : default);
+
+    private static T Pick<T>(IEnumerable<T> registered, IHostEnvironment environment, string step)
+        where T : IAgeAssuranceProvider =>
+        Find(registered, environment)
+        ?? throw new InvalidOperationException($"The age check has no {step} provider set up ({AgeAssuranceOptionsValidator.Needs(step)}).");
 }
 
 /// <summary>
-/// Checks the age check settings at startup: each selected provider must exist, development stand-ins are refused
-/// outside the Development environment, and the HTTP estimator must have its endpoint and key.
+/// Checks the age check settings at startup. Outside Development every step needs a real provider with its settings
+/// filled in; the stand-ins are never used there.
 /// </summary>
 /// <remarks>
 /// The providers are looked up when validating, not injected: they depend on these options themselves, so injecting
@@ -40,10 +49,6 @@ internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment,
     public ValidateOptionsResult Validate(string? name, AgeAssuranceOptions options)
     {
         var failures = new List<string>();
-        var liveness = services.GetServices<ILivenessChecker>().ToList();
-        var estimators = services.GetServices<IAgeEstimator>().ToList();
-        var documents = services.GetServices<IDocumentAgeCheck>().ToList();
-
         if (options.ChallengeAge < Domain.AgeCheckRules.AdultAge)
         {
             failures.Add($"AgeAssurance:ChallengeAge must be at least {Domain.AgeCheckRules.AdultAge}.");
@@ -59,55 +64,56 @@ internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment,
             failures.Add("AgeAssurance:MaxVideoBytes and AgeAssurance:MaxImageBytes must be positive.");
         }
 
-        Check(liveness, options.Liveness.Provider, "Liveness", failures);
-        Check(estimators, options.Estimator.Provider, "Estimator", failures);
-        Check(documents, options.Document.Provider, "Document", failures);
-
-        if (string.Equals(options.Estimator.Provider, AgeAssuranceOptions.HttpProvider, StringComparison.OrdinalIgnoreCase))
+        var yoti = options.Yoti;
+        if (yoti.IsConfigured)
         {
-            var http = options.Estimator.Http;
-            if (http.Endpoint is not { IsAbsoluteUri: true } endpoint)
+            if (!Guid.TryParse(yoti.SdkId, out _))
             {
-                failures.Add("AgeAssurance:Estimator:Http:Endpoint is required (an absolute URL) when the estimator is Http.");
-            }
-            else if (endpoint.Scheme != Uri.UriSchemeHttps && !environment.IsDevelopment())
-            {
-                failures.Add("AgeAssurance:Estimator:Http:Endpoint must use HTTPS.");
+                failures.Add("AgeAssurance:Yoti:SdkId must be the SDK ID from the Yoti Hub (a UUID).");
             }
 
-            if (string.IsNullOrWhiteSpace(http.ApiKey))
+            if (!YotiRequestSigner.TryLoad(yoti.PrivateKey, out _))
             {
-                failures.Add("AgeAssurance:Estimator:Http:ApiKey is required when the estimator is Http.");
+                failures.Add("AgeAssurance:Yoti:PrivateKey must be the PEM private key from the Yoti Hub (the whole -----BEGIN ... text).");
             }
 
-            if (string.IsNullOrWhiteSpace(http.AgePath) || string.IsNullOrWhiteSpace(http.VideoField) || string.IsNullOrWhiteSpace(http.ApiKeyHeader))
+            if (yoti.BaseUrl is not { IsAbsoluteUri: true } baseUrl || (baseUrl.Scheme != Uri.UriSchemeHttps && !environment.IsDevelopment()))
             {
-                failures.Add("AgeAssurance:Estimator:Http:AgePath, VideoField and ApiKeyHeader can't be empty.");
+                failures.Add("AgeAssurance:Yoti:BaseUrl must be an https address.");
             }
 
-            if (http.Timeout <= TimeSpan.Zero)
+            if (yoti.Timeout <= TimeSpan.Zero || yoti.MaxUncertainty <= 0)
             {
-                failures.Add("AgeAssurance:Estimator:Http:Timeout must be positive.");
+                failures.Add("AgeAssurance:Yoti:Timeout and MaxUncertainty must be positive.");
             }
+        }
+
+        if (!environment.IsDevelopment())
+        {
+            Require(services.GetServices<ILivenessChecker>(), "Liveness", failures);
+            Require(services.GetServices<IAgeEstimator>(), "Estimator", failures);
+            Require(services.GetServices<IDocumentAgeCheck>(), "Document", failures);
         }
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    private void Check<T>(IEnumerable<T> registered, string? provider, string section, List<string> failures)
+    /// <summary>What a step needs, for messages.</summary>
+    internal static string Needs(string step) => step switch
+    {
+        "Liveness" => "set AgeAssurance:Liveness:ModelPath to the YuNet model",
+        "Estimator" => "set AgeAssurance:Yoti:SdkId and PrivateKey",
+        _ => "no photo ID provider is built yet: Yoti's photo ID check is still to do",
+    };
+
+    private void Require<T>(IEnumerable<T> registered, string step, List<string> failures)
         where T : IAgeAssuranceProvider
     {
-        var match = registered.LastOrDefault(p => string.Equals(p.Name, provider, StringComparison.OrdinalIgnoreCase));
-        if (match is null)
-        {
-            var known = string.Join(", ", registered.Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase));
-            failures.Add($"AgeAssurance:{section}:Provider '{provider}' isn't registered (available: {known}).");
-        }
-        else if (match.IsDevelopmentOnly && !environment.IsDevelopment())
+        if (AgeAssuranceProviders.Find(registered, environment) is null)
         {
             failures.Add(
-                $"AgeAssurance:{section}:Provider '{match.Name}' is for local development only and doesn't check anyone's age. "
-                + $"Configure a real provider for the {environment.EnvironmentName} environment.");
+                $"The age check's {step} step has no real provider in the {environment.EnvironmentName} environment "
+                + $"(the stand-ins only run in Development): {Needs(step)}.");
         }
     }
 }

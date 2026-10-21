@@ -77,11 +77,10 @@ public sealed class UserModule(string connectionStringName) : IModule
     }
 
     /// <summary>
-    /// The on-demand age check (for sensitive posts): settings (checked at startup),
-    /// the development stand-ins and the generic HTTP estimator.
-    /// The host adds its own providers (the identity server registers the YuNet liveness checker) as further
-    /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons;
-    /// <c>AgeAssurance:*:Provider</c> picks one of each by name.
+    /// The on-demand age check (for sensitive posts): settings (checked at startup), the development stand-ins and
+    /// Yoti. The host adds its own providers (the identity server registers the YuNet liveness checker) as further
+    /// <see cref="ILivenessChecker"/>, <see cref="IAgeEstimator"/> or <see cref="IDocumentAgeCheck"/> singletons. Each
+    /// step uses the real provider whose settings are filled in, or the stand-in in Development.
     /// </summary>
     internal static void AddAgeAssurance(IServiceCollection services, IConfiguration configuration)
     {
@@ -92,9 +91,10 @@ public sealed class UserModule(string connectionStringName) : IModule
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ILivenessChecker, DevelopmentLivenessChecker>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgeEstimator, DevelopmentAgeEstimator>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgeEstimator, HttpAgeEstimator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgeEstimator, YotiAgeEstimator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentAgeCheck, DevelopmentDocumentAgeCheck>());
-        services.AddHttpClient(HttpAgeEstimator.ClientName);
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHttpClient(YotiAgeEstimator.ClientName);
         services.AddSingleton<AgeAssuranceProviders>();
         services.AddScoped<IAccountAgeLookup, AccountAgeLookup>();
     }

@@ -3,21 +3,21 @@ using System.ComponentModel.DataAnnotations;
 namespace BJK.Modules.Shared.Messaging;
 
 /// <summary>
-/// Durable queues and events, stored in SQL Server (section <c>Messaging</c>). Every value has a default; a host only
-/// sets <see cref="ConnectionStringName"/> when its messages live in another database than its modules' data (the
-/// identity server writes to the app database's queues).
+/// Durable queues and events, stored in SQL Server (section <c>Queues</c>). Every value has a default. Which database
+/// holds the queues isn't a setting: it's the database of the module that registers messaging
+/// (<c>BadJockeysDatabase</c> in bjk-core), unless the host says otherwise in code with
+/// <see cref="MessagingServiceCollectionExtensions.UseQueuesIn"/> (the identity server, which writes to bjk-core's queues).
 /// </summary>
 public sealed class MessagingOptions
 {
-    public const string SectionName = "Messaging";
+    public const string SectionName = "Queues";
 
     /// <summary>
-    /// The connection string (a name under <c>ConnectionStrings</c>) for the database holding the queue tables. Empty
-    /// (the default): the database of the module that registers messaging, e.g. <c>AppDatabase</c> in bjk-core. The
-    /// identity server sets <c>Messaging</c>, a login allowed to use only the <see cref="Schema"/> tables of the app
-    /// database (see the bjk-modules README).
+    /// The connection string (a name under <c>ConnectionStrings</c>) for the database holding the queue tables. Not
+    /// read from configuration: null means the registering module's database; a host changes it with
+    /// <see cref="MessagingServiceCollectionExtensions.UseQueuesIn"/>.
     /// </summary>
-    public string? ConnectionStringName { get; set; }
+    public string? ConnectionStringName { get; internal set; }
 
     /// <summary>The schema holding the queue tables (one table per queue, plus <c>subscriptions</c>).</summary>
     [Required]
@@ -47,22 +47,27 @@ public sealed class MessagingOptions
     public TimeSpan MaxRetryDelay { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// Create missing queue tables (and the schema) on startup. Leave on wherever the login may create tables; the
-    /// identity server turns it off, because its login may only read and write the queues bjk-core created.
+    /// Create missing queue tables (and the schema) on startup. Not read from configuration: on, unless the host turns
+    /// it off with <see cref="MessagingServiceCollectionExtensions.UseQueuesIn"/> (the identity server, whose login may
+    /// only read and write the queues bjk-core created).
     /// </summary>
-    public bool CreateTables { get; set; } = true;
+    public bool CreateTables { get; internal set; } = true;
 
     /// <summary>
     /// The queue this host reads user lifecycle events from (bjk-core). It subscribes to the
     /// <see cref="Users.UserLifecycleEvents.Topic"/> topic, so each event published there is copied into it.
     /// </summary>
     [Required]
-    public string UserEventsQueue { get; set; } = "bjk-core.user-events";
+    public string UserEvents { get; set; } = "bjk-core.user-events";
 
     /// <summary>
     /// The queue this host reads media events (<c>media.ready</c>, <c>media.failed</c>) from, subscribed to the Media
     /// module's <c>bjk.media</c> topic. The Posts module uses them to publish posts once their media are ready.
     /// </summary>
     [Required]
-    public string MediaEventsQueue { get; set; } = "bjk-core.media-events";
+    public string MediaEvents { get; set; } = "bjk-core.media-events";
+
+    /// <summary>The queue of media processing jobs, read by the media worker.</summary>
+    [Required]
+    public string MediaProcessing { get; set; } = "media.process";
 }

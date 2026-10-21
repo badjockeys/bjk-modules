@@ -100,19 +100,19 @@ public sealed class ContentScreeningTests
     }
 
     [Fact]
-    public void Http_provider_needs_an_endpoint()
+    public void The_classifier_endpoint_must_be_absolute_and_thresholds_ordered()
     {
         var validator = new ScreeningOptionsValidator();
 
-        Assert.True(validator.Validate(null, new ScreeningOptions { Provider = "Http" }).Failed);
-        Assert.True(validator.Validate(null, new ScreeningOptions { Provider = "Http", Endpoint = new Uri("http://detoxify:8000/score") }).Succeeded);
+        Assert.True(validator.Validate(null, new ScreeningOptions { Endpoint = new Uri("/score", UriKind.Relative) }).Failed);
+        Assert.True(validator.Validate(null, new ScreeningOptions { Endpoint = new Uri("http://detoxify:8000/score") }).Succeeded);
         Assert.True(validator.Validate(null, new ScreeningOptions { FlagThreshold = 0.9, HoldThreshold = 0.5 }).Failed);
         Assert.True(validator.Validate(null, new ScreeningOptions()).Succeeded);
     }
 
     private HttpContentScreener Http(FakeHandler handler)
     {
-        var options = Options.Create(new ScreeningOptions { Provider = "Http", Endpoint = new Uri("http://detoxify:8000/score") });
+        var options = Options.Create(new ScreeningOptions { Endpoint = new Uri("http://detoxify:8000/score") });
         return new HttpContentScreener(new HttpClient(handler), new KeywordContentScreener(options), options, NullLogger<HttpContentScreener>.Instance);
     }
 }

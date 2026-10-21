@@ -12,7 +12,7 @@ namespace BJK.Modules.Shared.Configuration;
 /// refuses to start, and <c>--check-settings</c> fails, listing every one that's missing at once, so a deployment
 /// can't quietly run with a stand-in (emails only logged, CAPTCHA test keys and so on).
 /// </summary>
-/// <param name="Key">The configuration key, e.g. <c>Email:Provider</c> (an array's first item is <c>Cors:AllowedOrigins:0</c>).</param>
+/// <param name="Key">The configuration key, e.g. <c>Email:SendGrid:ApiKey</c> (an array's first item is <c>Cors:AllowedOrigins:0</c>).</param>
 /// <param name="Requirement">What it must be, for the message, e.g. "SendGrid (Log sends nothing)".</param>
 /// <param name="IsValid">Checks the value; by default it just has to be set.</param>
 /// <param name="AllowMissing">True when leaving it unset means a default that's fine live (only a set value is checked).</param>
