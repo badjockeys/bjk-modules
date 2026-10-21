@@ -65,6 +65,8 @@ public sealed record PostMediaDto(
 /// Failed, with <c>MediaFailureReason</c>, if the post can't be published; others only ever see Ready posts.
 /// <c>Types</c> are every type of bad driving on the post, shown as tags, the main one (<c>Category</c>) first.
 /// <c>Passengers</c> are the people tagged as being in the author's vehicle (see <see cref="PassengerDto"/>).
+/// <c>Vote</c> is the post's "Who's at fault?" or "How bad was it?" vote (see <see cref="Engagement.VoteSummaryDto"/>).
+/// <c>IsFollowing</c> and <c>IsSaved</c>: whether the signed-in viewer follows the post and has bookmarked it.
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -92,7 +94,10 @@ public sealed record PostDto(
     IReadOnlyList<PassengerDto>? Passengers = null,
     VehicleDto? Vehicle = null,
     bool? ReportedToPolice = null,
-    CommentSetting CommentSetting = CommentSetting.Everyone)
+    CommentSetting CommentSetting = CommentSetting.Everyone,
+    Engagement.VoteSummaryDto? Vote = null,
+    bool IsFollowing = false,
+    bool IsSaved = false)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -230,7 +235,13 @@ public sealed record ScreenedCommentDto(CommentDto Comment, bool IsFlagged, doub
 /// and counts in a few batched calls, rather than one per post. Media of sensitive posts is blurred unless the caller
 /// may see it: an age-verified adult, the author, or a moderator.
 /// </summary>
-public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles, IMediaDirectory media, ICurrentUser caller)
+public sealed class PostViews(
+    IPostRepository posts,
+    IProfileDirectory profiles,
+    IMediaDirectory media,
+    ICurrentUser caller,
+    IEngagementRepository? engagement = null,
+    TimeProvider? clock = null)
 {
     public async Task<PostDto> BuildAsync(Post post, Guid? viewerId, CancellationToken cancellationToken) =>
         (await BuildAsync([post], viewerId, cancellationToken))[0];
@@ -272,6 +283,14 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
         }
 
         var stats = await posts.GetStatsAsync(items.Select(p => p.Id).ToList(), viewerId, cancellationToken);
+        var ids = items.Select(p => p.Id).ToList();
+        var tallies = engagement is null
+            ? new Dictionary<Guid, VoteTally>()
+            : await engagement.GetVoteTalliesAsync(ids, viewerId, cancellationToken);
+        var (following, saved) = engagement is not null && viewerId is { } viewer
+            ? await engagement.GetViewerStateAsync(ids, viewer, cancellationToken)
+            : (new HashSet<Guid>(), new HashSet<Guid>());
+        var now = (clock ?? TimeProvider.System).GetUtcNow();
 
         return items.Select(p =>
         {
@@ -302,7 +321,10 @@ public sealed class PostViews(IPostRepository posts, IProfileDirectory profiles,
                 Passengers: PassengersFor(p, tags[p.Id], authors, viewerId),
                 Vehicle: p.VehicleType is { } type ? new VehicleDto(type, p.VehicleMake, p.VehicleModel, p.VehicleColour) : null,
                 ReportedToPolice: p.ReportedToPolice,
-                CommentSetting: p.CommentSetting);
+                CommentSetting: p.CommentSetting,
+                Vote: Engagement.VoteSummaryDto.For(p, tallies.GetValueOrDefault(p.Id) ?? VoteTally.Empty, viewerId, now),
+                IsFollowing: following.Contains(p.Id),
+                IsSaved: saved.Contains(p.Id));
         }).ToList();
     }
 

@@ -68,6 +68,8 @@ public static class ModerationActions
     public const string ReportKnownImageMatch = "ReportKnownImageMatch";
     public const string BlockUrl = "BlockUrl";
     public const string UnblockUrl = "UnblockUrl";
+    public const string AwardBadge = "AwardBadge";
+    public const string RemoveBadge = "RemoveBadge";
 }
 
 /// <summary>Who did a moderation action, from the current request.</summary>

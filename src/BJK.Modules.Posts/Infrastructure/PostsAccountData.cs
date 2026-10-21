@@ -157,6 +157,35 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(t => new { t.Id, t.Name, Types = t.Types.Select(x => x.ToString()).ToList(), t.PlaceName, t.Latitude, t.Longitude, t.RadiusKm, t.CreatedAt })
             .ToList();
 
-        return new { posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals, reelPlays, timelines };
+        var votes = await db.PostVotes.AsNoTracking()
+            .Where(v => v.UserId == userId)
+            .OrderBy(v => v.CreatedAt)
+            .Select(v => new { v.PostId, Choice = v.Choice.ToString(), v.CreatedAt, v.UpdatedAt })
+            .ToListAsync(cancellationToken);
+        var followedPosts = await db.PostFollows.AsNoTracking()
+            .Where(f => f.UserId == userId)
+            .OrderBy(f => f.CreatedAt)
+            .Select(f => new { f.PostId, f.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var bookmarks = await db.Bookmarks.AsNoTracking()
+            .Where(b => b.UserId == userId)
+            .OrderBy(b => b.CreatedAt)
+            .Select(b => new { b.PostId, b.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var postsViewed = await db.PostViews.AsNoTracking()
+            .Where(v => v.ViewerKey == userId)
+            .OrderBy(v => v.ViewedAt)
+            .Select(v => new { v.PostId, v.ViewedAt })
+            .ToListAsync(cancellationToken);
+        var preferences = await db.AuthorPreferences.AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .Select(a => new { VoteDuration = a.VoteDuration.ToString(), a.UpdatedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new
+        {
+            posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals,
+            reelPlays, timelines, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences,
+        };
     }
 }

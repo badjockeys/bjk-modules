@@ -67,6 +67,9 @@ public interface IPostRepository
     /// <summary>A post with its media, unless deleted. Tracked, so changes can be saved.</summary>
     Task<Post?> GetAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>These posts (not deleted), without media, read-only. Missing ids are left out.</summary>
+    Task<IReadOnlyList<Post>> GetManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     /// <summary>The post (not deleted) that contains this photo or video, with its media; tracked. Null if none.</summary>
     Task<Post?> FindByMediaAsync(Guid mediaId, CancellationToken cancellationToken);
 
@@ -142,6 +145,13 @@ public interface IPostRepository
 
 internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 {
+    public async Task<IReadOnlyList<Post>> GetManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        ids.Count == 0
+            ? []
+            : await db.Posts.AsNoTracking()
+                .Where(p => ids.Contains(p.Id) && p.Status != PostStatus.Deleted)
+                .ToListAsync(cancellationToken);
+
     public Task<Post?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         db.Posts
             .Include(p => p.Media)
@@ -400,6 +410,12 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             await db.Appeals.Where(a => a.AppellantId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.ReelPlays.Where(p => p.ViewerKey == userId && !p.IsAnonymous).ExecuteDeleteAsync(cancellationToken);
             await db.Reactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.PostVotes.Where(v => v.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.PostFollows.Where(f => f.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.Bookmarks.Where(b => b.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.PostViews.Where(v => v.ViewerKey == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.PostShares.Where(v => v.ViewerKey == userId).ExecuteDeleteAsync(cancellationToken);
+            await db.AuthorPreferences.Where(a => a.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.CommentReactions.Where(r => r.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.Comments.Where(c => c.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
             await db.PostPassengers.Where(p => p.UserId == userId).ExecuteDeleteAsync(cancellationToken);

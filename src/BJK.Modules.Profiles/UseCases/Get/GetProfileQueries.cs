@@ -22,7 +22,8 @@ public sealed class GetMyProfileQueryHandler(IProfileRepository profiles, IMedia
             await profiles.SaveChangesAsync(cancellationToken);
         }
 
-        return await Avatars.WithFollowsAsync(profiles, await Avatars.ToDtoAsync(media, profile, cancellationToken), profile.Id, cancellationToken);
+        var dto = await Avatars.WithFollowsAsync(profiles, await Avatars.ToDtoAsync(media, profile, cancellationToken), profile.Id, cancellationToken);
+        return await Avatars.WithBadgesAsync(profiles, dto, profile, cancellationToken);
     }
 }
 
@@ -42,10 +43,14 @@ public sealed class GetProfileQueryHandler(IProfileRepository profiles, IMediaDi
         // A deactivated user's profile looks exactly like one that doesn't exist.
         return profile is not { IsActive: true }
             ? throw new NotFoundException("Profile", request.Handle)
-            : await Avatars.WithFollowsAsync(
+            : await Avatars.WithBadgesAsync(
                 profiles,
-                await Avatars.ToDtoAsync(media, profile, cancellationToken, forOwner: false),
-                caller?.UserId(),
+                await Avatars.WithFollowsAsync(
+                    profiles,
+                    await Avatars.ToDtoAsync(media, profile, cancellationToken, forOwner: false),
+                    caller?.UserId(),
+                    cancellationToken),
+                profile,
                 cancellationToken);
     }
 }

@@ -10,7 +10,8 @@ public static class NotificationTexts
     /// <param name="actorName">Who did it, or null if they've gone ("Someone").</param>
     /// <param name="count">How many people, for grouped reactions.</param>
     /// <param name="postTitle">The post's title, if any.</param>
-    public static string Sentence(NotificationType type, string? actorName, int count, string? postTitle)
+    /// <param name="detail">The notification's extra sentence, if it has one (a closed vote's result).</param>
+    public static string Sentence(NotificationType type, string? actorName, int count, string? postTitle, string? detail = null)
     {
         var who = string.IsNullOrWhiteSpace(actorName) ? "Someone" : actorName;
         var post = string.IsNullOrWhiteSpace(postTitle) ? "your post" : $"your post “{postTitle}”";
@@ -28,6 +29,10 @@ public static class NotificationTexts
                 $"{count} new posts in your area, including {on}.",
             NotificationType.AreaPost => $"New in your area: {on}.",
             NotificationType.NewFollower => $"{who} followed you.",
+            NotificationType.CommentOnFollowedPost => $"{who} commented on {on}, which you follow.",
+            NotificationType.VoteClosed => string.IsNullOrWhiteSpace(detail)
+                ? $"The vote on {on} has closed."
+                : $"The vote on {on} has closed. {detail}",
             _ => "You have a new notification.",
         };
     }
@@ -45,6 +50,8 @@ public static class NotificationTexts
             NotificationType.ReactionOnPost => $"{who} reacted to your post",
             NotificationType.AreaPost => "New bad driving reported in your area",
             NotificationType.NewFollower => $"{who} followed you on Bad Jockeys",
+            NotificationType.CommentOnFollowedPost => $"{who} commented on a post you follow",
+            NotificationType.VoteClosed => "The vote has closed: see the result",
             _ => "New on Bad Jockeys",
         };
     }
@@ -59,6 +66,8 @@ public static class NotificationTexts
         NotificationType.ReactionOnPost => "Reactions to your posts",
         NotificationType.AreaPost => "New posts in your area",
         NotificationType.NewFollower => "New followers",
+        NotificationType.CommentOnFollowedPost => "Comments on posts you follow",
+        NotificationType.VoteClosed => "Vote results",
         _ => type.ToString(),
     };
 }

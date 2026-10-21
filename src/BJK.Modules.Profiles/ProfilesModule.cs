@@ -63,6 +63,7 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
         services.AddScoped<IProfileDirectory, ProfileDirectory>();
         services.AddScoped<IBlockDirectory, BlockDirectory>();
         services.AddScoped<IFollowDirectory, FollowDirectory>();
+        services.AddScoped<IProfileBadges, ProfileBadges>();
         services.AddNotificationSenderFallback();
         services.AddHomeAreasFallback();
         services.AddScoped<IProfileModeration, ProfileModeration>();

@@ -175,6 +175,28 @@ public sealed class Post
 
     public byte[] RowVersion { get; private set; } = [];
 
+    /// <summary>
+    /// When the post's vote closes (from the author's <see cref="VoteDuration"/> setting at the time they posted);
+    /// null when it never closes. Votes count until then, and the result is announced to the author and followers.
+    /// </summary>
+    public DateTimeOffset? VoteClosesAt { get; private set; }
+
+    /// <summary>When the closed vote's result was announced; null until then (or for votes that never close).</summary>
+    public DateTimeOffset? VoteResultSentAt { get; private set; }
+
+    /// <summary>Which question the post's vote asks, from its types.</summary>
+    public VoteKind VoteKind => PostVoting.KindFor(Types);
+
+    /// <summary>True once the vote has closed.</summary>
+    public bool IsVoteClosed(DateTimeOffset now) => VoteClosesAt is { } closes && closes <= now;
+
+    /// <summary>Sets when the vote closes, from the author's setting. Called once, when the post is made.</summary>
+    public void SetVoteDuration(VoteDuration duration) => VoteClosesAt = PostVoting.ClosesAt(CreatedAt, duration);
+
+    /// <summary>Records that the closed vote's result has been announced, so it's never announced twice.</summary>
+    public void MarkVoteResultSent(DateTimeOffset now) => VoteResultSentAt ??= now;
+
+
     /// <summary>The photos and videos, in the order the author chose.</summary>
     public IReadOnlyList<PostMedia> Media => _media;
 

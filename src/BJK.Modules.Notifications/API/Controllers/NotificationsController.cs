@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BJK.Modules.Notifications.API.Controllers;
 
-/// <summary>The signed-in user's notifications (the bell) and notification settings.</summary>
+/// <summary>The signed-in user's notifications (the bell), notification settings and push devices.</summary>
 [ApiController]
 [Route("api/notifications")]
 [Authorize(Policy = NotificationsModule.UsePolicy)]
@@ -44,7 +44,7 @@ public sealed class NotificationsController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Your settings for each type of notification: in the bell, and by email.</summary>
+    /// <summary>Your settings for each type of notification: in the bell, by email and as a push.</summary>
     [HttpGet("settings")]
     [ProducesResponseType<IReadOnlyList<NotificationSettingDto>>(StatusCodes.Status200OK)]
     public async Task<IReadOnlyList<NotificationSettingDto>> Settings(CancellationToken cancellationToken) =>
@@ -58,4 +58,30 @@ public sealed class NotificationsController(ISender sender) : ControllerBase
         UpdateNotificationSettingsCommand command,
         CancellationToken cancellationToken) =>
         await sender.Send(command, cancellationToken);
+
+    /// <summary>Whether push notifications are available here, and the public key to subscribe a browser with.</summary>
+    [HttpGet("push")]
+    [ProducesResponseType<PushSetupDto>(StatusCodes.Status200OK)]
+    public async Task<PushSetupDto> PushSetup(CancellationToken cancellationToken) =>
+        await sender.Send(new GetPushSetupQuery(), cancellationToken);
+
+    /// <summary>Turn push notifications on for this browser (what <c>PushManager.subscribe</c> returned).</summary>
+    [HttpPut("push")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Subscribe(SubscribePushCommand command, CancellationToken cancellationToken)
+    {
+        await sender.Send(command, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Turn push notifications off for this browser.</summary>
+    [HttpPost("push/unsubscribe")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Unsubscribe(UnsubscribePushCommand command, CancellationToken cancellationToken)
+    {
+        await sender.Send(command, cancellationToken);
+        return NoContent();
+    }
 }

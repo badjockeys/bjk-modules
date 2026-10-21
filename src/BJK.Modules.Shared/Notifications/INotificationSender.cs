@@ -26,11 +26,19 @@ public enum NotificationType
 
     /// <summary>Someone started following you.</summary>
     NewFollower,
+
+    /// <summary>Someone commented on a post you follow.</summary>
+    CommentOnFollowedPost,
+
+    /// <summary>The vote on your post, or a post you follow, has closed: here's the result.</summary>
+    VoteClosed,
 }
 
 /// <summary>
 /// One notification to send. <c>UserId</c> gets it; <c>ActorId</c> is who did it (never notified about their own
 /// actions). <c>PostTitle</c> is kept with the notification, so it reads the same if the post is later edited.
+/// <c>Detail</c> is a short sentence some types carry, such as a closed vote's result (at most
+/// <see cref="DetailMaxLength"/> characters).
 /// </summary>
 public sealed record NotificationRequest(
     Guid UserId,
@@ -38,7 +46,11 @@ public sealed record NotificationRequest(
     Guid? ActorId = null,
     Guid? PostId = null,
     Guid? CommentId = null,
-    string? PostTitle = null);
+    string? PostTitle = null,
+    string? Detail = null)
+{
+    public const int DetailMaxLength = 200;
+}
 
 /// <summary>
 /// Sends in-app notifications (and emails, by each person's settings). Implemented by the Notifications module;

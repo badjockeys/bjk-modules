@@ -1,3 +1,4 @@
+using BJK.Modules.Profiles.Domain;
 using BJK.Modules.Profiles.UseCases;
 using BJK.Modules.Profiles.UseCases.Moderation;
 using BJK.Modules.Shared.Security;
@@ -31,6 +32,22 @@ public sealed class AdminProfilesController(ISender sender) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ProfileDto> Reset(string handle, ModerationReasonRequest request, CancellationToken cancellationToken) =>
         await sender.Send(new ResetProfileCommand(handle, request.Reason), cancellationToken);
+
+    /// <summary>Give a profile the Trusted reporter badge. A reason is required.</summary>
+    [HttpPut("{handle}/badges/{badge}")]
+    [ProducesResponseType<IReadOnlyList<Badge>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IReadOnlyList<Badge>> AwardBadge(string handle, Badge badge, ModerationReasonRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new SetBadgeCommand(handle, badge, Award: true, request.Reason), cancellationToken);
+
+    /// <summary>Remove a badge from a profile. A reason is required.</summary>
+    [HttpDelete("{handle}/badges/{badge}")]
+    [ProducesResponseType<IReadOnlyList<Badge>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IReadOnlyList<Badge>> RemoveBadge(string handle, Badge badge, [FromBody] ModerationReasonRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new SetBadgeCommand(handle, badge, Award: false, request.Reason), cancellationToken);
 }
 
 /// <summary>Why a moderator took an action. Recorded in the moderation audit log.</summary>

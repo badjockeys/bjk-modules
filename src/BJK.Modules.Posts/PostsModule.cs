@@ -109,6 +109,13 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<UseCases.Drafts.DraftViews>();
         services.AddScoped<UseCases.Drafts.DraftDeletion>();
         services.AddHostedService<DraftsCleanup>();
+
+        // Votes, follows, bookmarks, views and shares (owner, 21 Oct 2026); closed votes are announced every 5 minutes.
+        services.AddScoped<IEngagementRepository, EngagementRepository>();
+        services.AddScoped<VoteResultAnnouncer>();
+        services.AddHostedService<VoteResults>();
+        services.AddScoped<LocalRegularFinder>();
+        services.AddHostedService<LocalRegularBadges>();
         services.AddNotificationSenderFallback();
         services.AddAreaAlertsFallback();
 

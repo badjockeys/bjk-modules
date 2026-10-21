@@ -1,0 +1,36 @@
+# Temporary: builds, tests and generates the EF migrations for this branch's model changes. Removed before review.
+name: tmp-migrations
+on:
+  push:
+    branches: [feature/engagement]
+permissions:
+  contents: write
+  packages: read
+env:
+  NuGetPackageSourceCredentials_badjockeys: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }}
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Build, test and add the migrations
+        continue-on-error: true
+        run: |
+          exec > >(tee migration.log) 2>&1
+          set -e
+          dotnet restore BJK.Modules.slnx && dotnet tool restore
+          dotnet build BJK.Modules.slnx --configuration Release --no-restore 2>&1 | grep -E "error|Build succeeded" | sort -u | head -150 || true
+          dotnet test BJK.Modules.slnx --configuration Release --no-build 2>&1 | grep -E "error|Failed|failed|Passed!|Total tests|Assert|Expected|Actual" | head -200 || true
+          dotnet ef migrations add Engagement --project src/BJK.Modules.Posts --context PostsDbContext --output-dir Infrastructure/Data/Migrations --configuration Release
+          dotnet ef migrations add Badges --project src/BJK.Modules.Profiles --context ProfilesDbContext --output-dir Infrastructure/Data/Migrations --configuration Release
+          dotnet ef migrations add PushNotifications --project src/BJK.Modules.Notifications --context NotificationsDbContext --output-dir Infrastructure/Data/Migrations --configuration Release
+      - name: Push
+        if: ${{ always() }}
+        run: |
+          git add -f migration.log
+          git add -A src || true
+          git -c user.name=ci -c user.email=ci@example.com commit -m "Generated migrations"
+          git push origin HEAD:refs/heads/tmp/engagement-migrations --force

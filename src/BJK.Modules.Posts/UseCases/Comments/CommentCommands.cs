@@ -42,9 +42,13 @@ public sealed class AddCommentCommandHandler(
     ICurrentUser caller,
     TimeProvider clock,
     INotificationSender? notifications = null,
-    IFollowDirectory? follows = null)
+    IFollowDirectory? follows = null,
+    IEngagementRepository? engagement = null)
     : IRequestHandler<AddCommentCommand, CommentDto>
 {
+    /// <summary>The most followers told about one new comment (the oldest followers first).</summary>
+    public const int MaxFollowersNotified = 500;
+
     public async Task<CommentDto> Handle(AddCommentCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
@@ -112,6 +116,30 @@ public sealed class AddCommentCommandHandler(
                 ? new NotificationRequest(post.AuthorId, NotificationType.CommentOnPost, userId, post.Id, comment.Id, post.Title)
                 : new NotificationRequest(parent.AuthorId, NotificationType.ReplyToComment, userId, post.Id, comment.Id, post.Title);
             await notifications.NotifyAsync(notice, cancellationToken);
+        }
+
+        // Commenting follows the post; its other followers hear about the new comment (owner, 21 Oct 2026).
+        if (engagement is not null)
+        {
+            await engagement.EnsureFollowingAsync(post.Id, userId, now, cancellationToken);
+            if (notifications is not null && comment.Status == CommentStatus.Visible)
+            {
+                var alreadyTold = new HashSet<Guid> { userId, post.AuthorId };
+                if (parent is not null)
+                {
+                    alreadyTold.Add(parent.AuthorId);
+                }
+
+                foreach (var follower in await engagement.ListFollowerIdsAsync(post.Id, MaxFollowersNotified, cancellationToken))
+                {
+                    if (alreadyTold.Add(follower))
+                    {
+                        await notifications.NotifyAsync(
+                            new NotificationRequest(follower, NotificationType.CommentOnFollowedPost, userId, post.Id, comment.Id, post.Title),
+                            cancellationToken);
+                    }
+                }
+            }
         }
 
         return CommentViews.From(comment, author);
