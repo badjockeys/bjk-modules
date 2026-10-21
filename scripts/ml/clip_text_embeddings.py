@@ -4,7 +4,8 @@ Usage: python scripts/ml/clip_text_embeddings.py <source.json> <output.json>
 
 Uses the same CLIP model as the media worker (openai/clip-vit-base-patch32, Xenova's ONNX export, pinned revision),
 so the text embeddings match the worker's image embeddings. Needs: pip install onnxruntime tokenizers numpy.
-Downloads the text model (about 65 MB) and tokenizer from Hugging Face the first time, into ~/.cache/bjk-clip.
+Downloads the full-precision text model (about 250 MB; the quantised one drifts from the embeddings the worker was
+built with) and tokenizer from Hugging Face the first time, into ~/.cache/bjk-clip.
 """
 
 import json
@@ -31,7 +32,7 @@ def fetch(name: str) -> Path:
     return path
 
 
-MODEL = "onnx/text_model_quantized.onnx"
+MODEL = "onnx/text_model.onnx"
 PAD = EOT
 
 
@@ -81,7 +82,7 @@ def main() -> None:
     prompts = [("baseline", p) for p in spec["baseline"]] + [(t, p) for t, ps in spec["types"].items() for p in ps]
     vectors = embed([p for _, p in prompts])
     result = {
-        "model": f"openai/clip-vit-base-patch32 (ONNX: Xenova/clip-vit-base-patch32@{REVISION}, onnx/text_model_quantized.onnx)",
+        "model": f"openai/clip-vit-base-patch32 (ONNX: Xenova/clip-vit-base-patch32@{REVISION}, onnx/{MODEL})",
         "logitScale": 100.0,
         "prompts": [
             {"type": t, "prompt": p, "embedding": [round(float(x), 6) for x in v]} for (t, p), v in zip(prompts, vectors)
