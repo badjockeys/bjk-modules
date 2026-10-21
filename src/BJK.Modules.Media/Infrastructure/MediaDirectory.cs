@@ -136,4 +136,15 @@ internal sealed class MediaDirectory(
             item.SensitiveScore,
             ready ? links.Feed : null);
     }
+
+    public async Task<IReadOnlyDictionary<Guid, float[]>> GetClipSummariesAsync(
+        Guid userId,
+        IReadOnlyCollection<Guid> mediaIds,
+        CancellationToken cancellationToken)
+    {
+        var items = await media.GetUntrackedAsync(mediaIds, cancellationToken);
+        return items
+            .Where(m => m.UserId == userId && m.Status == MediaStatus.Ready && m.ClipSummary is { Length: > 0 })
+            .ToDictionary(m => m.Id, m => ClipEmbedding.FromBytes(m.ClipSummary!));
+    }
 }

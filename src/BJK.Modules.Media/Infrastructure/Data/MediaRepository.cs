@@ -145,8 +145,11 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
             .Where(m => ids.Contains(m.Id) && m.Status != MediaStatus.Deleted)
             .ToListAsync(cancellationToken);
 
-    public Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken) =>
-        db.Media.Where(m => m.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+    public async Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await db.Descriptions.Where(d => d.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+        await db.Media.Where(m => m.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+    }
 
     public async Task<(MediaStatus Status, int Revision)?> GetSavedStateAsync(Guid id, CancellationToken cancellationToken)
     {

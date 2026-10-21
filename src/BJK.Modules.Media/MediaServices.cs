@@ -1,4 +1,5 @@
 using Amazon.S3;
+using BJK.Modules.Media.Infrastructure.Describe;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing;
@@ -8,6 +9,7 @@ using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using BJK.Modules.Media.Infrastructure.Storage;
 using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Shared.Safety;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -88,6 +90,29 @@ public static class MediaServices
         // One job per replica by default (Media:Processing:MaxConcurrentJobs): each job already uses every core.
         var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.MediaProcessing ?? new MessagingOptions().MediaProcessing;
         var concurrency = configuration.GetSection(MediaProcessingOptions.SectionName).Get<MediaProcessingOptions>()?.MaxConcurrentJobs ?? 1;
+        // "Suggest a description": the model when Media:Describe:Endpoint is set, the stand-in locally otherwise.
+        services.RequireWhenDeployed(
+            "Media:Describe:Endpoint",
+            "the description model's OpenAI-compatible address (the Qwen3-VL GPU container), ending /v1");
+        var describe = configuration.GetSection(DescribeOptions.SectionName).Get<DescribeOptions>() ?? new DescribeOptions();
+        if (describe.IsConfigured)
+        {
+            services.AddHttpClient<IDescriptionModel, OpenAiCompatibleDescriptionModel>(http => http.Timeout = Timeout.InfiniteTimeSpan);
+        }
+        else
+        {
+            services.TryAddSingleton<IDescriptionModel, DevelopmentDescriptionModel>();
+        }
+
+        services.AddContentScreening(configuration);
+        services.TryAddScoped<DescriptionFrames>();
+        var descriptionQueue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.MediaDescriptions
+            ?? new MessagingOptions().MediaDescriptions;
+        services.AddMessageConsumer<DescriptionConsumer>(
+            configuration,
+            connectionStringName,
+            new MessageConsumerDefinition(descriptionQueue) { MaxAttempts = DescriptionConsumer.MaxAttempts });
+
         services.AddMessageConsumer<MediaJobConsumer>(
             configuration,
             connectionStringName,
@@ -126,6 +151,13 @@ public static class MediaServices
             .Bind(configuration.GetSection(MediaStorageOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddOptions<DescribeOptions>()
+            .Bind(configuration.GetSection(DescribeOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.Endpoint is null || o.Endpoint.IsAbsoluteUri, "Media:Describe:Endpoint must be an absolute address.")
+            .Validate(o => o.Timeout > TimeSpan.Zero, "Media:Describe:Timeout must be positive.")
+            .ValidateOnStart();
+        services.TryAddScoped<IDescriptionStore, DescriptionStore>();
         services.AddBjkMessaging(configuration, connectionStringName);
         services.TryAddSingleton(TimeProvider.System);
 

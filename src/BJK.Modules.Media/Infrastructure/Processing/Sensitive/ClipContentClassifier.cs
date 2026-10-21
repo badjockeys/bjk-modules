@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -60,7 +61,7 @@ internal sealed class ClipContentClassifier : ISensitiveContentClassifier, IDisp
         using var runOptions = new RunOptions();
         using var outputs = session.Run(runOptions, [session.InputNames[0]], [tensor], [session.OutputNames[0]]);
         var embedding = outputs.First().GetTensorDataAsSpan<float>().ToArray();
-        return _prompts.Score(embedding);
+        return _prompts.Score(embedding) with { Embedding = ClipEmbedding.Normalise(embedding) };
     }
 
     public void Dispose()

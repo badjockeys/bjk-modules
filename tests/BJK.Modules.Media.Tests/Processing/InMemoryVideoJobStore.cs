@@ -1,3 +1,4 @@
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 
@@ -35,7 +36,16 @@ internal sealed class InMemoryVideoJobStore : IVideoJobStore
         DateTimeOffset now,
         CancellationToken cancellationToken) =>
         Task.FromResult(_jobs[(mediaId, revision)].Segments.Single(s => s.Index == index)
-            .MarkDone(result.Frames, result.FacesBlurred, result.PlatesBlurred, result.ReviewReasons, result.Elapsed, now, result.SensitiveScore));
+            .MarkDone(
+                result.Frames,
+                result.FacesBlurred,
+                result.PlatesBlurred,
+                result.ReviewReasons,
+                result.Elapsed,
+                now,
+                result.SensitiveScore,
+                result.ClipSummary is { Length: > 0 } clip ? ClipEmbedding.ToBytes(clip) : null,
+                result.ClipFrames));
 
     public Task<bool> AllDoneAsync(Guid mediaId, int revision, CancellationToken cancellationToken) =>
         Task.FromResult(_jobs.TryGetValue((mediaId, revision), out var job) && job.Segments.All(s => s.IsDone));

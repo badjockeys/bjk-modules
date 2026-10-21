@@ -162,6 +162,12 @@ public sealed class VideoSegment
     /// <summary>The highest graphic content score of the frames it checked; null if detection was off.</summary>
     public double? SensitiveScore { get; private set; }
 
+    /// <summary>The average CLIP embedding of the frames it scored (512 float32s), combined into the media's summary.</summary>
+    public byte[]? ClipSummary { get; private set; }
+
+    /// <summary>How many frames went into <see cref="ClipSummary"/>.</summary>
+    public int ClipFrames { get; private set; }
+
     public DateTimeOffset? CompletedAt { get; private set; }
 
     public bool IsDone => Status == VideoSegmentStatus.Done;
@@ -180,7 +186,18 @@ public sealed class VideoSegment
     /// <param name="elapsed">Time taken.</param>
     /// <param name="now">The time.</param>
     /// <param name="sensitiveScore">The highest graphic content score, or null.</param>
-    public bool MarkDone(int frames, int faces, int plates, IEnumerable<string> reviewReasons, TimeSpan elapsed, DateTimeOffset now, double? sensitiveScore = null)
+    /// <param name="clipSummary">The average CLIP embedding, or null.</param>
+    /// <param name="clipFrames">Frames in <paramref name="clipSummary"/>.</param>
+    public bool MarkDone(
+        int frames,
+        int faces,
+        int plates,
+        IEnumerable<string> reviewReasons,
+        TimeSpan elapsed,
+        DateTimeOffset now,
+        double? sensitiveScore = null,
+        byte[]? clipSummary = null,
+        int clipFrames = 0)
     {
         if (IsDone)
         {
@@ -194,6 +211,8 @@ public sealed class VideoSegment
         ReviewReasons = JoinReasons(reviewReasons);
         ElapsedMilliseconds = (long)elapsed.TotalMilliseconds;
         SensitiveScore = sensitiveScore;
+        ClipSummary = clipSummary;
+        ClipFrames = clipSummary is null ? 0 : clipFrames;
         CompletedAt = now;
         return true;
     }
