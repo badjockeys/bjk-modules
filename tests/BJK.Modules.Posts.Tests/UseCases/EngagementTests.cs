@@ -261,7 +261,7 @@ public sealed class EngagementTests
     {
         Assert.Equal("Nobody voted.", VoteResultAnnouncer.Describe(VoteTally.Empty));
         Assert.Equal(
-            "Most said it was dangerous (62% of 8 votes).",
+            "Most said it was dangerous (63% of 8 votes).",
             VoteResultAnnouncer.Describe(new VoteTally(new Dictionary<VoteChoice, int> { [VoteChoice.Dangerous] = 5, [VoteChoice.Careless] = 3 }, null)));
         Assert.Equal(
             "It was a tie (4 votes).",

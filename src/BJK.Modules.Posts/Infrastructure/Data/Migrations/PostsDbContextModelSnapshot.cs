@@ -84,6 +84,24 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Appeals", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.AuthorPreferences", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VoteDuration")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("AuthorPreferences", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.BlockedUrl", b =>
                 {
                     b.Property<Guid>("Id")
@@ -115,6 +133,26 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("BlockedUrls", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.Bookmark", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("UserId", "PostId");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("Bookmarks", "posts");
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Comment", b =>
@@ -546,6 +584,12 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTimeOffset?>("VoteClosesAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("VoteResultSentAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IncidentAt")
@@ -553,6 +597,10 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasFilter("[Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "PlaceName", "VehicleType", "VehicleMake", "VehicleModel", "VehicleColour", "IsDark", "ReportedToPolice", "HasVideo" });
+
+                    b.HasIndex("VoteClosesAt")
+                        .HasDatabaseName("IX_Posts_VoteResultPending")
+                        .HasFilter("[VoteClosesAt] IS NOT NULL AND [VoteResultSentAt] IS NULL");
 
                     b.HasIndex("AuthorId", "CreatedAt");
 
@@ -663,6 +711,24 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("Drafts", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostFollow", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PostFollows", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostHashtag", b =>
                 {
                     b.Property<Guid>("PostId")
@@ -731,6 +797,74 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "Status", "TaggedAt");
 
                     b.ToTable("PostPassengers", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostShare", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ViewerKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("SharedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "ViewerKey", "Day");
+
+                    b.HasIndex("ViewerKey");
+
+                    b.ToTable("PostShares", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostView", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ViewerKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsLocal")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("ViewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "ViewerKey");
+
+                    b.HasIndex("ViewerKey");
+
+                    b.ToTable("PostViews", "posts");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostVote", b =>
+                {
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Choice")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("PostId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PostVotes", "posts");
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Reaction", b =>
@@ -948,6 +1082,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.Bookmark", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.Comment", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
@@ -993,6 +1136,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostFollow", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostHashtag", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Hashtag", null)
@@ -1018,6 +1170,33 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("BJK.Modules.Posts.Domain.PostPassenger", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostShare", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostView", b =>
+                {
+                    b.HasOne("BJK.Modules.Posts.Domain.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.PostVote", b =>
                 {
                     b.HasOne("BJK.Modules.Posts.Domain.Post", null)
                         .WithMany()
