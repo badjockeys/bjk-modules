@@ -1,8 +1,8 @@
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using FluentValidation;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Safety.Tests;
 
 public sealed class TextSafetyTests
 {

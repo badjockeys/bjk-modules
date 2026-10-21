@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace BJK.Modules.Shared.Messaging;
+namespace BJK.Modules.Queues;
 
 /// <summary>
 /// A message to queue or publish: an id (consumers use it to spot repeats), a type name, and the content as JSON.

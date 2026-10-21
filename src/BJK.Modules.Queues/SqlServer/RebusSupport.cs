@@ -6,7 +6,7 @@ using Rebus.Messages;
 using Rebus.Serialization;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
-namespace BJK.Modules.Shared.Messaging.SqlServer;
+namespace BJK.Modules.Queues.SqlServer;
 
 /// <summary>
 /// A message body as Rebus carries it for us: the type name and the JSON, untouched. Our code (de)serialises the JSON

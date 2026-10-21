@@ -1,11 +1,11 @@
-using BJK.Modules.Shared.Messaging.SqlServer;
+using BJK.Modules.Queues.SqlServer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
-namespace BJK.Modules.Shared.Messaging;
+namespace BJK.Modules.Queues;
 
 public static class MessagingServiceCollectionExtensions
 {

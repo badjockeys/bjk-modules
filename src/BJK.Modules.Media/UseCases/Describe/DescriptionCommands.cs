@@ -2,7 +2,7 @@ using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Describe;
 using BJK.Modules.Shared.Exceptions;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using FluentValidation.Results;

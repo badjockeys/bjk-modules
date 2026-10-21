@@ -1,10 +1,10 @@
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Safety.Tests;
 
 public sealed class BlockedUrlsTests
 {

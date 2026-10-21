@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using FluentValidation;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 /// <summary>The kinds of personal detail that can't appear in text people publish.</summary>
 public enum PersonalDetailKind

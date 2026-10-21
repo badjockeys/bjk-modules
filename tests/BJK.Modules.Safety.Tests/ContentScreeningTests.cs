@@ -1,10 +1,10 @@
 using System.Net;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Safety.Tests;
 
 public sealed class ContentScreeningTests
 {

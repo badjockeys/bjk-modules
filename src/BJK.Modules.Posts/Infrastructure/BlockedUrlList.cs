@@ -1,6 +1,6 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

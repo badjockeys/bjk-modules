@@ -1,6 +1,6 @@
 using BJK.Modules.Media.Domain;
 using Microsoft.EntityFrameworkCore;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 
 namespace BJK.Modules.Media.Infrastructure.Data;
 

@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace BJK.Modules.Shared.Messaging;
+namespace BJK.Modules.Queues;
 
 /// <summary>
 /// Durable queues and events, stored in SQL Server (section <c>Queues</c>). Every value has a default. Which database

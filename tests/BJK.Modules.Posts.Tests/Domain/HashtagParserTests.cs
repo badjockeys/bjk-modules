@@ -1,5 +1,5 @@
 using BJK.Modules.Posts.Domain;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using Xunit;
 
 namespace BJK.Modules.Posts.Tests.Domain;

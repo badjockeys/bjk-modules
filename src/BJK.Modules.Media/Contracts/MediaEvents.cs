@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

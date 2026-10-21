@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace BJK.Modules.Shared.Messaging;
+namespace BJK.Modules.Queues;
 
 /// <summary>
 /// An event waiting to be published. It's saved in the same transaction as the change it describes,

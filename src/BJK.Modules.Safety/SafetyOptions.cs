@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 /// <summary>Online safety settings shared by the modules. Section <c>Safety</c>.</summary>
 public sealed class SafetyOptions

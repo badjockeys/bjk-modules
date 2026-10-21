@@ -4,7 +4,6 @@ using BJK.Modules.Shared.Behaviours;
 using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Errors;
 using BJK.Modules.Shared.Moderation;
-using BJK.Modules.Shared.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
@@ -83,7 +82,6 @@ public static class ModuleServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSafetyOptions(configuration);
         services.AddPlans(configuration);
 
         // MediatR is registered once for all modules so pipeline behaviours aren't duplicated.
@@ -91,8 +89,8 @@ public static class ModuleServiceCollectionExtensions
         {
             cfg.LicenseKey = configuration[MediatRLicenseKeySetting];
             cfg.RegisterServicesFromAssemblies(assemblies);
-            // The age check comes first, so an unverified user isn't asked to fix fields they can't submit anyway.
-            cfg.AddOpenBehavior(typeof(AgeVerificationBehaviour<,>));
+            // Behaviours a module registered itself (such as the Safety package's age check, from AddAgeVerification)
+            // run before validation, so an unverified user isn't asked to fix fields they can't submit anyway.
             cfg.AddOpenBehavior(typeof(ValidationBehaviour<,>));
         });
 

@@ -10,7 +10,7 @@ using Rebus.Time;
 using Rebus.Transport;
 using IDbConnection = Rebus.SqlServer.IDbConnection;
 
-namespace BJK.Modules.Shared.Messaging.SqlServer;
+namespace BJK.Modules.Queues.SqlServer;
 
 /// <summary>Lease and retry timings for <see cref="SqlServerQueueTransport"/>.</summary>
 /// <param name="Lease">How long a received message stays hidden from other consumers while it's being worked on.</param>

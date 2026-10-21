@@ -1,8 +1,11 @@
 using BJK.Modules.Shared.Security;
 using MediatR;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 /// <summary>
 /// Marks a command that needs an age-verified user when <see cref="SafetyOptions.RequireAgeVerification"/> is on
@@ -47,4 +50,34 @@ public sealed class AgeVerificationRequiredException()
     public const string Code = "age_verification_required";
 
     public const string ProblemType = "https://badjockeys.com/problems/age-verification-required";
+}
+
+/// <summary>Turns <see cref="AgeVerificationRequiredException"/> into the 403 problem response the apps recognise.</summary>
+internal sealed class AgeVerificationExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler
+{
+    public async ValueTask<bool> TryHandleAsync(
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        if (exception is not AgeVerificationRequiredException ageCheck)
+        {
+            return false;
+        }
+
+        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = httpContext,
+            Exception = exception,
+            ProblemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Type = AgeVerificationRequiredException.ProblemType,
+                Title = "Age check needed.",
+                Detail = ageCheck.Message,
+                Extensions = { ["code"] = AgeVerificationRequiredException.Code },
+            },
+        });
+    }
 }

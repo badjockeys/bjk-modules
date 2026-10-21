@@ -2,7 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
-namespace BJK.Modules.Shared.Messaging;
+namespace BJK.Modules.Queues;
 
 /// <summary>
 /// Queues messages in the same database transaction as a data change (the transactional outbox, without a separate

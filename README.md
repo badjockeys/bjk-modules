@@ -165,7 +165,7 @@ The modules' other checks (SendGrid or Twilio keys once chosen, the age check pr
 
 ### Logs, traces and metrics (OpenTelemetry)
 
-Every host calls `builder.AddBjkObservability("<service name>")` (`BJK.Modules.Shared.Observability`): ASP.NET Core requests (not `/health`), outgoing HTTP calls and SQL Server calls are traced, request, HTTP client and .NET runtime metrics are recorded, and logs go out with them. Everything is sent over OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT` (with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`): locally Elastic's OpenTelemetry collector in bjk-core's Docker group (`http://localhost:4318`, viewed in Kibana at http://localhost:5601), when deployed Elastic Cloud's managed OTLP endpoint with `OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey <key>`. Only those settings change between them. Without an address nothing is exported; outside Development an https address is required. No personal data: query string values are redacted, SQL text isn't recorded, nothing identifies the user, and log messages never contain emails, names or IP addresses.
+Every host calls `builder.AddBjkObservability("<service name>")` (`BJK.Modules.Observability`): ASP.NET Core requests (not `/health`), outgoing HTTP calls and SQL Server calls are traced, request, HTTP client and .NET runtime metrics are recorded, and logs go out with them. Everything is sent over OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT` (with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`): locally Elastic's OpenTelemetry collector in bjk-core's Docker group (`http://localhost:4318`, viewed in Kibana at http://localhost:5601), when deployed Elastic Cloud's managed OTLP endpoint with `OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey <key>`. Only those settings change between them. Without an address nothing is exported; outside Development an https address is required. No personal data: query string values are redacted, SQL text isn't recorded, nothing identifies the user, and log messages never contain emails, names or IP addresses.
 
 ### One id per person, one copy of each fact
 
@@ -275,7 +275,7 @@ The apps call both endpoints and offer the two files (or one zip) as "Download m
 
 Durable jobs and events are rows in SQL Server, in the `messaging` schema of the app database (`badjockeys`), handled by [Rebus](https://github.com/rebus-org/Rebus) and [Rebus.SqlServer](https://github.com/rebus-org/Rebus.SqlServer) (both MIT). There's no separate broker, so the queues get the zone-redundant Azure SQL database's redundancy and backups at no extra cost, and run anywhere SQL Server runs. MediatR stays for in-process commands and queries; Rebus is only used for queues and events.
 
-**Abstractions** (`BJK.Modules.Shared.Messaging`), which is all the modules see:
+**Abstractions** (`BJK.Modules.Queues`), which is all the modules see:
 
 - `IMessageSender`: `SendAsync(queue, message)` (point to point, e.g. a media job) and `PublishAsync(topic, message)` (a copy to every subscribed queue, e.g. user lifecycle events). Messages are a type name plus JSON (`OutgoingMessage`), optionally delayed (`Delay`).
 - `IMessageConsumer` + `services.AddMessageConsumer<T>(configuration, connectionStringName, new MessageConsumerDefinition(queue) { MaxAttempts, Concurrency, Topics })`: returns `Completed`, `Retry` or `DeadLetter`; `OnGivenUpAsync` runs once when a message is given up on.

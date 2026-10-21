@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 /// <summary>What happens to screened text.</summary>
 public enum ScreeningVerdict

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Media.Infrastructure.Messaging;

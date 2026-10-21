@@ -1,10 +1,11 @@
 using BJK.Modules.Shared.Configuration;
+using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 public static class SafetyServiceCollectionExtensions
 {
@@ -68,13 +69,26 @@ public static class SafetyServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Binds <see cref="SafetyOptions"/> (section <c>Safety</c>). Called by <c>AddBjkModules</c>.</summary>
-    internal static IServiceCollection AddSafetyOptions(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// Binds <see cref="SafetyOptions"/> (section <c>Safety</c>) and adds the age check for
+    /// <see cref="IRequiresAgeVerification"/> commands: a MediatR step that runs before validation, and the 403
+    /// problem response (<c>code</c> = <see cref="AgeVerificationRequiredException.Code"/>). Call it from a module's
+    /// <c>AddServices</c>, which runs before <c>AddBjkModules</c> registers MediatR and the shared error handler, so
+    /// both come first. Safe to call more than once.
+    /// </summary>
+    public static IServiceCollection AddAgeVerification(this IServiceCollection services, IConfiguration configuration)
     {
+        if (services.Any(s => s.ServiceType == typeof(IValidateOptions<SafetyOptions>)))
+        {
+            return services;
+        }
+
         services.AddOptions<SafetyOptions>()
             .Bind(configuration.GetSection(SafetyOptions.SectionName))
             .ValidateOnStart();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SafetyOptions>, SafetyOptionsValidator>());
+        services.AddSingleton<IValidateOptions<SafetyOptions>, SafetyOptionsValidator>();
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(AgeVerificationBehaviour<,>));
+        services.AddExceptionHandler<AgeVerificationExceptionHandler>();
         return services;
     }
 }

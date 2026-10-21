@@ -9,7 +9,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace BJK.Modules.Shared.Observability;
+namespace BJK.Modules.Observability;
 
 /// <summary>
 /// Logs, traces and metrics for every host, through OpenTelemetry. They're sent over OTLP to

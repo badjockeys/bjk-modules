@@ -1,7 +1,7 @@
 using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Data;
-using BJK.Modules.Shared.Messaging;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Queues;
+using BJK.Modules.Safety;
 using Microsoft.Extensions.Logging;
 
 namespace BJK.Modules.Media.Infrastructure.Describe;

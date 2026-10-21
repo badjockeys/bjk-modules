@@ -16,7 +16,7 @@ using Rebus.SqlServer;
 using Rebus.Threading;
 using Rebus.Time;
 
-namespace BJK.Modules.Shared.Messaging.SqlServer;
+namespace BJK.Modules.Queues.SqlServer;
 
 /// <summary>A queue a host reads, registered by <see cref="MessagingServiceCollectionExtensions.AddMessageConsumer{TConsumer}"/>.</summary>
 /// <param name="Definition">The queue and how to read it.</param>

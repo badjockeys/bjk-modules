@@ -1,5 +1,5 @@
 using BJK.Modules.Media.Infrastructure.Messaging;
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using Microsoft.Extensions.Logging;
 
 namespace BJK.Modules.Media.Infrastructure.Processing;

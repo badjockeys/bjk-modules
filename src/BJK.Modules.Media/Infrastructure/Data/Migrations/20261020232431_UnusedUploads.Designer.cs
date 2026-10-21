@@ -394,7 +394,7 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.ToTable("VideoSegments", "media");
                 });
 
-            modelBuilder.Entity("BJK.Modules.Shared.Messaging.OutboxMessage", b =>
+            modelBuilder.Entity("BJK.Modules.Queues.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");

@@ -1,5 +1,5 @@
 using BJK.Modules.Profiles.Domain;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using FluentValidation;
 
 namespace BJK.Modules.Profiles.UseCases;

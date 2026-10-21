@@ -1,7 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using BJK.Modules.Shared.Moderation;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Safety.Tests;
 
 public sealed class SafetyTests
 {

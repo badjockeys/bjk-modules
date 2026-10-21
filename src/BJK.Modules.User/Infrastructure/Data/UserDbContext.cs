@@ -1,4 +1,4 @@
-using BJK.Modules.Shared.Messaging;
+using BJK.Modules.Queues;
 using BJK.Modules.User.Domain;
 using Microsoft.EntityFrameworkCore;
 

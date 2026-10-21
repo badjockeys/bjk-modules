@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace BJK.Modules.Shared.Safety;
+namespace BJK.Modules.Safety;
 
 /// <summary>
 /// Web addresses that must not be shared (<c>posts.BlockedUrls</c> in SQL: from a list such as the IWF URL List, or

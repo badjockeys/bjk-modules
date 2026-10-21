@@ -15,7 +15,7 @@ using Rebus.Threading.TaskParallelLibrary;
 using Rebus.Time;
 using Rebus.Transport;
 
-namespace BJK.Modules.Shared.Messaging.SqlServer;
+namespace BJK.Modules.Queues.SqlServer;
 
 /// <summary>
 /// <see cref="IMessageSender"/> over Rebus's SQL Server transport: one send-only Rebus bus per host, created on first

@@ -1,7 +1,7 @@
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Safety;

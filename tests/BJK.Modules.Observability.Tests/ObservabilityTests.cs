@@ -1,11 +1,11 @@
 using BJK.Modules.Shared.Configuration;
-using BJK.Modules.Shared.Observability;
+using BJK.Modules.Observability;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry.Trace;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Observability.Tests;
 
 public sealed class ObservabilityTests
 {

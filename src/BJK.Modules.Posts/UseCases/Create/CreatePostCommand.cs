@@ -6,7 +6,7 @@ using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Posts.UseCases.Publishing;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
-using BJK.Modules.Shared.Safety;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using BJK.Modules.Shared.Notifications;
 using FluentValidation;

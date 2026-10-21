@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace BJK.Modules.Shared.Tests;
+namespace BJK.Modules.Safety.Tests;
 
 /// <summary>Records each request (with its body read up front) and replies from a queue.</summary>
 internal sealed class FakeHandler : HttpMessageHandler

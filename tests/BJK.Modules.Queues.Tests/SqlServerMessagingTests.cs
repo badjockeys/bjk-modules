@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using BJK.Modules.Shared.Messaging;
-using BJK.Modules.Shared.Messaging.SqlServer;
+using BJK.Modules.Queues;
+using BJK.Modules.Queues.SqlServer;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,7 +14,7 @@ using Rebus.Time;
 using Rebus.Transport;
 using Xunit;
 
-namespace BJK.Modules.Shared.Tests.Messaging;
+namespace BJK.Modules.Queues.Tests;
 
 /// <summary>
 /// The SQL Server queues against a real SQL Server (CI runs one; set <c>BJK_TEST_SQLSERVER</c> to a connection string
