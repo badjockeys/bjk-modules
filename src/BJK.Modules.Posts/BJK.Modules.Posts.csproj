@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- CLIP text embeddings of each incident type, for type suggestions (see TypePrompts). -->
+    <EmbeddedResource Include="Infrastructure\TypeSuggestions\type-prompts.json" LogicalName="BJK.Modules.Posts.type-prompts.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
     <ProjectReference Include="..\BJK.Modules.Media\BJK.Modules.Media.csproj" />
     <ProjectReference Include="..\BJK.Modules.Profiles\BJK.Modules.Profiles.csproj" />

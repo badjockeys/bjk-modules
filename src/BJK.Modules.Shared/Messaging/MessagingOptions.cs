@@ -70,4 +70,8 @@ public sealed class MessagingOptions
     /// <summary>The queue of media processing jobs, read by the media worker.</summary>
     [Required]
     public string MediaProcessing { get; set; } = "media.process";
+
+    /// <summary>The queue of "Suggest a description" requests, read by the media worker.</summary>
+    [Required]
+    public string MediaDescriptions { get; set; } = "media.describe";
 }

@@ -1,3 +1,4 @@
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Domain;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,17 @@ namespace BJK.Modules.Media.Infrastructure.Data;
 /// <param name="ReviewReasons">Why a moderator should check it; empty if none.</param>
 /// <param name="Elapsed">Time taken.</param>
 /// <param name="SensitiveScore">The highest graphic content score of the frames checked; null if detection was off.</param>
-public sealed record VideoSegmentResult(int Frames, int FacesBlurred, int PlatesBlurred, IReadOnlyList<string> ReviewReasons, TimeSpan Elapsed, double? SensitiveScore = null);
+/// <param name="ClipSummary">The average CLIP embedding of the frames scored; null if none.</param>
+/// <param name="ClipFrames">How many frames went into <paramref name="ClipSummary"/>.</param>
+public sealed record VideoSegmentResult(
+    int Frames,
+    int FacesBlurred,
+    int PlatesBlurred,
+    IReadOnlyList<string> ReviewReasons,
+    TimeSpan Elapsed,
+    double? SensitiveScore = null,
+    float[]? ClipSummary = null,
+    int ClipFrames = 0);
 
 /// <summary>
 /// Progress of videos processed in segments (<c>media.VideoJobs</c>, <c>media.VideoSegments</c>). Every change that
@@ -90,6 +101,8 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
     {
         var reasons = VideoSegment.JoinReasons(result.ReviewReasons);
         var elapsed = (long)result.Elapsed.TotalMilliseconds;
+        var clip = result.ClipSummary is { Length: > 0 } summary ? ClipEmbedding.ToBytes(summary) : null;
+        var clipFrames = clip is null ? 0 : result.ClipFrames;
         var updated = await db.VideoSegments
             .Where(s => s.MediaId == mediaId && s.Revision == revision && s.Index == index && s.Status == VideoSegmentStatus.Pending)
             .ExecuteUpdateAsync(
@@ -101,6 +114,8 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
                     .SetProperty(s => s.ReviewReasons, reasons)
                     .SetProperty(s => s.ElapsedMilliseconds, elapsed)
                     .SetProperty(s => s.SensitiveScore, result.SensitiveScore)
+                    .SetProperty(s => s.ClipSummary, clip)
+                    .SetProperty(s => s.ClipFrames, clipFrames)
                     .SetProperty(s => s.CompletedAt, now),
                 cancellationToken);
         return updated == 1;

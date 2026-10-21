@@ -9,6 +9,7 @@ using BJK.Modules.Posts.UseCases.Moderation;
 using BJK.Modules.Posts.UseCases.Passengers;
 using BJK.Modules.Posts.UseCases.Reactions;
 using BJK.Modules.Posts.UseCases.Reports;
+using BJK.Modules.Posts.UseCases.TypeSuggestions;
 using BJK.Modules.Posts.UseCases.Update;
 using BJK.Modules.Shared;
 using MediatR;
@@ -138,6 +139,17 @@ public sealed class PostsController(ISender sender) : ControllerBase
         var post = await sender.Send(command, cancellationToken);
         return CreatedAtAction(nameof(Get), new { id = post.Id }, post);
     }
+
+    /// <summary>
+    /// "Looks like: ...": incident types suggested from your photos or video (once they're ready), best first, often
+    /// none. Show them for the person to tap; never tick them for them.
+    /// </summary>
+    [HttpPost("type-suggestions")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<TypeSuggestionsDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<TypeSuggestionsDto> SuggestTypes(SuggestTypesQuery query, CancellationToken cancellationToken) =>
+        await sender.Send(query, cancellationToken);
 
     [HttpPut("{id:guid}")]
     [Authorize(Policy = PostsModule.UsePolicy)]

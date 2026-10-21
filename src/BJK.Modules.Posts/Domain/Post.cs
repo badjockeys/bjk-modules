@@ -48,6 +48,12 @@ public sealed class Post
     /// <summary>Every type the author chose, as bits (see <see cref="IncidentTypeFlags"/>).</summary>
     public int TypeFlags { get; private set; }
 
+    /// <summary>
+    /// The types the composer suggested from the pictures (as bits), or null if none were. Compared with
+    /// <see cref="TypeFlags"/> to measure how often suggestions are accepted, per type.
+    /// </summary>
+    public int? SuggestedTypeFlags { get; private set; }
+
     /// <summary>Every type the author chose, the main one first.</summary>
     public IReadOnlyList<IncidentCategory> Types => IncidentTypeFlags.ToList(TypeFlags, Category);
 
@@ -199,6 +205,11 @@ public sealed class Post
 
     /// <summary>The photos and videos, in the order the author chose.</summary>
     public IReadOnlyList<PostMedia> Media => _media;
+
+    /// <summary>Records which types the composer suggested (none: null).</summary>
+    /// <param name="types">The suggestions shown.</param>
+    public void RecordSuggestedTypes(IReadOnlyList<IncidentCategory>? types) =>
+        SuggestedTypeFlags = types is { Count: > 0 } ? IncidentTypeFlags.From(types) : null;
 
     /// <param name="authorId">The author's user id.</param>
     /// <param name="details">Title, description, category, time and place.</param>

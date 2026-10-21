@@ -2,6 +2,7 @@ using BJK.Modules.Media.Contracts;
 using BJK.Modules.Posts.Infrastructure;
 using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Posts.UseCases;
+using BJK.Modules.Posts.UseCases.TypeSuggestions;
 using BJK.Modules.Posts.UseCases.Comments;
 using BJK.Modules.Posts.UseCases.Heatmap;
 using BJK.Modules.Posts.UseCases.Moderation;
@@ -72,6 +73,10 @@ public sealed class PostsModule(string connectionStringName) : IModule
             }));
         services.AddOptions<PostsOptions>()
             .Bind(configuration.GetSection(PostsOptions.SectionName))
+            .ValidateOnStart();
+        services.AddOptions<TypeSuggestionOptions>()
+            .Bind(configuration.GetSection(TypeSuggestionOptions.SectionName))
+            .Validate(o => o.MinScore is > 0 and <= 1 && o.MaxSuggestions is >= 1 and <= 5, "Posts:TypeSuggestions: MinScore must be over 0 and at most 1, MaxSuggestions 1 to 5.")
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<PostsOptions>, PostsOptionsValidator>();
         services.AddScoped<IPostRepository, PostRepository>();

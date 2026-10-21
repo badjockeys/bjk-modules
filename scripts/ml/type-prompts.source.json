@@ -1,0 +1,56 @@
+{
+  "//": "Written descriptions of each incident type for zero-shot type suggestions with CLIP. scripts/ml/clip_text_embeddings.py turns these into src/BJK.Modules.Posts/Infrastructure/TypeSuggestions/type-prompts.json (embeddings). Baseline: ordinary scenes, so a type is only suggested when it fits better than 'nothing happening'.",
+  "baseline": [
+    "a dashcam photo of ordinary traffic on a road",
+    "a dashcam view of a motorway with cars driving normally",
+    "a photo of a quiet residential street with parked cars",
+    "a dashcam photo of a town centre road with traffic lights"
+  ],
+  "types": {
+    "RoadRage": [
+      "an angry driver getting out of a car and shouting at another driver",
+      "a person shouting and pointing at a car window in traffic"
+    ],
+    "DangerousOvertaking": [
+      "a car overtaking into oncoming traffic on the wrong side of the road",
+      "a car overtaking on a bend over double white lines"
+    ],
+    "Tailgating": [
+      "a car driving very close behind another car",
+      "a rear dashcam view of a car right on the bumper"
+    ],
+    "MobilePhoneUse": [
+      "a driver holding a mobile phone while driving",
+      "a person looking at a phone at the wheel of a car"
+    ],
+    "Speeding": [
+      "a car speeding fast down a road",
+      "a car racing past other traffic at high speed"
+    ],
+    "RedLightRunning": [
+      "a car driving through a red traffic light",
+      "a car crossing a junction while the traffic light is red"
+    ],
+    "CuttingUp": [
+      "a car suddenly cutting in front of the camera car to change lanes",
+      "a car swerving across lanes right in front of the dashcam"
+    ],
+    "Undertaking": [
+      "a car overtaking on the inside lane of a motorway",
+      "a car passing on the left in the slow lane"
+    ],
+    "LaneHogging": [
+      "a car driving in the middle lane of an empty motorway",
+      "a car staying in the outside lane with the other lanes empty"
+    ],
+    "ClosePass": [
+      "a car passing a cyclist very closely",
+      "a view from a bicycle as a vehicle passes inches away"
+    ],
+    "BadParking": [
+      "a car parked on the pavement blocking it",
+      "a car parked across a dropped kerb or on zigzag lines",
+      "a car parked badly across two parking spaces"
+    ]
+  }
+}

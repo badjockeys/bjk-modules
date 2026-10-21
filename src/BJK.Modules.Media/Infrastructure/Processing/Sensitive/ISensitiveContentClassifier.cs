@@ -33,4 +33,4 @@ public interface ISensitiveContentClassifier
 }
 
 /// <summary>A picture's scores, 0 to 1: graphic content (blood, injuries) and nudity or sexual content (null if not checked).</summary>
-public readonly record struct ContentScores(float Graphic, float? Nudity);
+public readonly record struct ContentScores(float Graphic, float? Nudity, float[]? Embedding = null);
