@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>BJK.Modules.Queues</PackageId>
+    <Description>Durable queues for Bad Jockeys modules: SQL Server queues and topics (Rebus with Rebus.SqlServer), the transactional outbox, message consumers with retries and dead letters, and the reader for user lifecycle events.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Rebus" />
+    <PackageReference Include="Rebus.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BJK.Modules.Queues.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+</Project>

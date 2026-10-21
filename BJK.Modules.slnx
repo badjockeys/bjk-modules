@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/BJK.Modules.Shared/BJK.Modules.Shared.csproj" />
+    <Project Path="src/BJK.Modules.Safety/BJK.Modules.Safety.csproj" />
+    <Project Path="src/BJK.Modules.Queues/BJK.Modules.Queues.csproj" />
+    <Project Path="src/BJK.Modules.Observability/BJK.Modules.Observability.csproj" />
     <Project Path="src/BJK.Modules.User/BJK.Modules.User.csproj" />
     <Project Path="src/BJK.Modules.Media/BJK.Modules.Media.csproj" />
     <Project Path="src/BJK.Modules.Profiles/BJK.Modules.Profiles.csproj" />
@@ -11,6 +14,9 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BJK.Modules.Shared.Tests/BJK.Modules.Shared.Tests.csproj" />
+    <Project Path="tests/BJK.Modules.Safety.Tests/BJK.Modules.Safety.Tests.csproj" />
+    <Project Path="tests/BJK.Modules.Queues.Tests/BJK.Modules.Queues.Tests.csproj" />
+    <Project Path="tests/BJK.Modules.Observability.Tests/BJK.Modules.Observability.Tests.csproj" />
     <Project Path="tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Profiles.Tests/BJK.Modules.Profiles.Tests.csproj" />

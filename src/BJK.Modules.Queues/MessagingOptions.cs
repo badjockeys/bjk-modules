@@ -55,7 +55,7 @@ public sealed class MessagingOptions
 
     /// <summary>
     /// The queue this host reads user lifecycle events from (bjk-core). It subscribes to the
-    /// <see cref="Users.UserLifecycleEvents.Topic"/> topic, so each event published there is copied into it.
+    /// <see cref="BJK.Modules.Shared.Users.UserLifecycleEvents.Topic"/> topic, so each event published there is copied into it.
     /// </summary>
     [Required]
     public string UserEvents { get; set; } = "bjk-core.user-events";

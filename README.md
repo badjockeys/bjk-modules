@@ -6,14 +6,20 @@ Feature modules for the Bad Jockeys platform. Each module is a self-contained ve
 
 ```
 src/
-  BJK.Modules.Shared/            Module registration, MediatR validation pipeline, error handling,
-                                 current user, safe startup migrations, durable messaging (SQL Server queues via Rebus) and outbox,
-                                 provider retries and MessageDeliveryException (Email, SMS),
-                                 user lifecycle events, GET /api/me/data-export
-    Safety/                      Online safety: TextSafety (plates, phones, emails, addresses, handles),
-                                 IContentScreener (keywords + optional classifier), ICaptchaVerifier (Turnstile),
-                                 age verification pipeline step, SafetyOptions
-    Moderation/                  IModerationAuditLog contract and action names
+  BJK.Modules.Shared/            The common base every module and host needs: module registration, MediatR
+                                 validation pipeline, error handling, current user and sign-in scheme, staff roles
+                                 and plans, safe startup migrations, deployed-settings checks, provider retries and
+                                 MessageDeliveryException (Email, SMS), GET /api/me/data-export
+    Moderation/  Notifications/  Small interfaces modules use to talk to each other without referencing each other:
+    Uploads/  Users/             IModerationAuditLog, INotificationSender, IAreaAlerts, IHomeAreas, IMediaUsage,
+                                 user lifecycle events and IUserLifecycleHandler
+  BJK.Modules.Safety/            Online safety: TextSafety (plates, phones, emails, addresses, handles),
+                                 IContentScreener (keywords + optional classifier, blocked web addresses),
+                                 ICaptchaVerifier (Turnstile), the age verification step (AddAgeVerification),
+                                 SafetyOptions. Used by Posts, Media and Profiles
+  BJK.Modules.Queues/            Durable queues: SQL Server queues and topics (Rebus), outbox, message consumers,
+                                 AddUserLifecycleHandler. Used by Media, User, Profiles, Posts and Notifications
+  BJK.Modules.Observability/     AddBjkObservability: OpenTelemetry logs, traces and metrics over OTLP. Hosts only
   BJK.Modules.User/              Hosted by bjk-identity-server
     API/Controllers/             UserController
     API/Contracts/               Request/response records
@@ -95,6 +101,9 @@ src/
     SMSModule.cs                 Module entry point
 tests/
   BJK.Modules.Shared.Tests/
+  BJK.Modules.Safety.Tests/
+  BJK.Modules.Queues.Tests/
+  BJK.Modules.Observability.Tests/
   BJK.Modules.User.Tests/
   BJK.Modules.Media.Tests/
   BJK.Modules.Profiles.Tests/
@@ -771,7 +780,7 @@ UI overhaul step 5 (decided 20 Oct 2026).
 
 Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
 
-- **No personal details in text.** Post titles, descriptions and place names, comments and replies, and profile display names, bios and locations are checked by `TextSafety` (Shared). Refused, with a 400 and a friendly message on the field: UK number plates in every format (current `AB12 CDE`, prefix `A123 BCD`, suffix `ABC 123D`, Northern Ireland `AXZ 99`, and dateless `ABC 123` / `123 ABC` when written in capitals), in any case and with or without the space; UK and international phone numbers (10 to 15 digits starting `0`, `00` or `+`); email addresses; street addresses (a house number, one or two name words, then a street type such as Road or Avenue); and social handles or profile links (`@handle`, `x.com/…`, `tiktok.com/@…`, `instagram.com/…`, `facebook.com/…` and similar). Road numbers, junctions, speeds and car models are deliberately allowed: "M62 J26", "A road", "doing 70 in a 30", "BMW 320d". A plate whose letters spell a common short word ("A56 THE") is missed rather than refusing ordinary text.
+- **No personal details in text.** Post titles, descriptions and place names, comments and replies, and profile display names, bios and locations are checked by `TextSafety` (BJK.Modules.Safety). Refused, with a 400 and a friendly message on the field: UK number plates in every format (current `AB12 CDE`, prefix `A123 BCD`, suffix `ABC 123D`, Northern Ireland `AXZ 99`, and dateless `ABC 123` / `123 ABC` when written in capitals), in any case and with or without the space; UK and international phone numbers (10 to 15 digits starting `0`, `00` or `+`); email addresses; street addresses (a house number, one or two name words, then a street type such as Road or Avenue); and social handles or profile links (`@handle`, `x.com/…`, `tiktok.com/@…`, `instagram.com/…`, `facebook.com/…` and similar). Road numbers, junctions, speeds and car models are deliberately allowed: "M62 J26", "A road", "doing 70 in a 30", "BMW 320d". A plate whose letters spell a common short word ("A56 THE") is missed rather than refusing ordinary text.
 - **Content screening.** Every comment, reply and post text goes through `IContentScreener`, scoring 0 to 1. At or above `Screening:HoldThreshold` (0.8) it's **held for review**: only its author sees it (status `HeldForReview`) until a moderator approves or removes it. At or above `Screening:FlagThreshold` (0.5) it's published but **flagged** for a moderator. The default provider is a built-in keyword and phrase list (threats, slurs, abuse, and calls to find or confront people) with three severities; text is normalised so "k1lll" matches "kill". The `Http` provider also calls a classifier service, intended for an open-source Detoxify model in a sidecar container: `POST {"text": "..."}` returning `{"scores": {"toxicity": 0.97, ...}}`; the higher of the two scores wins, and if the service is down the keyword result is used (labelled `classifier_unavailable`). Edits are screened again; a flag stays until a moderator clears it.
 - **Sensitive posts are shown blurred** (revised 19 Oct 2026, with the 13+ age policy). `isSensitive` (graphic injuries, serious crashes) is set by the author on create or edit, by a moderator, or by automatic detection in the media worker (see "Sensitive media" in the Media module). Sensitive posts appear for **everyone**, in the feed, profile lists and on the post page, with their title, description and details, but their photos and video come **blurred** unless the caller may see them: a signed-in user whose token has `age_verified` = `"true"` (they passed the on-demand age check), the post's author, or a moderator (moderator rights, with or without the claim). For everyone else (logged out, or not age-verified) the post has `requiresAgeVerification: true` and each `media` entry has `isBlurred: true`, `playbackUrl: null`, `thumbnailUrl: null` and only `previewUrl`, a heavily blurred low-resolution WebP (null for the few seconds until the worker makes it: show a placeholder). This holds even while the media's files are still being moved: the response never contains a real address for a blurred viewer. Callers who may see it get the real files: for sensitive media, short-lived signed links (`Media:SensitiveLinkLifetime`, 10 minutes) with `linksExpireAt`; fetch the post again for fresh links. `sensitiveSource` says who tagged it (`Author`, `Moderator`, `Automatic`). Authors can remove only a tag they set themselves, and not if detection also flagged the media (400). Tagging or untagging moves the media's files (Media module) within seconds.
 - **Automatic sensitive tags and the review queue.** If the media worker's graphic content detection marked any of a post's media (`MediaSummary.isAutoSensitive`), the post is tagged sensitive with `sensitiveSource: "Automatic"` before it's published (when it's created with media already flagged, in the same save that publishes a post waiting for its media, or when a published post's media is processed again), recorded in the audit log (`AutoTagSensitive`, actor role `Automatic`) and put in the moderators' queue (`sensitiveReview: Pending`, `GET /api/admin/posts/sensitive-review`). A moderator confirms or undoes it (`POST /api/admin/posts/{id}/sensitive-review`, audited as `ReviewSensitiveTag`); undoing publishes the media again, and detection won't tag that post again. The outcome (`SensitiveReview` Confirmed/Undone, who, when) is kept on the post with the detection score (`SensitiveScore`), and every processed media keeps its own score (`media.Media.SensitiveScore`) whether or not it crossed the threshold, so the threshold can be tuned (or a model trained) against moderators' decisions, e.g. `SELECT p.SensitiveReview, m.SensitiveScore FROM posts.Posts p JOIN posts.PostMedia pm ON pm.PostId = p.Id JOIN media.Media m ON m.Id = pm.MediaId WHERE p.SensitiveReview IN ('Confirmed','Undone')`. A moderator setting the tag with `PUT .../sensitive` settles a pending review too.
