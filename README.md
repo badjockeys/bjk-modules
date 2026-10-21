@@ -571,6 +571,31 @@ Each worker keeps the list in memory (`KnownImageList`, refreshed by `KnownImage
 
 **Latency.** CLIP ViT-B/32 (quantised) takes roughly 30–60 ms per frame on a 4-vCPU worker; PDQ about 1–5 ms. At `SampleEvery=3` a 30-second clip has 60 frames checked: about 2–4 s of CPU, spread over the six 5-second segments processed in parallel, so roughly **0.5–1 s added before the clip is live**, plus a one-off model load (about a second) per worker replica. Photos: one frame, under 100 ms.
 
+### AI suggestions: type suggestions, "Suggest a description" (21 Oct 2026)
+
+The AI only ever suggests: the person confirms or edits everything, and nothing about publishing changes. Everything runs on our own servers.
+
+**CLIP summaries.** While blurring, the media worker already runs CLIP on sampled frames for the content checks. It now also keeps the average of those frames' CLIP embeddings on the media row (`media.Media.ClipSummary`: 512 float32s, about 2 KB, never a picture; per segment in `media.VideoSegments` for long videos, combined when assembled). Cleared when the media is deleted. They feed type suggestions now and training our own type model later (public posts only; a line goes in the privacy notice and DPIA).
+
+**Type suggestions** (Posts, `POST /api/posts/type-suggestions` with `mediaIds`): zero-shot CLIP. The average summary of the caller's ready media is compared with written descriptions of each incident type and of ordinary scenes (`Infrastructure/TypeSuggestions/type-prompts.json`). A softmax gives each type a share; types at or above `Posts:TypeSuggestions:MinScore` (0.3) are returned, best first, at most `MaxSuggestions` (2). Often there are none. The composer shows them as chips to tap. `CreatePostCommand.SuggestedTypes` records what was suggested (`posts.Posts.SuggestedTypeFlags`), so the accept rate can be measured per type. To change the descriptions, edit `scripts/ml/type-prompts.source.json` and run `python scripts/ml/clip_text_embeddings.py scripts/ml/type-prompts.source.json src/BJK.Modules.Posts/Infrastructure/TypeSuggestions/type-prompts.json` (`pip install onnxruntime tokenizers numpy`; it downloads CLIP's text model, the same model as the worker's, and checks it reproduces the worker's embeddings).
+
+**Suggest a description** (Media, `POST /api/media/descriptions`, then poll `GET /api/media/descriptions/{id}`):
+- Input: the caller's ready media (photos or one video) and what they've filled in (types, place, time, vehicle). At most `Media:Describe:MaxPerDay` (10) a UK day; after that 429 with `code` `description_limit`.
+- The request is saved in `media.Descriptions` and queued on `Queues:MediaDescriptions` (`media.describe`), read by the media worker: it picks up to `MaxFrames` (6) pictures from the **blurred** processed files (a video sampled once a second, CLIP choosing the most unusual frame then the least alike; photos in order without near-duplicates), and sends them with the details to a vision language model behind an OpenAI-compatible API (`POST {Endpoint}/chat/completions`).
+- The model: Qwen3-VL-8B-Instruct (Apache-2.0), on vLLM on our own GPU when deployed, or Ollama on a laptop (`qwen3-vl:8b`). It's asked for JSON `{"title", "description"}`: neutral, never identifying anyone, never saying who's at fault. Anything that looks like a number plate is removed, and the draft goes through the same text screening as typed text (a draft that would be held isn't offered).
+- Only the draft text is kept (deleted with the account), never the pictures. Two attempts, then the request is marked failed so the app stops waiting.
+
+| Setting | Default | |
+|---|---|---|
+| `Media:Describe:Endpoint` | | The model server's OpenAI-compatible address, ending `/v1` (Ollama: `http://localhost:11434/v1`). **Required when deployed**; empty locally = a stand-in writes a fixed draft from the details (Development only) |
+| `Media:Describe:Model` | `qwen3-vl:8b` | The model's name on that server |
+| `Media:Describe:ApiKey` | | Optional bearer token (vLLM `--api-key`). Secret |
+| `Media:Describe:Timeout`, `MaxPerDay`, `MaxFrames`, `FrameSize`, `FfmpegPath` | 3 min, 10, 6, 768, `ffmpeg` | |
+| `Posts:TypeSuggestions:MinScore`, `MaxSuggestions` | 0.3, 2 | |
+| `Queues:MediaDescriptions` | `media.describe` | |
+
+**Trim suggestions** are in the web app only (bjk-core): loudness and picture change, measured in the browser.
+
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
 | Endpoint | What it does |
