@@ -1,5 +1,6 @@
 using BJK.Modules.Notifications.Domain;
 using BJK.Modules.Notifications.Infrastructure.Data;
+using BJK.Modules.Notifications.Infrastructure.Push;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
@@ -20,7 +21,8 @@ public sealed class GetPushSetupQueryHandler(IOptions<NotificationsOptions> opti
     public Task<PushSetupDto> Handle(GetPushSetupQuery request, CancellationToken cancellationToken)
     {
         var push = options.Value.Push;
-        return Task.FromResult(push.IsConfigured ? new PushSetupDto(true, push.PublicKey) : new PushSetupDto(false, null));
+        var valid = PushKeyChecks.IsPublicKey(push.PublicKey) && PushKeyChecks.IsPrivateKey(push.PrivateKey);
+        return Task.FromResult(valid ? new PushSetupDto(true, push.PublicKey) : new PushSetupDto(false, null));
     }
 }
 

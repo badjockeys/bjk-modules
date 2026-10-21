@@ -180,6 +180,20 @@ public sealed class PushTests
     }
 
     [Fact]
+    public async Task Placeholder_or_broken_keys_turn_push_off_instead_of_failing()
+    {
+        var options = Options.Create(new NotificationsOptions
+        {
+            Push = new PushOptions { PublicKey = "<set by the setup>", PrivateKey = "<set by the setup>" },
+        });
+        using var http = new HttpClient(new RecordingHandler(HttpStatusCode.Created));
+        using var client = new WebPushClient(http, options, _clock, NullLogger<WebPushClient>.Instance);
+
+        Assert.False(client.IsConfigured);
+        Assert.False((await new GetPushSetupQueryHandler(options).Handle(new GetPushSetupQuery(), Ct)).Available);
+    }
+
+    [Fact]
     public async Task Subscribing_adds_the_device_and_replaces_the_oldest_beyond_ten()
     {
         var mine = Enumerable.Range(0, PushSubscription.MaxPerUser)

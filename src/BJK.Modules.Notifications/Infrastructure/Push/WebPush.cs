@@ -198,7 +198,7 @@ internal sealed class WebPushClient : IWebPushClient, IDisposable
         _options = options.Value.Push;
         _clock = clock;
         _logger = logger;
-        _signer = _options.IsConfigured ? new VapidSigner(_options) : null;
+        _signer = CreateSigner(_options, logger);
     }
 
     public bool IsConfigured => _signer is not null;
@@ -241,6 +241,25 @@ internal sealed class WebPushClient : IWebPushClient, IDisposable
     }
 
     public void Dispose() => _signer?.Dispose();
+
+    /// <summary>The signer, or null (push off) when the keys aren't set or aren't a valid pair: never throws.</summary>
+    private static VapidSigner? CreateSigner(PushOptions options, ILogger logger)
+    {
+        if (!options.IsConfigured)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new VapidSigner(options);
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException or CryptographicException)
+        {
+            logger.LogError(ex, "Notifications:Push keys aren't a valid VAPID key pair, so push notifications are off.");
+            return null;
+        }
+    }
 }
 
 /// <summary>What a push notification shows, and where tapping it goes (a path in the web app).</summary>
