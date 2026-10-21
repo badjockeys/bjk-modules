@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using BJK.Modules.User.Infrastructure.AgeAssurance;
 using BJK.Modules.User.Tests.UseCases;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
