@@ -82,7 +82,7 @@ def main() -> None:
     prompts = [("baseline", p) for p in spec["baseline"]] + [(t, p) for t, ps in spec["types"].items() for p in ps]
     vectors = embed([p for _, p in prompts])
     result = {
-        "model": f"openai/clip-vit-base-patch32 (ONNX: Xenova/clip-vit-base-patch32@{REVISION}, onnx/{MODEL})",
+        "model": f"openai/clip-vit-base-patch32 (ONNX: Xenova/clip-vit-base-patch32@{REVISION}, {MODEL})",
         "logitScale": 100.0,
         "prompts": [
             {"type": t, "prompt": p, "embedding": [round(float(x), 6) for x in v]} for (t, p), v in zip(prompts, vectors)
