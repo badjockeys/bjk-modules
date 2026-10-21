@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BJK.Modules.Media.Contracts;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
