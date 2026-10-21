@@ -91,7 +91,9 @@ internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment,
         if (!environment.IsDevelopment())
         {
             Require(services.GetServices<ILivenessChecker>(), "Liveness", failures);
-            Require(services.GetServices<IAgeEstimator>(), "Estimator", failures);
+            // Yoti is judged from the settings being validated: asking the estimator would read these options while
+            // they're still being validated.
+            Require(services.GetServices<IAgeEstimator>().Where(e => e is not YotiAgeEstimator), "Estimator", failures, options.Yoti.IsConfigured);
             Require(services.GetServices<IDocumentAgeCheck>(), "Document", failures);
         }
 
@@ -106,10 +108,10 @@ internal sealed class AgeAssuranceOptionsValidator(IHostEnvironment environment,
         _ => "no photo ID provider is built yet: Yoti's photo ID check is still to do",
     };
 
-    private void Require<T>(IEnumerable<T> registered, string step, List<string> failures)
+    private void Require<T>(IEnumerable<T> registered, string step, List<string> failures, bool alreadySetUp = false)
         where T : IAgeAssuranceProvider
     {
-        if (AgeAssuranceProviders.Find(registered, environment) is null)
+        if (!alreadySetUp && AgeAssuranceProviders.Find(registered, environment) is null)
         {
             failures.Add(
                 $"The age check's {step} step has no real provider in the {environment.EnvironmentName} environment "

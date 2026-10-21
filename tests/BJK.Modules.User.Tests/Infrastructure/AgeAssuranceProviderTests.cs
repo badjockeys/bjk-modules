@@ -77,6 +77,28 @@ public sealed class AgeAssuranceProviderTests
     }
 
     [Fact]
+    public void Outside_Development_the_whole_app_validates_with_yoti_set_up_without_reading_options_twice()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Environment("Production"));
+        services.AddSingleton(Real<ILivenessChecker>("YuNet"));
+        services.AddSingleton(Real<IDocumentAgeCheck>("Vendor"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AgeAssurance:Yoti:SdkId"] = Guid.NewGuid().ToString(),
+                ["AgeAssurance:Yoti:PrivateKey"] = Pem(),
+            })
+            .Build();
+        UserModule.AddAgeAssurance(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Equal(25, provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgeAssuranceOptions>>().Value.ChallengeAge);
+        Assert.Equal("Yoti", provider.GetRequiredService<AgeAssuranceProviders>().Estimator.Name);
+    }
+
+    [Fact]
     public void Yoti_is_configured_only_with_both_keys_and_not_with_placeholders()
     {
         Assert.False(new YotiOptions().IsConfigured);
