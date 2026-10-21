@@ -67,6 +67,13 @@ public interface IMediaRepository
     /// </summary>
     Task<IReadOnlyList<MediaItem>> ListOriginalsToDeleteAsync(DateTimeOffset now, DateTimeOffset abandonedBefore, int max, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Media uploaded before <paramref name="uploadedBefore"/> that the unused-uploads sweep hasn't found in use yet:
+    /// Ready, Failed or never finished uploading (not processing, not waiting for a moderator, not deleted), oldest
+    /// first, at most <paramref name="max"/>.
+    /// </summary>
+    Task<IReadOnlyList<MediaItem>> ListUnusedCandidatesAsync(DateTimeOffset uploadedBefore, int max, CancellationToken cancellationToken);
+
     /// <summary>Reloads a tracked media item from the database, after someone else changed it.</summary>
     Task ReloadAsync(MediaItem media, CancellationToken cancellationToken);
 
@@ -215,6 +222,19 @@ internal sealed class MediaRepository(MediaDbContext db) : IMediaRepository
             .Where(m => m.OriginalDeletedAt == null
                 && (((m.Status == MediaStatus.Ready || m.Status == MediaStatus.Failed) && m.OriginalDeletesAt != null && m.OriginalDeletesAt <= now)
                     || (m.Status == MediaStatus.Uploading && m.CreatedAt <= abandonedBefore)))
+            .OrderBy(m => m.CreatedAt)
+            .Take(max)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<MediaItem>> ListUnusedCandidatesAsync(
+        DateTimeOffset uploadedBefore,
+        int max,
+        CancellationToken cancellationToken) =>
+        await db.Media
+            .Where(m => m.UsageCheckedAt == null
+                && m.Status != MediaStatus.Deleted
+                && (m.Status == MediaStatus.Ready || m.Status == MediaStatus.Failed || m.Status == MediaStatus.Uploading)
+                && m.CreatedAt <= uploadedBefore)
             .OrderBy(m => m.CreatedAt)
             .Take(max)
             .ToListAsync(cancellationToken);

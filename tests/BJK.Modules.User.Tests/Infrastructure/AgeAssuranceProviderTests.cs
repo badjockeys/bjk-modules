@@ -1,7 +1,9 @@
-using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using BJK.Modules.User.Infrastructure.AgeAssurance;
 using BJK.Modules.User.Tests.UseCases;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,7 +17,7 @@ public sealed class AgeAssuranceProviderTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public void Development_providers_are_allowed_in_Development()
+    public void The_stand_ins_are_used_in_Development_when_nothing_is_set_up()
     {
         var result = Validator("Development").Validate(null, new AgeAssuranceOptions());
 
@@ -26,113 +28,155 @@ public sealed class AgeAssuranceProviderTests
     [InlineData("Production")]
     [InlineData("Staging")]
     [InlineData("Dev")]
-    public void Development_providers_are_refused_anywhere_else(string environment)
+    public void Without_real_providers_the_app_refuses_to_start_anywhere_else(string environment)
     {
         var result = Validator(environment).Validate(null, new AgeAssuranceOptions());
 
         Assert.True(result.Failed);
-        Assert.Contains("AgeAssurance:Liveness:Provider 'Development' is for local development only", result.FailureMessage);
-        Assert.Contains("AgeAssurance:Estimator:Provider 'Development'", result.FailureMessage);
-        Assert.Contains("AgeAssurance:Document:Provider 'Development'", result.FailureMessage);
+        Assert.Contains("Liveness step has no real provider", result.FailureMessage);
+        Assert.Contains("AgeAssurance:Liveness:ModelPath", result.FailureMessage);
+        Assert.Contains("Estimator step has no real provider", result.FailureMessage);
+        Assert.Contains("AgeAssurance:Yoti:SdkId and PrivateKey", result.FailureMessage);
+        Assert.Contains("Document step has no real provider", result.FailureMessage);
     }
 
     [Fact]
-    public void Real_providers_pass_outside_Development()
+    public void Configured_real_providers_pass_outside_Development()
     {
-        var liveness = Substitute.For<ILivenessChecker>();
-        liveness.Name.Returns("YuNet");
-        var document = Substitute.For<IDocumentAgeCheck>();
-        document.Name.Returns("Vendor");
-        var options = new AgeAssuranceOptions();
-        options.Liveness.Provider = "YuNet";
-        options.Document.Provider = "Vendor";
-        options.Estimator.Provider = "Http";
-        options.Estimator.Http.Endpoint = new Uri("https://age.example.com/estimate");
-        options.Estimator.Http.ApiKey = "secret";
-
-        var result = Validator("Production", liveness, document).Validate(null, options);
+        var result = Validator("Production", Real<ILivenessChecker>("YuNet"), Real<IAgeEstimator>("Yoti"), Real<IDocumentAgeCheck>("Vendor"))
+            .Validate(null, new AgeAssuranceOptions());
 
         Assert.True(result.Succeeded, result.FailureMessage);
     }
 
     [Fact]
-    public void Http_estimator_needs_an_https_endpoint_and_a_key()
+    public void A_real_provider_without_its_settings_isnt_used()
     {
-        var options = new AgeAssuranceOptions();
-        options.Estimator.Provider = "Http";
-        options.Estimator.Http.Endpoint = new Uri("http://age.example.com/estimate");
+        var unconfigured = Substitute.For<ILivenessChecker>();
+        unconfigured.Name.Returns("YuNet");
+        unconfigured.IsConfigured.Returns(false);
 
-        var result = Validator("Production").Validate(null, options);
+        var result = Validator("Production", unconfigured).Validate(null, new AgeAssuranceOptions());
 
-        Assert.Contains("must use HTTPS", result.FailureMessage);
-        Assert.Contains("ApiKey is required", result.FailureMessage);
+        Assert.Contains("Liveness step has no real provider", result.FailureMessage);
     }
 
     [Fact]
-    public void Unknown_providers_and_bad_limits_are_refused()
+    public void Yoti_settings_are_checked_when_set()
+    {
+        var options = new AgeAssuranceOptions();
+        options.Yoti.SdkId = "not-a-uuid";
+        options.Yoti.PrivateKey = "not a key";
+        options.Yoti.BaseUrl = new Uri("http://api.yoti.com/ai/v1");
+
+        var result = Validator("Production").Validate(null, options);
+
+        Assert.Contains("AgeAssurance:Yoti:SdkId must be", result.FailureMessage);
+        Assert.Contains("AgeAssurance:Yoti:PrivateKey must be", result.FailureMessage);
+        Assert.Contains("AgeAssurance:Yoti:BaseUrl must be an https address", result.FailureMessage);
+    }
+
+    [Fact]
+    public void Outside_Development_the_whole_app_validates_with_yoti_set_up_without_reading_options_twice()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Environment("Production"));
+        services.AddSingleton(Real<ILivenessChecker>("YuNet"));
+        services.AddSingleton(Real<IDocumentAgeCheck>("Vendor"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AgeAssurance:Yoti:SdkId"] = Guid.NewGuid().ToString(),
+                ["AgeAssurance:Yoti:PrivateKey"] = Pem(),
+            })
+            .Build();
+        UserModule.AddAgeAssurance(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Equal(25, provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgeAssuranceOptions>>().Value.ChallengeAge);
+        Assert.Equal("Yoti", provider.GetRequiredService<AgeAssuranceProviders>().Estimator.Name);
+    }
+
+    [Fact]
+    public void Yoti_is_configured_only_with_both_keys_and_not_with_placeholders()
+    {
+        Assert.False(new YotiOptions().IsConfigured);
+        Assert.False(new YotiOptions { SdkId = Guid.NewGuid().ToString() }.IsConfigured);
+        Assert.False(new YotiOptions { SdkId = "<from the Yoti Hub>", PrivateKey = "<secret>" }.IsConfigured);
+        Assert.True(new YotiOptions { SdkId = Guid.NewGuid().ToString(), PrivateKey = Pem() }.IsConfigured);
+    }
+
+    [Fact]
+    public void Bad_limits_are_refused()
     {
         var options = new AgeAssuranceOptions { ChallengeAge = 16, MaxAttemptsPerDay = 0 };
-        options.Liveness.Provider = "Nope";
 
         var result = Validator("Development").Validate(null, options);
 
-        Assert.Contains("'Nope' isn't registered", result.FailureMessage);
         Assert.Contains("ChallengeAge must be at least 18", result.FailureMessage);
         Assert.Contains("MaxAttemptsPerDay", result.FailureMessage);
     }
 
     [Theory]
-    [InlineData("""{"age": 27.5}""", "age", null, 27.5, 0.0)]
-    [InlineData("""{"result": {"age": {"estimate": "31", "sd": 2.5}}}""", "result.age.estimate", "result.age.sd", 31.0, 2.5)]
-    public void Http_estimator_reads_the_age_from_the_configured_path(string json, string agePath, string? uncertaintyPath, double age, double uncertainty)
+    [InlineData("""{"age": {"age": 27.5, "st_dev": 2.1}, "antispoofing": {"prediction": "real"}}""", 27.5, 2.1)]
+    [InlineData("""{"age": {"age": 31, "st_dev": 1.0}}""", 31.0, 1.0)]
+    [InlineData("""{"age": 22.4, "st_dev": 3}""", 22.4, 3.0)]
+    public void Yoti_answers_are_read(string json, double age, double uncertainty)
     {
-        var settings = new AgeAssuranceOptions().Estimator.Http;
-        settings.Name = "Vendor";
-        settings.AgePath = agePath;
-        settings.UncertaintyPath = uncertaintyPath;
-
         using var document = JsonDocument.Parse(json);
-        var estimate = HttpAgeEstimator.Read(document.RootElement, settings);
+
+        var estimate = YotiAgeEstimator.Read(document.RootElement, maxUncertainty: 6);
 
         Assert.Equal(age, estimate.Age);
         Assert.Equal(uncertainty, estimate.Uncertainty);
-        Assert.Equal("Vendor", estimate.Provider);
+        Assert.Equal("Yoti", estimate.Provider);
+    }
+
+    [Theory]
+    [InlineData("""{"age": {"age": 27.5, "st_dev": 2.1}, "antispoofing": {"prediction": "fake"}}""")]
+    [InlineData("""{"age": {"age": 27.5, "st_dev": 2.1}, "antispoofing": {"prediction": "undetermined"}}""")]
+    [InlineData("""{"age": {"age": 27.5, "st_dev": 7.5}}""")]
+    [InlineData("""{"error": "no face"}""")]
+    public void A_spoof_a_wide_margin_or_no_age_counts_as_couldnt_tell(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Null(YotiAgeEstimator.Read(document.RootElement, maxUncertainty: 6).Age);
     }
 
     [Fact]
-    public void Http_estimator_treats_a_missing_age_as_uncertain()
+    public void Yoti_requests_are_signed_over_the_method_path_and_body()
     {
-        using var document = JsonDocument.Parse("""{"error": "no face"}""");
+        using var key = RSA.Create(2048);
+        var body = Encoding.UTF8.GetBytes("""{"img":"abc"}""");
+        var query = YotiRequestSigner.Query(Guid.Parse("8f2a6b44-1c3d-4e5f-9a0b-1c2d3e4f5a6b"), DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
 
-        Assert.Null(HttpAgeEstimator.Read(document.RootElement, new AgeAssuranceOptions().Estimator.Http).Age);
+        var digest = YotiRequestSigner.Sign(key, "POST", "/age-antispoofing" + query, body);
+
+        Assert.Equal("?nonce=8f2a6b44-1c3d-4e5f-9a0b-1c2d3e4f5a6b&timestamp=1800000000", query);
+        var message = Encoding.UTF8.GetBytes("POST&/age-antispoofing" + query + "&" + Convert.ToBase64String(body));
+        Assert.True(key.VerifyData(message, Convert.FromBase64String(digest), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
     }
 
     [Fact]
-    public async Task Http_estimator_posts_the_video_with_the_key()
+    public void The_private_key_loads_from_pem_including_escaped_new_lines()
     {
-        var handler = new RecordingHandler("""{"age": 33}""");
-        var options = new AgeAssuranceOptions();
-        options.Estimator.Http.Endpoint = new Uri("https://age.example.com/estimate");
-        options.Estimator.Http.ApiKey = "secret";
-        options.Estimator.Http.ApiKeyHeader = "x-api-key";
-        options.Estimator.Http.ApiKeyPrefix = string.Empty;
-        var clients = Substitute.For<IHttpClientFactory>();
-        clients.CreateClient(HttpAgeEstimator.ClientName).Returns(_ => new HttpClient(handler));
-        var estimator = new HttpAgeEstimator(clients, new StaticOptionsMonitor<AgeAssuranceOptions>(options), NullLogger<HttpAgeEstimator>.Instance);
+        var pem = Pem();
 
-        var estimate = await estimator.EstimateAsync(new SelfieVideo(new byte[] { 1, 2, 3 }, "video/webm"), Ct);
-
-        Assert.Equal(33, estimate.Age);
-        Assert.Equal("secret", handler.ApiKey);
-        Assert.Equal("multipart/form-data", handler.MediaType);
-        Assert.Matches("name=\"?video\"?", handler.Body);
+        Assert.True(YotiRequestSigner.TryLoad(pem, out var key));
+        key.Dispose();
+        Assert.True(YotiRequestSigner.TryLoad(pem.Replace("\n", "\\n", StringComparison.Ordinal), out key));
+        key.Dispose();
+        Assert.False(YotiRequestSigner.TryLoad("nope", out key));
+        key.Dispose();
     }
 
     [Fact]
     public async Task Development_estimator_returns_the_configured_age()
     {
         var options = new AgeAssuranceOptions();
-        options.Estimator.Development.Age = 15;
+        options.Development.EstimatedAge = 15;
         var estimator = new DevelopmentAgeEstimator(new StaticOptionsMonitor<AgeAssuranceOptions>(options), NullLogger<DevelopmentAgeEstimator>.Instance);
 
         var estimate = await estimator.EstimateAsync(new SelfieVideo(new byte[] { 1 }, "video/webm"), Ct);
@@ -142,21 +186,16 @@ public sealed class AgeAssuranceProviderTests
     }
 
     [Fact]
-    public void Providers_are_picked_by_name()
+    public void A_configured_real_provider_wins_and_the_stand_in_is_only_used_in_Development()
     {
-        var yunet = Substitute.For<ILivenessChecker>();
-        yunet.Name.Returns("YuNet");
-        var options = new AgeAssuranceOptions();
-        options.Liveness.Provider = "yunet";
-        var monitor = new StaticOptionsMonitor<AgeAssuranceOptions>(options);
-        var providers = new AgeAssuranceProviders(
-            [new DevelopmentLivenessChecker(monitor, NullLogger<DevelopmentLivenessChecker>.Instance), yunet],
-            [],
-            [],
-            monitor);
+        var monitor = new StaticOptionsMonitor<AgeAssuranceOptions>(new AgeAssuranceOptions());
+        var standIn = new DevelopmentLivenessChecker(monitor, NullLogger<DevelopmentLivenessChecker>.Instance);
+        var yunet = Real<ILivenessChecker>("YuNet");
 
-        Assert.Same(yunet, providers.Liveness);
-        Assert.Throws<InvalidOperationException>(() => providers.Estimator);
+        Assert.Same(yunet, new AgeAssuranceProviders([standIn, yunet], [], [], Environment("Production")).Liveness);
+        Assert.Same(yunet, new AgeAssuranceProviders([standIn, yunet], [], [], Environment("Development")).Liveness);
+        Assert.Same(standIn, new AgeAssuranceProviders([standIn], [], [], Environment("Development")).Liveness);
+        Assert.Throws<InvalidOperationException>(() => new AgeAssuranceProviders([standIn], [], [], Environment("Production")).Liveness);
     }
 
     [Fact]
@@ -164,9 +203,7 @@ public sealed class AgeAssuranceProviderTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        var environment = Substitute.For<IHostEnvironment>();
-        environment.EnvironmentName.Returns("Development");
-        services.AddSingleton(environment);
+        services.AddSingleton(Environment("Development"));
         UserModule.AddAgeAssurance(services, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         using var provider = services.BuildServiceProvider();
 
@@ -179,55 +216,73 @@ public sealed class AgeAssuranceProviderTests
         Assert.Equal("Development", providers.Document.Name);
     }
 
-    private static AgeAssuranceOptionsValidator Validator(string environmentName, ILivenessChecker? liveness = null, IDocumentAgeCheck? document = null)
+    [Fact]
+    public void With_yoti_keys_the_estimator_is_yoti()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Environment("Development"));
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AgeAssurance:Yoti:SdkId"] = Guid.NewGuid().ToString(),
+                ["AgeAssurance:Yoti:PrivateKey"] = Pem(),
+            })
+            .Build();
+        UserModule.AddAgeAssurance(services, configuration);
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Equal("Yoti", provider.GetRequiredService<AgeAssuranceProviders>().Estimator.Name);
+    }
+
+    private static string Pem()
+    {
+        using var key = RSA.Create(2048);
+        return key.ExportPkcs8PrivateKeyPem();
+    }
+
+    private static IHostEnvironment Environment(string name)
+    {
+        var environment = Substitute.For<IHostEnvironment>();
+        environment.EnvironmentName.Returns(name);
+        return environment;
+    }
+
+    private static T Real<T>(string name)
+        where T : class, IAgeAssuranceProvider
+    {
+        var provider = Substitute.For<T>();
+        provider.Name.Returns(name);
+        provider.IsConfigured.Returns(true);
+        return provider;
+    }
+
+    private static AgeAssuranceOptionsValidator Validator(
+        string environmentName,
+        ILivenessChecker? liveness = null,
+        IAgeEstimator? estimator = null,
+        IDocumentAgeCheck? document = null)
     {
         var monitor = new StaticOptionsMonitor<AgeAssuranceOptions>(new AgeAssuranceOptions());
-        var environment = Substitute.For<IHostEnvironment>();
-        environment.EnvironmentName.Returns(environmentName);
-
-        List<ILivenessChecker> livenessCheckers = [new DevelopmentLivenessChecker(monitor, NullLogger<DevelopmentLivenessChecker>.Instance)];
+        var services = new ServiceCollection();
+        services.AddSingleton<ILivenessChecker>(new DevelopmentLivenessChecker(monitor, NullLogger<DevelopmentLivenessChecker>.Instance));
+        services.AddSingleton<IAgeEstimator>(new DevelopmentAgeEstimator(monitor, NullLogger<DevelopmentAgeEstimator>.Instance));
+        services.AddSingleton<IDocumentAgeCheck>(new DevelopmentDocumentAgeCheck(monitor, NullLogger<DevelopmentDocumentAgeCheck>.Instance));
         if (liveness is not null)
         {
-            livenessCheckers.Add(liveness);
+            services.AddSingleton(liveness);
         }
 
-        List<IDocumentAgeCheck> documents = [new DevelopmentDocumentAgeCheck(monitor, NullLogger<DevelopmentDocumentAgeCheck>.Instance)];
-        if (document is not null)
-        {
-            documents.Add(document);
-        }
-
-        IAgeEstimator[] estimators =
-        [
-            new DevelopmentAgeEstimator(monitor, NullLogger<DevelopmentAgeEstimator>.Instance),
-            new HttpAgeEstimator(Substitute.For<IHttpClientFactory>(), monitor, NullLogger<HttpAgeEstimator>.Instance),
-        ];
-
-        var services = new ServiceCollection();
-        livenessCheckers.ForEach(c => services.AddSingleton(c));
-        documents.ForEach(d => services.AddSingleton(d));
-        foreach (var estimator in estimators)
+        if (estimator is not null)
         {
             services.AddSingleton(estimator);
         }
 
-        return new AgeAssuranceOptionsValidator(environment, services.BuildServiceProvider());
-    }
-
-    private sealed class RecordingHandler(string responseJson) : HttpMessageHandler
-    {
-        public string? ApiKey { get; private set; }
-
-        public string? MediaType { get; private set; }
-
-        public string Body { get; private set; } = string.Empty;
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        if (document is not null)
         {
-            ApiKey = request.Headers.TryGetValues("x-api-key", out var values) ? values.Single() : null;
-            MediaType = request.Content!.Headers.ContentType?.MediaType;
-            Body = await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(responseJson, System.Text.Encoding.UTF8, "application/json") };
+            services.AddSingleton(document);
         }
+
+        return new AgeAssuranceOptionsValidator(Environment(environmentName), services.BuildServiceProvider());
     }
 }

@@ -4,6 +4,7 @@ using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -88,7 +89,7 @@ public sealed class MediaProcessorTests
     }
 
     // These tests cover photos and videos processed in one job; MediaSegmentProcessingTests covers splitting.
-    private MediaProcessor Processor() => new(
+    private MediaProcessor Processor(IKnownImageList? known = null, IKnownImageRepository? knownRepository = null) => new(
         _media,
         new InMemoryVideoJobStore(),
         Substitute.For<IMediaJobQueue>(),
@@ -99,7 +100,9 @@ public sealed class MediaProcessorTests
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions { WorkingDirectory = Path.GetTempPath(), SegmentSeconds = 0 }),
         Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
         new FixedTimeProvider(Now),
-        NullLogger<MediaProcessor>.Instance);
+        NullLogger<MediaProcessor>.Instance,
+        knownImages: known,
+        knownImageRepository: knownRepository);
 
     private static MediaProcessingJob Job(MediaItem item) =>
         new(item.Id, item.UserId, item.MediaType, item.OriginalKey, item.OriginalContentType);
@@ -125,6 +128,63 @@ public sealed class MediaProcessorTests
             new[] { (item.PlaybackKey!, "video/mp4", 1234L), (item.ThumbnailKey!, "image/jpeg", 56L) },
             _uploads.Select(u => (u.Key, u.Type, u.Size)));
         await _storage.Received(1).DownloadOriginalAsync(item.OriginalKey, Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+    }
+
+    // Known images
+
+    [Fact]
+    public async Task An_exact_copy_of_a_known_image_is_blocked_before_processing()
+    {
+        var item = ProcessingItem("image/jpeg");
+        var hit = new KnownImageHit(Guid.NewGuid(), KnownHashKind.Sha256, Convert.ToHexStringLower(SHA256.HashData(OriginalBytes)), "Test", null, null);
+        var known = Substitute.For<IKnownImageList>();
+        known.MatchFile(Convert.ToHexStringLower(SHA256.HashData(OriginalBytes)), Convert.ToHexStringLower(MD5.HashData(OriginalBytes))).Returns(hit);
+        var repository = Substitute.For<IKnownImageRepository>();
+
+        var outcome = await Processor(known, repository).ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(ProcessingOutcome.Failed, outcome);
+        Assert.Equal(MediaStatus.Failed, item.Status);
+        Assert.Equal(MediaProcessor.BlockedReason, item.FailureReason);
+        Assert.Empty(_uploads);
+        Assert.Empty(_privateUploads);
+        await _transcoder.DidNotReceiveWithAnyArgs().ProbeAsync(default!, Ct);
+        await _storage.Received(1).DeleteOriginalAsync(item.OriginalKey, Arg.Any<CancellationToken>());
+        repository.Received(1).Add(Arg.Is<KnownImageMatch>(m => m.MediaId == item.Id && m.UserId == UserId && m.HashId == hit.HashId));
+    }
+
+    [Fact]
+    public async Task A_frame_matching_a_known_image_blocks_the_media_and_nothing_is_published()
+    {
+        var item = ProcessingItem("image/jpeg");
+        _transcoder.ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProbeResult(true, 0.04m, 800, 600));
+        var hashId = Guid.NewGuid();
+        var hit = new KnownImageHit(hashId, KnownHashKind.Pdq, new string('a', 64), "Test", "test-1", 4);
+        _redaction = _redaction with { ReviewReasons = [hit.ToReason(), "1 detection(s) had low confidence."] };
+        var repository = Substitute.For<IKnownImageRepository>();
+        repository.GetHashAsync(hashId, Arg.Any<CancellationToken>())
+            .Returns(new KnownImageHash(KnownHashKind.Pdq, new string('a', 64), "Test", "test-1", Now));
+
+        var outcome = await Processor(Substitute.For<IKnownImageList>(), repository).ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(ProcessingOutcome.Failed, outcome);
+        Assert.Equal(MediaStatus.Failed, item.Status);
+        Assert.Empty(_uploads);
+        Assert.Empty(_privateUploads);
+        repository.Received(1).Add(Arg.Is<KnownImageMatch>(m => m.Distance == 4 && m.Source == "Test" && m.Reference == "test-1"));
+    }
+
+    [Fact]
+    public async Task Nudity_and_perceptual_hashes_are_recorded()
+    {
+        var item = ProcessingItem("image/jpeg");
+        _transcoder.ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new ProbeResult(true, 0.04m, 800, 600));
+        _redaction = _redaction with { NudityScore = 0.0123456, PerceptualHashes = [new string('b', 64)] };
+
+        await Processor().ProcessAsync(Job(item), isLastAttempt: false, Ct);
+
+        Assert.Equal(0.0123, item.NudityScore);
+        Assert.Equal(new string('b', 64), item.PerceptualHashes);
     }
 
     [Fact]

@@ -14,6 +14,8 @@ public sealed class ProfilesDbContext(DbContextOptions<ProfilesDbContext> option
 
     public DbSet<Follow> Follows => Set<Follow>();
 
+    public DbSet<ProfileBadge> Badges => Set<ProfileBadge>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(ProfilesModule.Schema);
@@ -67,6 +69,17 @@ internal sealed class FollowConfiguration : IEntityTypeConfiguration<Follow>
 }
 
 /// <summary>Lets <c>dotnet ef migrations add</c> build the context without a host. No connection is made.</summary>
+internal sealed class ProfileBadgeConfiguration : IEntityTypeConfiguration<ProfileBadge>
+{
+    public void Configure(EntityTypeBuilder<ProfileBadge> builder)
+    {
+        builder.ToTable("Badges");
+        builder.HasKey(b => new { b.UserId, b.Badge });
+        builder.Property(b => b.Badge).HasConversion<string>().HasMaxLength(30);
+        builder.HasOne<Profile>().WithMany().HasForeignKey(b => b.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class ProfilesDbContextDesignTimeFactory : IDesignTimeDbContextFactory<ProfilesDbContext>
 {
     public ProfilesDbContext CreateDbContext(string[] args) =>

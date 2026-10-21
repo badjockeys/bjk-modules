@@ -207,7 +207,39 @@ public sealed class AdminPostsController(ISender sender) : ControllerBase
         [FromQuery] int pageSize = 50,
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListAuditLogQuery(actorId, module, auditAction, targetType, targetId, from, to, page, pageSize), cancellationToken);
+
+    /// <summary>Blocked web addresses (posts and comments containing one are held for review); <c>?source=</c> filters.</summary>
+    [HttpGet("blocked-urls")]
+    [ProducesResponseType<PagedResult<BlockedUrlDto>>(StatusCodes.Status200OK)]
+    public async Task<PagedResult<BlockedUrlDto>> ListBlockedUrls(
+        [FromQuery] string? source = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListBlockedUrlsQuery(source, page, pageSize), cancellationToken);
+
+    /// <summary>Block a web address. A bare host covers the whole site.</summary>
+    [HttpPost("blocked-urls")]
+    [ProducesResponseType<BlockedUrlDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<BlockedUrlDto> AddBlockedUrl(AddBlockedUrlRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new AddBlockedUrlCommand(request.Address, request.Reason), cancellationToken);
+
+    /// <summary>Unblock an address added by a moderator. A reason is required (<c>?reason=</c>).</summary>
+    [HttpDelete("blocked-urls/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveBlockedUrl(Guid id, [FromQuery] string? reason, CancellationToken cancellationToken)
+    {
+        await sender.Send(new RemoveBlockedUrlCommand(id, reason ?? string.Empty), cancellationToken);
+        return NoContent();
+    }
 }
 
 /// <summary>Hide a hashtag from Trending (or show it again), and why.</summary>
 public sealed record HashtagTrendingRequest(bool Hidden, string? Reason);
+
+/// <param name="Address">The address, e.g. example.com or https://example.com/page.</param>
+/// <param name="Reason">Why, for the audit log.</param>
+public sealed record AddBlockedUrlRequest(string Address, string Reason);

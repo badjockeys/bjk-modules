@@ -45,11 +45,11 @@ public static class UserLifecycleEvents
 
     /// <summary>
     /// Registers a module's handler. The first call also starts reading the host's
-    /// <see cref="MessagingOptions.UserEventsQueue"/> (subscribed to <see cref="Topic"/>), passing each event to every
+    /// <see cref="MessagingOptions.UserEvents"/> (subscribed to <see cref="Topic"/>), passing each event to every
     /// registered handler, one event at a time.
     /// </summary>
     /// <param name="services">The host's services.</param>
-    /// <param name="configuration">Its configuration (<c>Messaging</c>).</param>
+    /// <param name="configuration">Its configuration (<c>Queues</c>).</param>
     /// <param name="connectionStringName">The module's connection string (the queues' default database).</param>
     public static IServiceCollection AddUserLifecycleHandler<THandler>(
         this IServiceCollection services,
@@ -58,8 +58,8 @@ public static class UserLifecycleEvents
         where THandler : class, IUserLifecycleHandler
     {
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IUserLifecycleHandler, THandler>());
-        var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.UserEventsQueue
-            ?? new MessagingOptions().UserEventsQueue;
+        var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.UserEvents
+            ?? new MessagingOptions().UserEvents;
         services.AddMessageConsumer<UserLifecycleConsumer>(
             configuration,
             connectionStringName,

@@ -223,6 +223,13 @@ internal sealed partial class MediaProcessor
                 await transcoder.ConcatenateVideoAsync(parts, audio, playback, cancellationToken);
                 await transcoder.CreateVideoThumbnailAsync(playback, thumbnail, cancellationToken);
 
+                // A frame in any segment matched a known image: block it (deleting the segment files too).
+                if (await MatchFromReasonsAsync(segments.SelectMany(s => s.ReviewReasonList), cancellationToken) is { } frameMatch)
+                {
+                    await TryAsync(() => DeleteSegmentFilesAsync(item, current));
+                    return await BlockAsync(item, frameMatch, item.Sha256, cancellationToken);
+                }
+
                 // Counts are per segment, so a face crossing a join is counted once in each.
                 item.RecordRedaction(segments.Sum(s => s.FacesBlurred ?? 0), segments.Sum(s => s.PlatesBlurred ?? 0));
                 await ApplySensitiveScoreAsync(item, segments.Max(s => s.SensitiveScore), cancellationToken);

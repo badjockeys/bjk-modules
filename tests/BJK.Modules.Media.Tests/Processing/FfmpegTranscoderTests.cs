@@ -100,6 +100,29 @@ public sealed class FfmpegTranscoderTests : IDisposable
         Assert.Equal((640, 480), (thumb.Width, thumb.Height));
     }
 
+    /// <summary>The photo types added on 21 Oct 2026. An animated GIF is read from its first frame.</summary>
+    [Theory]
+    [InlineData("photo.gif", new[] { "-frames:v", "1" })]
+    [InlineData("animated.gif", new[] { "-r", "5" })]
+    [InlineData("photo.tiff", new[] { "-frames:v", "1" })]
+    [InlineData("photo.bmp", new[] { "-frames:v", "1" })]
+    [InlineData("photo.avif", new[] { "-frames:v", "1", "-c:v", "libaom-av1", "-still-picture", "1", "-cpu-used", "8" })]
+    public async Task Newly_accepted_photo_types_become_webp(string name, string[] encode)
+    {
+        RequireFfmpeg();
+        var input = Make(name, ["-f", "lavfi", "-i", "testsrc=size=2400x1800:rate=5:duration=1", .. encode]);
+
+        var image = Path.Combine(_folder, "image.webp");
+        var thumbnail = Path.Combine(_folder, "thumbnail.webp");
+        await _transcoder.ConvertImageAsync(input, image, thumbnail, Ct);
+
+        var converted = await _transcoder.ProbeAsync(image, Ct);
+        Assert.Equal((2048, 1536), (converted.Width, converted.Height));
+        Assert.Contains("codec_name=webp", await FfmpegTestSupport.Ffprobe(image));
+        var thumb = await _transcoder.ProbeAsync(thumbnail, Ct);
+        Assert.Equal((640, 480), (thumb.Width, thumb.Height));
+    }
+
     [Fact]
     public async Task Photos_get_a_1080_pixel_feed_copy_never_enlarged()
     {

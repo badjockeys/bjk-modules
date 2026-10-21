@@ -30,6 +30,16 @@ public interface INotificationRepository
 
     void RemoveContact(NotificationContact contact);
 
+    /// <summary>The user's push devices (tracked).</summary>
+    Task<IReadOnlyList<PushSubscription>> ListPushSubscriptionsAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>The device with this endpoint, whoever it belongs to (tracked).</summary>
+    Task<PushSubscription?> GetPushSubscriptionAsync(string endpoint, CancellationToken cancellationToken);
+
+    void AddPushSubscription(PushSubscription subscription);
+
+    void RemovePushSubscription(PushSubscription subscription);
+
     /// <summary>Deletes notifications created before <paramref name="before"/>. Returns how many.</summary>
     Task<int> DeleteOlderThanAsync(DateTimeOffset before, CancellationToken cancellationToken);
 
@@ -92,6 +102,16 @@ internal sealed class NotificationRepository(NotificationsDbContext db) : INotif
 
     public void RemoveContact(NotificationContact contact) => db.Contacts.Remove(contact);
 
+    public async Task<IReadOnlyList<PushSubscription>> ListPushSubscriptionsAsync(Guid userId, CancellationToken cancellationToken) =>
+        await db.PushSubscriptions.Where(s => s.UserId == userId).OrderBy(s => s.UpdatedAt).ToListAsync(cancellationToken);
+
+    public Task<PushSubscription?> GetPushSubscriptionAsync(string endpoint, CancellationToken cancellationToken) =>
+        db.PushSubscriptions.FirstOrDefaultAsync(s => s.Endpoint == endpoint, cancellationToken);
+
+    public void AddPushSubscription(PushSubscription subscription) => db.PushSubscriptions.Add(subscription);
+
+    public void RemovePushSubscription(PushSubscription subscription) => db.PushSubscriptions.Remove(subscription);
+
     public Task<int> DeleteOlderThanAsync(DateTimeOffset before, CancellationToken cancellationToken) =>
         db.Notifications.Where(n => n.CreatedAt < before).ExecuteDeleteAsync(cancellationToken);
 
@@ -102,6 +122,7 @@ internal sealed class NotificationRepository(NotificationsDbContext db) : INotif
         await db.Contacts.Where(c => c.UserId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.AreaAlertItems.Where(i => i.UserId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.AreaSubscriptions.Where(a => a.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+        await db.PushSubscriptions.Where(p => p.UserId == userId).ExecuteDeleteAsync(cancellationToken);
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);

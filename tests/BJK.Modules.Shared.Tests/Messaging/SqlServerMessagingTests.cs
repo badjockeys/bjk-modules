@@ -370,10 +370,10 @@ public sealed class SqlServerMessagingTests : IAsyncLifetime
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Test"] = ConnectionString,
-                ["Messaging:PollingInterval"] = "00:00:00.100",
-                ["Messaging:RetryDelay"] = RetryDelay.ToString(),
-                ["Messaging:MaxRetryDelay"] = "00:00:05",
-                ["Messaging:LeaseDuration"] = "00:00:30",
+                ["Queues:PollingInterval"] = "00:00:00.100",
+                ["Queues:RetryDelay"] = RetryDelay.ToString(),
+                ["Queues:MaxRetryDelay"] = "00:00:05",
+                ["Queues:LeaseDuration"] = "00:00:30",
             })
             .Build();
 

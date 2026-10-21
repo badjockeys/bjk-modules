@@ -42,8 +42,16 @@ public sealed class CreateProfileCommandHandler(
         var profile = Profile.Create(userId, handle, request.DisplayName, request.Bio, request.Location, clock.GetUtcNow());
         profile.RecordAgeBand(caller.IsMinor);
         profiles.Add(profile);
+
+        // The first members are founding members (owner, 21 Oct 2026).
+        var founding = await profiles.CountBadgeAsync(Badge.FoundingMember, cancellationToken) < ProfileBadge.FoundingMemberLimit;
+        if (founding)
+        {
+            profiles.AddBadge(ProfileBadge.Award(userId, Badge.FoundingMember, profile.CreatedAt));
+        }
+
         await profiles.SaveChangesAsync(cancellationToken);
 
-        return ProfileDto.From(profile, avatarUrl: null);
+        return ProfileDto.From(profile, avatarUrl: null) with { Badges = founding ? [Badge.FoundingMember] : [] };
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,7 +21,9 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// The highest graphic content score (0 to 1) of the frames scored, or null if detection is off or nothing was scored.
 /// </param>
 /// <param name="FramesClassified">Frames the graphic content classifier scored.</param>
-/// <param name="ClassificationTime">Part of <paramref name="Elapsed"/> spent scoring graphic content.</param>
+/// <param name="ClassificationTime">Part of <paramref name="Elapsed"/> spent scoring graphic content and nudity.</param>
+/// <param name="NudityScore">The highest nudity score of the frames scored, or null if not checked.</param>
+/// <param name="PerceptualHashes">PDQ hashes (hex) of up to eight of the frames checked, spread through a video.</param>
 public sealed record RedactionResult(
     int FacesBlurred,
     int PlatesBlurred,
@@ -31,7 +34,9 @@ public sealed record RedactionResult(
     TimeSpan DetectionTime = default,
     double? SensitiveScore = null,
     int FramesClassified = 0,
-    TimeSpan ClassificationTime = default)
+    TimeSpan ClassificationTime = default,
+    double? NudityScore = null,
+    IReadOnlyList<string>? PerceptualHashes = null)
 {
     public bool NeedsReview => ReviewReasons.Count > 0;
 }
@@ -120,7 +125,9 @@ internal sealed class MediaRedactor(
     IOptions<MediaProcessingOptions> processingOptions,
     ILogger<MediaRedactor> logger,
     ISensitiveContentClassifier? classifier = null,
-    IOptions<SensitiveDetectionOptions>? detectionOptions = null)
+    IOptions<SensitiveDetectionOptions>? detectionOptions = null,
+    IKnownImageList? knownImages = null,
+    IOptions<KnownImageOptions>? knownImageOptions = null)
     : IMediaRedactor
 {
     private readonly MediaRedactionOptions _options = redactionOptions.Value;
@@ -128,9 +135,15 @@ internal sealed class MediaRedactor(
     private readonly IReadOnlyList<IRedactionDetector> _detectors = detectors.ToList();
 
     // Graphic content scoring runs inside the same pass, on the same (scaled-down) frames: nothing is decoded twice.
-    private readonly ISensitiveContentClassifier? _classifier = detectionOptions?.Value.Enabled == true ? classifier : null;
-    private readonly bool _detectSensitive = detectionOptions?.Value.Enabled == true;
+    // Checks run whenever the settings are registered (always in the worker); without a classifier, media go to review.
+    private readonly ISensitiveContentClassifier? _classifier = detectionOptions is not null ? classifier : null;
+    private readonly bool _detectSensitive = detectionOptions is not null;
     private readonly int _sampleEvery = Math.Max(1, detectionOptions?.Value.SampleEvery ?? 1);
+    private readonly double _nudityThreshold = detectionOptions?.Value.NudityThreshold ?? 1;
+
+    // Known images are checked on the same sampled frames (PDQ), before they're blurred.
+    private readonly IKnownImageList? _knownImages = knownImageOptions?.Value.Enabled == true ? knownImages : null;
+    private readonly int _pdqMinQuality = knownImageOptions?.Value.PdqMinQuality ?? 50;
 
     public async Task<RedactionResult> RedactImageAsync(
         string inputPath,
@@ -487,17 +500,38 @@ internal sealed class MediaRedactor(
             reasons.Add($"{uncertain} detection(s) had low confidence.");
         }
 
+        if (pass.NudityScore is { } nudity && nudity >= _nudityThreshold)
+        {
+            reasons.Add($"Possible nudity (score {nudity.ToString("0.00", CultureInfo.InvariantCulture)}): check it before it's published.");
+        }
+
+        if (pass.KnownImage is { } hit)
+        {
+            reasons.Insert(0, hit.ToReason());
+        }
+
         if (_options.ReviewEverything)
         {
             reasons.Add("Every upload is set to be reviewed (Media:Redaction:ReviewEverything).");
         }
 
         return new RedactionResult(
-            faces, plates, reasons, frames, analysed, elapsed, pass.Elapsed, pass.SensitiveScore, pass.FramesClassified, pass.ClassificationTime);
+            faces,
+            plates,
+            reasons,
+            frames,
+            analysed,
+            elapsed,
+            pass.Elapsed,
+            pass.SensitiveScore,
+            pass.FramesClassified,
+            pass.ClassificationTime,
+            pass.NudityScore,
+            pass.PerceptualHashes);
     }
 
     private DetectionPass NewPass(int maxSize) =>
-        new(_detectors, _options, logger, maxSize, _detectSensitive, _classifier);
+        new(_detectors, _options, logger, maxSize, _detectSensitive, _classifier, _knownImages, _pdqMinQuality);
 
     /// <summary>
     /// Runs the available detectors on frames for one job. A detector that's unavailable, or fails on any frame, is
@@ -512,6 +546,9 @@ internal sealed class MediaRedactor(
         private readonly MediaRedactionOptions _options;
         private readonly ILogger _logger;
         private readonly int _maxSize;
+        private readonly IKnownImageList? _knownImages;
+        private readonly int _pdqMinQuality;
+        private readonly List<string> _hashes = [];
         private ISensitiveContentClassifier? _classifier;
 
         public DetectionPass(
@@ -520,11 +557,27 @@ internal sealed class MediaRedactor(
             ILogger logger,
             int maxSize,
             bool detectSensitive = false,
-            ISensitiveContentClassifier? classifier = null)
+            ISensitiveContentClassifier? classifier = null,
+            IKnownImageList? knownImages = null,
+            int pdqMinQuality = 50)
         {
             _options = options;
             _logger = logger;
             _maxSize = maxSize;
+            _pdqMinQuality = pdqMinQuality;
+            if (knownImages is not null)
+            {
+                // Fail safe: until the list has loaded, media goes to review rather than being published unchecked.
+                if (knownImages.IsLoaded)
+                {
+                    _knownImages = knownImages;
+                }
+                else
+                {
+                    _problems.Add("The known-image list hasn't loaded yet.");
+                }
+            }
+
             if (detectSensitive)
             {
                 // Fail safe: with detection on, a missing or unavailable classifier sends the media to review.
@@ -567,6 +620,15 @@ internal sealed class MediaRedactor(
         /// <summary>The highest graphic content score so far, or null if nothing was scored.</summary>
         public double? SensitiveScore { get; private set; }
 
+        /// <summary>The highest nudity score so far, or null if nothing was scored for nudity.</summary>
+        public double? NudityScore { get; private set; }
+
+        /// <summary>The first known image a frame matched, if any.</summary>
+        public KnownImageHit? KnownImage { get; private set; }
+
+        /// <summary>PDQ hashes of up to eight sampled frames, spread evenly through the ones hashed.</summary>
+        public IReadOnlyList<string> PerceptualHashes => Spread(_hashes, MediaItem.MaxPerceptualHashes);
+
         public int FramesClassified { get; private set; }
 
         public TimeSpan ClassificationTime => _classifyTimer.Elapsed;
@@ -602,13 +664,24 @@ internal sealed class MediaRedactor(
             }
         }
 
+        internal static List<string> Spread(List<string> items, int count)
+        {
+            if (items.Count <= count)
+            {
+                return [.. items];
+            }
+
+            return Enumerable.Range(0, count).Select(i => items[(int)((long)i * (items.Count - 1) / (count - 1))]).ToList();
+        }
+
         /// <summary>
-        /// Scores the frame (already scaled down for detection) for graphic content. A failure is a problem (the media
-        /// goes to review) and the classifier isn't used again for this job.
+        /// Checks a sampled frame (already scaled down for detection, not yet blurred): its PDQ hash against the known
+        /// images, and its graphic content and nudity scores. A classifier failure is a problem (the media goes to
+        /// review) and the classifier isn't used again for this job.
         /// </summary>
         private void Classify(RgbFrame frame, bool classify)
         {
-            if (!classify || _classifier is null)
+            if (!classify)
             {
                 return;
             }
@@ -616,19 +689,48 @@ internal sealed class MediaRedactor(
             _classifyTimer.Start();
             try
             {
-                var score = _classifier.Score(frame);
-                SensitiveScore = Math.Max(SensitiveScore ?? 0, score);
-                FramesClassified++;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex, "The graphic content classifier failed; the media will go to review.");
-                _problems.Add("The graphic content check failed.");
-                _classifier = null;
+                CheckKnownImage(frame);
+                if (_classifier is null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    var scores = _classifier.Classify(frame);
+                    SensitiveScore = Math.Max(SensitiveScore ?? 0, scores.Graphic);
+                    if (scores.Nudity is { } nudity)
+                    {
+                        NudityScore = Math.Max(NudityScore ?? 0, nudity);
+                    }
+
+                    FramesClassified++;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "The content classifier failed; the media will go to review.");
+                    _problems.Add("The graphic content and nudity check failed.");
+                    _classifier = null;
+                }
             }
             finally
             {
                 _classifyTimer.Stop();
+            }
+        }
+
+        private void CheckKnownImage(RgbFrame frame)
+        {
+            var (hash, quality) = Pdq.Compute(frame);
+            if (quality < _pdqMinQuality)
+            {
+                return;
+            }
+
+            _hashes.Add(hash.Hex);
+            if (KnownImage is null && _knownImages?.MatchPdq(hash) is { } hit)
+            {
+                KnownImage = hit;
             }
         }
 

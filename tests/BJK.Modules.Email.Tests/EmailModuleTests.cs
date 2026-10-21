@@ -42,7 +42,6 @@ public sealed class EmailModuleTests
     {
         using var provider = Build(new()
         {
-            ["Email:Provider"] = "SendGrid",
             ["Email:FromAddress"] = "no-reply@badjockeys.com",
             ["Email:SendGrid:ApiKey"] = "SG.key",
         });
@@ -51,22 +50,21 @@ public sealed class EmailModuleTests
     }
 
     [Fact]
-    public void Fails_fast_when_sendgrid_is_missing_its_key_and_sender()
+    public void Fails_fast_when_sendgrid_has_a_key_but_no_sender()
     {
-        using var provider = Build(new() { ["Email:Provider"] = "SendGrid" });
+        using var provider = Build(new() { ["Email:SendGrid:ApiKey"] = "SG.key" });
 
         var error = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<EmailOptions>>().Value);
 
-        Assert.Contains(error.Failures, f => f.Contains("Email:SendGrid:ApiKey"));
         Assert.Contains(error.Failures, f => f.Contains("Email:FromAddress"));
     }
 
     [Fact]
-    public void Rejects_an_unknown_provider_name()
+    public void A_template_placeholder_doesnt_count_as_a_key()
     {
-        using var provider = Build(new() { ["Email:Provider"] = "Mailgun" });
+        using var provider = Build(new() { ["Email:SendGrid:ApiKey"] = "<only if you use SendGrid>" });
 
-        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<EmailOptions>>().Value);
+        Assert.IsType<LoggingEmailSender>(provider.GetRequiredService<IEmailSender>());
     }
 
     [Fact]

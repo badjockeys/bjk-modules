@@ -12,8 +12,8 @@ namespace BJK.Modules.SMS;
 
 /// <summary>
 /// Registers <see cref="ISMSSender"/>. No database, no endpoints: other modules and the hosts inject the sender and
-/// build messages from <see cref="Templates.SMSTemplates"/>. <c>SMS:Provider</c> picks Twilio or the console
-/// (<c>Log</c>, the default); the settings are checked at startup.
+/// build messages from <see cref="Templates.SMSTemplates"/>. Twilio sends when <c>SMS:Twilio:AccountSid</c> is set;
+/// without it texts are only logged, which is allowed in Development only. The settings are checked at startup.
 /// </summary>
 /// <example>
 /// <code>
@@ -33,16 +33,13 @@ public sealed class SMSModule : IModule
             .Bind(configuration.GetSection(SMSOptions.SectionName))
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SMSOptions>, SMSOptionsValidator>());
-        services.RequireWhenDeployed(
-            "SMS:Provider",
-            $"{SMSOptions.TwilioProvider} (the default, {SMSOptions.LogProvider}, sends nothing)",
-            v => v == SMSOptions.TwilioProvider);
+        services.RequireWhenDeployed("SMS:Twilio:AccountSid", "the Twilio account SID, starting AC (without Twilio texts are only logged)");
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(sp => new ProviderRetry(sp.GetRequiredService<TimeProvider>()));
 
-        var provider = configuration[$"{SMSOptions.SectionName}:{nameof(SMSOptions.Provider)}"] ?? SMSOptions.LogProvider;
-        if (provider == SMSOptions.TwilioProvider)
+        var settings = configuration.GetSection(SMSOptions.SectionName).Get<SMSOptions>() ?? new SMSOptions();
+        if (settings.UsesTwilio)
         {
             services.AddHttpClient<ISMSSender, TwilioSMSSender>(client => client.Timeout = RequestTimeout);
         }

@@ -26,6 +26,12 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
 
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
 
+    /// <summary>Hashes of images that must never be published (<c>media.KnownImageHashes</c>).</summary>
+    public DbSet<KnownImageHash> KnownImageHashes => Set<KnownImageHash>();
+
+    /// <summary>Uploads blocked because they matched a known image (<c>media.KnownImageMatches</c>).</summary>
+    public DbSet<KnownImageMatch> KnownImageMatches => Set<KnownImageMatch>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         AddStatusEventsToOutbox();
@@ -86,6 +92,7 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
         builder.Property(m => m.SourceKey).HasMaxLength(MediaItem.KeyMaxLength);
         builder.Property(m => m.DurationSeconds).HasPrecision(9, 3);
         builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
+        builder.Property(m => m.PerceptualHashes).HasMaxLength(MediaItem.PerceptualHashesMaxLength);
         builder.Property(m => m.FailureReason).HasMaxLength(MediaItem.FailureReasonMaxLength);
         builder.Property(m => m.ReviewReason).HasMaxLength(MediaItem.ReviewReasonMaxLength);
         builder.Property(m => m.ManualRedactionsJson);
@@ -97,6 +104,11 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
 
         // Clean-up jobs, e.g. uploads abandoned in the Uploading state.
         builder.HasIndex(m => new { m.Status, m.CreatedAt });
+
+        // The unused-uploads sweep: uploads not yet found in use, oldest first.
+        builder.HasIndex(m => m.CreatedAt)
+            .HasDatabaseName("IX_Media_UnusedUploads")
+            .HasFilter("[UsageCheckedAt] IS NULL AND [Status] <> 'Deleted'");
     }
 }
 
@@ -144,6 +156,44 @@ internal sealed class VideoSegmentConfiguration : IEntityTypeConfiguration<Video
         builder.Property(s => s.ReviewReasons).HasMaxLength(VideoSegment.ReviewReasonsMaxLength);
         builder.Ignore(s => s.IsDone);
         builder.Ignore(s => s.ReviewReasonList);
+    }
+}
+
+internal sealed class KnownImageHashConfiguration : IEntityTypeConfiguration<KnownImageHash>
+{
+    public void Configure(EntityTypeBuilder<KnownImageHash> builder)
+    {
+        builder.ToTable("KnownImageHashes");
+        builder.HasKey(h => h.Id);
+        builder.Property(h => h.Id).ValueGeneratedNever();
+        builder.Property(h => h.Kind).HasConversion<string>().HasMaxLength(10);
+        builder.Property(h => h.Value).HasMaxLength(64).IsUnicode(false);
+        builder.Property(h => h.Source).HasMaxLength(KnownImageHash.SourceMaxLength);
+        builder.Property(h => h.Reference).HasMaxLength(KnownImageHash.ReferenceMaxLength);
+
+        // One row per hash per source; syncing a source reads its rows.
+        builder.HasIndex(h => new { h.Source, h.Kind, h.Value }).IsUnique();
+    }
+}
+
+internal sealed class KnownImageMatchConfiguration : IEntityTypeConfiguration<KnownImageMatch>
+{
+    public void Configure(EntityTypeBuilder<KnownImageMatch> builder)
+    {
+        builder.ToTable("KnownImageMatches");
+        builder.HasKey(m => m.Id);
+        builder.Property(m => m.Id).ValueGeneratedNever();
+        builder.Property(m => m.Kind).HasConversion<string>().HasMaxLength(10);
+        builder.Property(m => m.MatchedValue).HasMaxLength(64).IsUnicode(false);
+        builder.Property(m => m.Source).HasMaxLength(KnownImageHash.SourceMaxLength);
+        builder.Property(m => m.Reference).HasMaxLength(KnownImageHash.ReferenceMaxLength);
+        builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
+        builder.Property(m => m.ReportReference).HasMaxLength(KnownImageHash.ReferenceMaxLength);
+
+        // Kept even if the media row goes (an account deleted): it's the record of what was blocked.
+        builder.HasIndex(m => m.MatchedAt);
+        builder.HasIndex(m => m.UserId);
+        builder.HasIndex(m => m.MediaId);
     }
 }
 

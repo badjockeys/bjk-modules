@@ -47,8 +47,10 @@ public sealed class MediaModule(string connectionStringName) : IModule
         MediaServices.AddStorageAndData(services, configuration, connectionStringName);
         services.AddScoped<IMediaDirectory, MediaDirectory>();
 
-        // Originals are deleted once their post is published; the sweeper catches the rest after 24 hours.
+        // Originals are deleted once their post is published; the sweeper catches the rest after 24 hours, and then
+        // deletes uploads nothing uses (Posts and Profiles report what's in use through IMediaUsage).
         services.AddScoped<OriginalsCleanup>();
+        services.AddScoped<UnusedMediaCleanup>();
         services.AddHostedService<OriginalsSweeper>();
         services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
 

@@ -14,9 +14,9 @@ public static class MessagingServiceCollectionExtensions
     /// (<see cref="MessagingOptions"/>). Safe to call from several modules: the first call decides the default database.
     /// </summary>
     /// <param name="services">The host's services.</param>
-    /// <param name="configuration">Its configuration (<c>Messaging</c>, <c>ConnectionStrings</c>).</param>
+    /// <param name="configuration">Its configuration (<c>Queues</c>, <c>ConnectionStrings</c>).</param>
     /// <param name="connectionStringName">
-    /// The module's own connection string, used for the queues unless <c>Messaging:ConnectionStringName</c> says otherwise.
+    /// The module's own connection string, used for the queues unless the host chose another with <see cref="UseQueuesIn"/>.
     /// </param>
     public static IServiceCollection AddBjkMessaging(
         this IServiceCollection services,
@@ -32,10 +32,10 @@ public static class MessagingServiceCollectionExtensions
         services.AddOptions<MessagingOptions>()
             .Bind(configuration.GetSection(MessagingOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => o.MaxRetryDelay >= o.RetryDelay, "Messaging:MaxRetryDelay must be at least Messaging:RetryDelay.")
+            .Validate(o => o.MaxRetryDelay >= o.RetryDelay, "Queues:MaxRetryDelay must be at least Queues:RetryDelay.")
             .Validate(
                 o => !string.IsNullOrWhiteSpace(configuration.GetConnectionString(ConnectionStringNameFor(o, connectionStringName))),
-                $"The messaging connection string isn't configured: set ConnectionStrings:{{name}} for Messaging:ConnectionStringName (default '{connectionStringName}').")
+                $"The queues' connection string isn't configured (ConnectionStrings:{connectionStringName}, or the one the host chose with UseQueuesIn).")
             .ValidateOnStart();
 
         services.AddSingleton(sp =>
@@ -87,6 +87,22 @@ public static class MessagingServiceCollectionExtensions
         services.TryAddScoped<TConsumer>();
         services.AddSingleton(new MessageConsumerRegistration(definition, typeof(TConsumer)));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, MessageConsumerHost>());
+        return services;
+    }
+
+    /// <summary>
+    /// Puts this host's queues in another database than its modules' data, e.g. the identity server writing user events
+    /// to bjk-core's queues in <c>BadJockeysDatabase</c>. With <paramref name="createTables"/> false the host never
+    /// creates queue tables (its login may only use the ones bjk-core created). Call it once, from the host.
+    /// </summary>
+    public static IServiceCollection UseQueuesIn(this IServiceCollection services, string connectionStringName, bool createTables)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionStringName);
+        services.PostConfigure<MessagingOptions>(o =>
+        {
+            o.ConnectionStringName = connectionStringName;
+            o.CreateTables = createTables;
+        });
         return services;
     }
 

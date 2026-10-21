@@ -13,6 +13,10 @@ public sealed class MediaItem
     public const int KeyMaxLength = 512;
     public const int FailureReasonMaxLength = 500;
     public const int ReviewReasonMaxLength = 500;
+    public const int PerceptualHashesMaxLength = 65 * MaxPerceptualHashes;
+
+    /// <summary>How many PDQ hashes are kept per media (sampled through a video).</summary>
+    public const int MaxPerceptualHashes = 8;
 
     private static readonly JsonSerializerOptions RedactionJson = new(JsonSerializerDefaults.Web);
 
@@ -54,6 +58,13 @@ public sealed class MediaItem
     /// exists. Nothing is ever processed from it again: moderators' extra blurs work from the processed file.
     /// </summary>
     public DateTimeOffset? OriginalDeletedAt { get; private set; }
+
+    /// <summary>
+    /// When the unused-uploads sweep found this media in a post, a draft or an avatar (24 hours or more after upload).
+    /// It's never checked again: from then on whatever removes it from its post, draft or avatar deletes it. Null until
+    /// checked; media nothing uses is deleted instead.
+    /// </summary>
+    public DateTimeOffset? UsageCheckedAt { get; private set; }
 
     /// <summary>
     /// While re-processing after a moderator added blur regions: the copy of the processed file to work from (in the
@@ -130,6 +141,18 @@ public sealed class MediaItem
     /// it crossed the threshold; null if detection was off. Kept to tune the threshold against moderators' decisions.
     /// </summary>
     public double? SensitiveScore { get; private set; }
+
+    /// <summary>
+    /// The highest nudity score (0 to 1) of the frames checked in the latest processing; null if not checked. At or
+    /// above <c>Media:SensitiveDetection:NudityThreshold</c> the media was held for a moderator.
+    /// </summary>
+    public double? NudityScore { get; private set; }
+
+    /// <summary>
+    /// PDQ hashes of the original (one for a photo, up to <see cref="MaxPerceptualHashes"/> sampled through a video),
+    /// space-separated, so a moderator who removes it can block copies of it. Null for videos processed in segments.
+    /// </summary>
+    public string? PerceptualHashes { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -231,6 +254,16 @@ public sealed class MediaItem
     public void RecordSensitiveScore(double? score) =>
         SensitiveScore = score is null ? null : Math.Round(Math.Clamp(score.Value, 0, 1), 4);
 
+    /// <summary>Records the nudity score and the original's perceptual hashes from the latest processing.</summary>
+    /// <param name="nudityScore">The highest nudity score of the frames checked, or null.</param>
+    /// <param name="perceptualHashes">PDQ hashes (hex); the first <see cref="MaxPerceptualHashes"/> are kept.</param>
+    public void RecordContentChecks(double? nudityScore, IEnumerable<string>? perceptualHashes)
+    {
+        NudityScore = nudityScore is null ? null : Math.Round(Math.Clamp(nudityScore.Value, 0, 1), 4);
+        var hashes = perceptualHashes?.Take(MaxPerceptualHashes).ToList();
+        PerceptualHashes = hashes is { Count: > 0 } ? string.Join(' ', hashes) : null;
+    }
+
     /// <summary>
     /// Processed and blurred, but a moderator must check it first. The blurred files are in the private bucket under
     /// <see cref="MediaKeys.ReviewPlayback"/>; nothing is public, so the public keys stay empty.
@@ -301,6 +334,10 @@ public sealed class MediaItem
         PreviewKey = null;
         UpdatedAt = now;
     }
+
+    /// <summary>The unused-uploads sweep found it in use: it isn't checked again.</summary>
+    /// <param name="now">The time.</param>
+    public void MarkInUse(DateTimeOffset now) => UsageCheckedAt ??= now;
 
     /// <summary>The original has been deleted (its post was published, or the sweeper's deadline passed).</summary>
     /// <param name="now">The time.</param>

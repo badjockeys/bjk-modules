@@ -5,14 +5,11 @@ public sealed class SMSOptions
 {
     public const string SectionName = "SMS";
 
-    public const string LogProvider = "Log";
-    public const string TwilioProvider = "Twilio";
-
     /// <summary>
-    /// <c>Log</c> (default): nothing is sent; in Development the message is written to the log.
-    /// <c>Twilio</c>: sent through Twilio.
+    /// True when <c>SMS:Twilio:AccountSid</c> is set: texts go through Twilio. Otherwise nothing is sent and, in
+    /// Development, the message (with any code) is written to the log. Outside Development Twilio is required.
     /// </summary>
-    public string Provider { get; set; } = LogProvider;
+    public bool UsesTwilio => !string.IsNullOrWhiteSpace(Twilio.AccountSid) && !Twilio.AccountSid.TrimStart().StartsWith('<');
 
     public TwilioOptions Twilio { get; set; } = new();
 }

@@ -12,8 +12,8 @@ namespace BJK.Modules.Email;
 
 /// <summary>
 /// Registers <see cref="IEmailSender"/>. No database, no endpoints: other modules and the hosts inject the sender
-/// and build messages from <see cref="Templates.EmailTemplates"/>. <c>Email:Provider</c> picks SendGrid or the
-/// console (<c>Log</c>, the default); the settings are checked at startup.
+/// and build messages from <see cref="Templates.EmailTemplates"/>. SendGrid sends when
+/// <c>Email:SendGrid:ApiKey</c> is set; without it emails are only logged, which is allowed in Development only.
 /// </summary>
 /// <example>
 /// <code>
@@ -33,16 +33,14 @@ public sealed class EmailModule : IModule
             .Bind(configuration.GetSection(EmailOptions.SectionName))
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<EmailOptions>, EmailOptionsValidator>());
-        services.RequireWhenDeployed(
-            "Email:Provider",
-            $"{EmailOptions.SendGridProvider} (the default, {EmailOptions.LogProvider}, sends nothing)",
-            v => v == EmailOptions.SendGridProvider);
+        services.RequireWhenDeployed("Email:SendGrid:ApiKey", "a SendGrid API key with the Mail Send permission (without it emails are only logged)");
+        services.RequireWhenDeployed("Email:FromAddress", "the sender address, a verified sender or domain in SendGrid");
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(sp => new ProviderRetry(sp.GetRequiredService<TimeProvider>()));
 
-        var provider = configuration[$"{EmailOptions.SectionName}:{nameof(EmailOptions.Provider)}"] ?? EmailOptions.LogProvider;
-        if (provider == EmailOptions.SendGridProvider)
+        var settings = configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() ?? new EmailOptions();
+        if (settings.UsesSendGrid)
         {
             services.AddHttpClient<IEmailSender, SendGridEmailSender>(client => client.Timeout = RequestTimeout);
         }

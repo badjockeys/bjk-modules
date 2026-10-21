@@ -3,6 +3,7 @@ using BJK.Modules.Email.Contracts;
 using BJK.Modules.Notifications.Domain;
 using BJK.Modules.Notifications.Infrastructure;
 using BJK.Modules.Notifications.Infrastructure.Data;
+using BJK.Modules.Notifications.Infrastructure.Push;
 using BJK.Modules.Notifications.UseCases;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Notifications;
@@ -21,6 +22,7 @@ public sealed class NotificationSenderTests
     private readonly INotificationRepository _repository = Substitute.For<INotificationRepository>();
     private readonly IProfileDirectory _profiles = Substitute.For<IProfileDirectory>();
     private readonly IEmailSender _email = Substitute.For<IEmailSender>();
+    private readonly IPushSender _push = Substitute.For<IPushSender>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
     private readonly FixedTimeProvider _clock = new(Now);
     private readonly List<Notification> _added = [];
@@ -33,6 +35,7 @@ public sealed class NotificationSenderTests
         _profiles.GetSummariesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, ProfileSummary> { [SamId] = new(SamId, "sam_j", "Sam J", null) });
         _caller.IdentityId.Returns(UserId.ToString());
+        _push.IsEnabled.Returns(true);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -41,6 +44,7 @@ public sealed class NotificationSenderTests
         _repository,
         _profiles,
         _email,
+        _push,
         Options.Create(new EmailOptions()),
         Options.Create(new NotificationsOptions { AppUrl = appUrl }),
         _clock,
@@ -157,5 +161,96 @@ public sealed class NotificationSenderTests
             new UpdateNotificationSettingsCommand([new NotificationSettingChange(NotificationType.CommentOnPost, true, true)]),
             Ct);
         Assert.True(updated.Single(s => s.Type == NotificationType.CommentOnPost).Email);
+    }
+
+    [Fact]
+    public async Task Comments_are_pushed_to_the_persons_devices_by_default()
+    {
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.CommentOnPost, SamId, PostId, PostTitle: "Tailgated"), Ct);
+
+        await _push.Received(1).SendAsync(
+            UserId,
+            Arg.Is<PushMessage>(m => m.Body == "Sam J commented on your post “Tailgated”." && m.Url == $"/p/{PostId:D}"),
+            Arg.Any<CancellationToken>());
+        Assert.Equal(Now, Assert.Single(_added).LastPushedAt);
+    }
+
+    [Fact]
+    public async Task Nothing_is_pushed_overnight_but_it_still_goes_in_the_bell()
+    {
+        _clock.Now = new DateTimeOffset(2026, 10, 20, 22, 30, 0, TimeSpan.Zero); // 23:30 UK
+
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.CommentOnPost, SamId, PostId), Ct);
+
+        Assert.Single(_added);
+        await _push.DidNotReceiveWithAnyArgs().SendAsync(default, null!, Ct);
+    }
+
+    [Fact]
+    public async Task Push_can_be_turned_off_per_type()
+    {
+        _settings.Add(NotificationSetting.Create(UserId, NotificationType.CommentOnPost, inApp: true, email: false, push: false));
+
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.CommentOnPost, SamId, PostId), Ct);
+
+        Assert.Single(_added);
+        await _push.DidNotReceiveWithAnyArgs().SendAsync(default, null!, Ct);
+    }
+
+    [Fact]
+    public async Task Grouped_reactions_are_pushed_at_most_hourly()
+    {
+        var first = Notification.Create(new NotificationRequest(UserId, NotificationType.ReactionOnPost, Guid.NewGuid(), PostId), Now);
+        first.MarkPushed(Now.AddMinutes(-20));
+        _repository.FindUnreadAsync(UserId, NotificationType.ReactionOnPost, PostId, Arg.Any<CancellationToken>()).Returns(first);
+
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.ReactionOnPost, SamId, PostId), Ct);
+        await _push.DidNotReceiveWithAnyArgs().SendAsync(default, null!, Ct);
+
+        _clock.Now = Now.AddMinutes(45);
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.ReactionOnPost, SamId, PostId), Ct);
+        await _push.Received(1).SendAsync(
+            UserId,
+            Arg.Is<PushMessage>(m => m.Body.StartsWith("Sam J and 2 others reacted", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_failed_push_doesnt_stop_the_notification()
+    {
+        _push.SendAsync(default, null!, Ct).ReturnsForAnyArgs(Task.FromException(new HttpRequestException("down")));
+
+        await Sender().NotifyAsync(new NotificationRequest(UserId, NotificationType.CommentOnPost, SamId, PostId), Ct);
+
+        Assert.Single(_added);
+    }
+
+    [Fact]
+    public void Vote_results_and_followed_posts_have_their_own_words()
+    {
+        Assert.Equal(
+            "The vote on “Tailgated” has closed. Most said the other road user (62% of 41 votes).",
+            NotificationTexts.Sentence(NotificationType.VoteClosed, null, 1, "Tailgated", "Most said the other road user (62% of 41 votes)."));
+        Assert.Equal(
+            "Sam J commented on “Tailgated”, which you follow.",
+            NotificationTexts.Sentence(NotificationType.CommentOnFollowedPost, "Sam J", 1, "Tailgated"));
+        Assert.Contains(NotificationType.VoteClosed, NotificationDefaults.Configurable);
+        Assert.Contains(NotificationType.CommentOnFollowedPost, NotificationDefaults.Configurable);
+    }
+
+    [Fact]
+    public async Task Settings_include_push_and_keep_it_when_a_change_leaves_it_out()
+    {
+        var updated = await new UpdateNotificationSettingsCommandHandler(_repository, _caller).Handle(
+            new UpdateNotificationSettingsCommand([new NotificationSettingChange(NotificationType.CommentOnPost, true, false, Push: false)]),
+            Ct);
+        Assert.False(updated.Single(s => s.Type == NotificationType.CommentOnPost).Push);
+        Assert.True(updated.Single(s => s.Type == NotificationType.ReplyToComment).Push);
+
+        _settings.Add(NotificationSetting.Create(UserId, NotificationType.ReplyToComment, inApp: true, email: false, push: false));
+        updated = await new UpdateNotificationSettingsCommandHandler(_repository, _caller).Handle(
+            new UpdateNotificationSettingsCommand([new NotificationSettingChange(NotificationType.ReplyToComment, true, true)]),
+            Ct);
+        Assert.False(updated.Single(s => s.Type == NotificationType.ReplyToComment).Push);
     }
 }

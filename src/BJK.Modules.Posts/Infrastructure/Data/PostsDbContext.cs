@@ -40,6 +40,21 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<Timeline> Timelines => Set<Timeline>();
 
+    /// <summary>Web addresses that mustn't be shared (<c>posts.BlockedUrls</c>).</summary>
+    public DbSet<BlockedUrl> BlockedUrls => Set<BlockedUrl>();
+
+    public DbSet<PostVote> PostVotes => Set<PostVote>();
+
+    public DbSet<PostFollow> PostFollows => Set<PostFollow>();
+
+    public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
+
+    public DbSet<PostView> PostViews => Set<PostView>();
+
+    public DbSet<PostShare> PostShares => Set<PostShare>();
+
+    public DbSet<AuthorPreferences> AuthorPreferences => Set<AuthorPreferences>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -88,6 +103,11 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
 
         // The feed (newest first), filtered by category, author or area.
         builder.HasIndex(p => new { p.Status, p.CreatedAt });
+
+        // Votes closing: posts whose result hasn't been announced yet.
+        builder.HasIndex(p => p.VoteClosesAt)
+            .HasDatabaseName("IX_Posts_VoteResultPending")
+            .HasFilter("[VoteClosesAt] IS NOT NULL AND [VoteResultSentAt] IS NULL");
         builder.HasIndex(p => new { p.Category, p.Status, p.CreatedAt });
         builder.HasIndex(p => new { p.AuthorId, p.CreatedAt });
         builder.HasIndex(p => new { p.Latitude, p.Longitude });
@@ -178,6 +198,20 @@ internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
     }
 }
 
+internal sealed class BlockedUrlConfiguration : IEntityTypeConfiguration<BlockedUrl>
+{
+    public void Configure(EntityTypeBuilder<BlockedUrl> builder)
+    {
+        builder.ToTable("BlockedUrls");
+        builder.HasKey(b => b.Id);
+        builder.Property(b => b.Id).ValueGeneratedNever();
+        builder.Property(b => b.Pattern).HasMaxLength(BlockedUrl.PatternMaxLength).IsRequired();
+        builder.Property(b => b.Source).HasMaxLength(BlockedUrl.SourceMaxLength).IsRequired();
+        builder.Property(b => b.Reference).HasMaxLength(BlockedUrl.ReferenceMaxLength);
+        builder.HasIndex(b => new { b.Source, b.Pattern }).IsUnique();
+    }
+}
+
 internal sealed class HashtagConfiguration : IEntityTypeConfiguration<Hashtag>
 {
     public void Configure(EntityTypeBuilder<Hashtag> builder)
@@ -259,6 +293,78 @@ internal sealed class ReactionConfiguration : IEntityTypeConfiguration<Reaction>
 
         // "Posts I reacted to".
         builder.HasIndex(r => new { r.UserId, r.CreatedAt });
+    }
+}
+
+internal sealed class PostVoteConfiguration : IEntityTypeConfiguration<PostVote>
+{
+    public void Configure(EntityTypeBuilder<PostVote> builder)
+    {
+        builder.ToTable("PostVotes");
+        builder.HasKey(v => new { v.PostId, v.UserId });
+        builder.Property(v => v.Choice).HasConversion<string>().HasMaxLength(20);
+        builder.HasOne<Post>().WithMany().HasForeignKey(v => v.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(v => v.UserId);
+    }
+}
+
+internal sealed class PostFollowConfiguration : IEntityTypeConfiguration<PostFollow>
+{
+    public void Configure(EntityTypeBuilder<PostFollow> builder)
+    {
+        builder.ToTable("PostFollows");
+        builder.HasKey(f => new { f.PostId, f.UserId });
+        builder.HasOne<Post>().WithMany().HasForeignKey(f => f.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(f => f.UserId);
+    }
+}
+
+internal sealed class BookmarkConfiguration : IEntityTypeConfiguration<Bookmark>
+{
+    public void Configure(EntityTypeBuilder<Bookmark> builder)
+    {
+        builder.ToTable("Bookmarks");
+        builder.HasKey(b => new { b.UserId, b.PostId });
+        builder.HasOne<Post>().WithMany().HasForeignKey(b => b.PostId).OnDelete(DeleteBehavior.Cascade);
+
+        // "My saved posts", newest first.
+        builder.HasIndex(b => new { b.UserId, b.CreatedAt });
+        builder.HasIndex(b => b.PostId);
+    }
+}
+
+internal sealed class PostViewConfiguration : IEntityTypeConfiguration<PostView>
+{
+    public void Configure(EntityTypeBuilder<PostView> builder)
+    {
+        builder.ToTable("PostViews");
+        builder.HasKey(v => new { v.PostId, v.ViewerKey });
+        builder.HasOne<Post>().WithMany().HasForeignKey(v => v.PostId).OnDelete(DeleteBehavior.Cascade);
+
+        // Account deletion removes a member's views (their viewer key is their user id).
+        builder.HasIndex(v => v.ViewerKey);
+    }
+}
+
+internal sealed class PostShareConfiguration : IEntityTypeConfiguration<PostShare>
+{
+    public void Configure(EntityTypeBuilder<PostShare> builder)
+    {
+        builder.ToTable("PostShares");
+        builder.HasKey(s => new { s.PostId, s.ViewerKey, s.Day });
+        builder.HasOne<Post>().WithMany().HasForeignKey(s => s.PostId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(s => s.ViewerKey);
+    }
+}
+
+internal sealed class AuthorPreferencesConfiguration : IEntityTypeConfiguration<AuthorPreferences>
+{
+    public void Configure(EntityTypeBuilder<AuthorPreferences> builder)
+    {
+        builder.ToTable("AuthorPreferences");
+        builder.HasKey(a => a.UserId);
+        builder.Property(a => a.UserId).ValueGeneratedNever();
+        builder.Property(a => a.VoteDuration).HasConversion<string>().HasMaxLength(20);
     }
 }
 

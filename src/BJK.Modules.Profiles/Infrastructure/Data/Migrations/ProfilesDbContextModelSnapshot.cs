@@ -117,6 +117,35 @@ namespace BJK.Modules.Profiles.Infrastructure.Data.Migrations
 
                     b.ToTable("Profiles", "profiles");
                 });
+
+            modelBuilder.Entity("BJK.Modules.Profiles.Domain.ProfileBadge", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Badge")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset>("AwardedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("AwardedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("UserId", "Badge");
+
+                    b.ToTable("Badges", "profiles");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Profiles.Domain.ProfileBadge", b =>
+                {
+                    b.HasOne("BJK.Modules.Profiles.Domain.Profile", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
 #pragma warning restore 612, 618
         }
     }

@@ -38,6 +38,12 @@ public sealed class PostsMigrationsTests
     [InlineData(typeof(PostDraft), "Drafts")]
     [InlineData(typeof(DraftMedia), "DraftMedia")]
     [InlineData(typeof(ModerationAuditRecord), "ModerationAuditLog")]
+    [InlineData(typeof(PostVote), "PostVotes")]
+    [InlineData(typeof(PostFollow), "PostFollows")]
+    [InlineData(typeof(Bookmark), "Bookmarks")]
+    [InlineData(typeof(PostView), "PostViews")]
+    [InlineData(typeof(PostShare), "PostShares")]
+    [InlineData(typeof(AuthorPreferences), "AuthorPreferences")]
     public void Tables_live_in_the_posts_schema(Type entityType, string table)
     {
         using var db = new PostsDbContextDesignTimeFactory().CreateDbContext([]);

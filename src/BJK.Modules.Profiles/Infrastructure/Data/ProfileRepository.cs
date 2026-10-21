@@ -72,6 +72,18 @@ public interface IProfileRepository
     /// <summary>Of <paramref name="ids"/>, the active adults (known to be 18 or over), for suggestions.</summary>
     Task<IReadOnlyList<Profile>> GetSuggestableAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 
+    /// <summary>The badges a user holds.</summary>
+    Task<IReadOnlyList<Badge>> ListBadgesAsync(Guid userId, CancellationToken cancellationToken);
+
+    Task<ProfileBadge?> GetBadgeAsync(Guid userId, Badge badge, CancellationToken cancellationToken);
+
+    void AddBadge(ProfileBadge badge);
+
+    void RemoveBadge(ProfileBadge badge);
+
+    /// <summary>How many profiles have the Founding member badge.</summary>
+    Task<int> CountBadgeAsync(Badge badge, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
@@ -89,6 +101,19 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
         await db.Profiles.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(cancellationToken);
 
     public void Add(Profile profile) => db.Profiles.Add(profile);
+
+    public async Task<IReadOnlyList<Badge>> ListBadgesAsync(Guid userId, CancellationToken cancellationToken) =>
+        await db.Badges.AsNoTracking().Where(b => b.UserId == userId).Select(b => b.Badge).ToListAsync(cancellationToken);
+
+    public Task<ProfileBadge?> GetBadgeAsync(Guid userId, Badge badge, CancellationToken cancellationToken) =>
+        db.Badges.FirstOrDefaultAsync(b => b.UserId == userId && b.Badge == badge, cancellationToken);
+
+    public void AddBadge(ProfileBadge badge) => db.Badges.Add(badge);
+
+    public void RemoveBadge(ProfileBadge badge) => db.Badges.Remove(badge);
+
+    public Task<int> CountBadgeAsync(Badge badge, CancellationToken cancellationToken) =>
+        db.Badges.CountAsync(b => b.Badge == badge, cancellationToken);
 
     public void Remove(Profile profile) => db.Profiles.Remove(profile);
 

@@ -51,6 +51,7 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
             .Select(b => new { b.BlockedId, b.CreatedAt })
             .ToList();
         var following = await profiles.GetFollowingIdsAsync(userId, cancellationToken);
+        var badges = (await profiles.ListBadgesAsync(userId, cancellationToken)).Select(b => b.ToString()).ToList();
         return p is null
             ? (object)new { blocks, following }
             : new
@@ -69,6 +70,7 @@ internal sealed class ProfilePersonalDataExporter(IProfileRepository profiles) :
                 p.IsMinor,
                 blocks,
                 following,
+                badges,
             };
     }
 }

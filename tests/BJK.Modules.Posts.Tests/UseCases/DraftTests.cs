@@ -169,8 +169,46 @@ public sealed class DraftTests
         Assert.NotNull(media.ThumbnailUrl);
     }
 
+    [Fact]
+    public async Task Photos_taken_out_of_a_draft_are_deleted_unless_a_post_or_another_draft_uses_them()
+    {
+        Guid kept = Guid.NewGuid(), dropped = Guid.NewGuid(), inPost = Guid.NewGuid(), inOtherDraft = Guid.NewGuid();
+        var draft = PostDraft.Create(UserId, Content([kept, dropped, inPost, inOtherDraft]), Now);
+        _drafts.GetAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
+        _posts.AnyUseMediaAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(inPost)), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _drafts.MediaInOtherDraftsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(new HashSet<Guid> { inOtherDraft });
+
+        var saved = await Save(Draft() with { DraftId = draft.Id, MediaIds = [kept] });
+
+        Assert.Equal(new[] { kept }, saved.Media.Select(m => m.MediaId));
+        await _media.Received(1).DeleteAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(dropped)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Saving_a_draft_without_taking_anything_out_deletes_nothing()
+    {
+        var photo = Guid.NewGuid();
+        var draft = PostDraft.Create(UserId, Content([photo]), Now);
+        _drafts.GetAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
+
+        await Save(Draft() with { DraftId = draft.Id, MediaIds = [photo, Guid.NewGuid()] });
+
+        await _media.DidNotReceiveWithAnyArgs().DeleteAsync(default!, Ct);
+    }
+
     private async Task<DraftDto> Save(SaveDraftCommand command) =>
-        await new SaveDraftCommandHandler(_drafts, _posts, _media, new DraftViews(_media), _caller, _clock).Handle(command, Ct);
+        await new SaveDraftCommandHandler(
+            _drafts,
+            _posts,
+            _media,
+            new DraftViews(_media),
+            new DraftDeletion(_drafts, _posts, _media, NullLogger<DraftDeletion>.Instance),
+            _caller,
+            _clock).Handle(command, Ct);
 
     private DeleteDraftCommandHandler DeleteHandler() =>
         new(new DraftDeletion(_drafts, _posts, _media, NullLogger<DraftDeletion>.Instance), _drafts, _caller);

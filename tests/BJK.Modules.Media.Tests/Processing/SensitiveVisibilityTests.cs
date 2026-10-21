@@ -161,7 +161,7 @@ public sealed class SensitiveVisibilityTests
         var item = Processing();
         _redaction = _redaction with { SensitiveScore = 0.62, FramesClassified = 20 };
 
-        await Processor(new SensitiveDetectionOptions { Enabled = true, Threshold = 0.35 }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
+        await Processor(new SensitiveDetectionOptions { Threshold = 0.35 }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
         await _media.Received(1).SetSensitiveAsync(
             item.Id, true, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>(), SensitiveMarkSource.Automatic, 0.62, Arg.Any<bool>());
@@ -177,7 +177,7 @@ public sealed class SensitiveVisibilityTests
         var item = Processing();
         _redaction = _redaction with { SensitiveScore = 0.2, FramesClassified = 20 };
 
-        await Processor(new SensitiveDetectionOptions { Enabled = true, Threshold = 0.35 }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
+        await Processor(new SensitiveDetectionOptions { Threshold = 0.35 }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
         await _media.DidNotReceiveWithAnyArgs().SetSensitiveAsync(default, default, default, Ct, default, default, default);
         Assert.Equal(0.2, item.SensitiveScore);
@@ -190,7 +190,7 @@ public sealed class SensitiveVisibilityTests
         var item = Processing();
         _redaction = _redaction with { ReviewReasons = ["The graphic content check failed."] };
 
-        await Processor(new SensitiveDetectionOptions { Enabled = true }).ProcessAsync(Job(item), isLastAttempt: false, Ct);
+        await Processor(new SensitiveDetectionOptions()).ProcessAsync(Job(item), isLastAttempt: false, Ct);
 
         Assert.Equal(MediaStatus.NeedsReview, item.Status);
         Assert.Empty(_storage.Keys(MediaBucket.Public));

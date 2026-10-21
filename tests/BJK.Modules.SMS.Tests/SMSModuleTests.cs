@@ -41,7 +41,6 @@ public sealed class SMSModuleTests
     {
         using var provider = Build(new()
         {
-            ["SMS:Provider"] = "Twilio",
             ["SMS:Twilio:AccountSid"] = "AC123",
             ["SMS:Twilio:AuthToken"] = "token",
             ["SMS:Twilio:MessagingServiceSid"] = "MG123",
@@ -53,7 +52,7 @@ public sealed class SMSModuleTests
     [Fact]
     public void Fails_fast_when_twilio_has_no_credentials_or_sender()
     {
-        using var provider = Build(new() { ["SMS:Provider"] = "Twilio", ["SMS:Twilio:AccountSid"] = "AC123" });
+        using var provider = Build(new() { ["SMS:Twilio:AccountSid"] = "AC123" });
 
         var error = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<SMSOptions>>().Value);
 
@@ -62,11 +61,11 @@ public sealed class SMSModuleTests
     }
 
     [Fact]
-    public void Rejects_an_unknown_provider_name()
+    public void A_template_placeholder_doesnt_count_as_twilio_settings()
     {
-        using var provider = Build(new() { ["SMS:Provider"] = "Vonage" });
+        using var provider = Build(new() { ["SMS:Twilio:AccountSid"] = "<only if you use Twilio: AC...>" });
 
-        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<SMSOptions>>().Value);
+        Assert.IsType<LoggingSMSSender>(provider.GetRequiredService<ISMSSender>());
     }
 
     [Fact]

@@ -83,11 +83,12 @@ public sealed class MediaOptions
     /// Originals are deleted as soon as they're no longer needed: when the post using the media is published (or the
     /// media is deleted). This is the most they're kept otherwise, counted from upload: failed media (until the user
     /// uploads again), media never posted, and abandoned uploads. Media still processing or waiting for a moderator
-    /// keeps its original. Replaces the 90-day retention (owner's decision, 19 Oct 2026).
+    /// keeps its original. Replaces the 90-day retention (owner's decision, 19 Oct 2026). Since 21 Oct 2026 it's also
+    /// how long an upload nothing uses (not in a post, draft or avatar) is kept before it's deleted altogether.
     /// </summary>
     public TimeSpan UnusedOriginalRetention { get; set; } = TimeSpan.FromHours(24);
 
-    /// <summary>How often the API host's sweeper deletes originals past <see cref="UnusedOriginalRetention"/>.</summary>
+    /// <summary>How often the API host's sweeper deletes originals, and uploads nothing uses, past <see cref="UnusedOriginalRetention"/>.</summary>
     public TimeSpan OriginalSweepInterval { get; set; } = TimeSpan.FromHours(1);
 
     public long MaxBytesFor(Domain.MediaType type) =>
@@ -132,15 +133,6 @@ public sealed class MediaStorageOptions
 
     /// <summary>The bucket sensitive files go in: <see cref="SensitiveBucket"/>, or the originals bucket.</summary>
     public string EffectiveSensitiveBucket => string.IsNullOrWhiteSpace(SensitiveBucket) ? OriginalsBucket! : SensitiveBucket.Trim();
-}
-
-/// <summary>The processing queue. Section <c>Media:Queue</c>. It is a table in the messaging schema (see <c>Messaging</c>).</summary>
-public sealed class MediaQueueOptions
-{
-    public const string SectionName = "Media:Queue";
-
-    [Required]
-    public string QueueName { get; set; } = "media.process";
 }
 
 /// <summary>The processing worker. Section <c>Media:Processing</c>; only the worker host reads it.</summary>
@@ -351,32 +343,33 @@ public enum RedactionExecutionProvider
 }
 
 /// <summary>
-/// Automatic detection of graphic content (blood, injuries, the aftermath of serious crashes). Section
-/// <c>Media:SensitiveDetection</c>; only the worker host reads it. When enabled, the media worker scores frames already
-/// decoded (and scaled down) for blurring with an image classifier; a photo or video scoring at least
-/// <see cref="Threshold"/> is marked sensitive automatically before it's published, so it's never public unblurred,
-/// and its post goes to the moderators' sensitive-review queue. If the classifier is missing or fails, the media goes
-/// to review instead of being published unchecked.
+/// Automatic detection of graphic content (blood, injuries, the aftermath of serious crashes) and nudity. Section
+/// <c>Media:SensitiveDetection</c>; only the worker host reads it. The media worker scores frames already decoded (and
+/// scaled down) for blurring with CLIP (<see cref="ModelPath"/>); a photo or video scoring at least
+/// <see cref="Threshold"/> for graphic content is marked sensitive automatically before it's published, so it's never
+/// public unblurred, and its post goes to the moderators' sensitive-review queue. One scoring at least
+/// <see cref="NudityThreshold"/> for nudity isn't published: it waits for a moderator (pornography isn't allowed). If
+/// the classifier is missing or fails, the media goes to review instead of being published unchecked. Required when
+/// deployed.
 /// </summary>
 public sealed class SensitiveDetectionOptions
 {
     public const string SectionName = "Media:SensitiveDetection";
 
     /// <summary>
-    /// Turns detection on. Off by default until a model has been chosen and tested: once on, a missing or broken model
-    /// sends every upload to review (fail safe).
+    /// The CLIP model file (ONNX): Xenova's quantised CLIP ViT-B/32 vision model, e.g.
+    /// <c>/opt/bjk/models/clip-vit-b32-vision.onnx</c> (bjk-core's model download script fetches it). When it's set the
+    /// nudity and graphic content checks run with CLIP. Empty: in Development a stand-in that flags strongly red
+    /// pictures is used (and logged); outside Development the app won't start (Online Safety Act).
     /// </summary>
-    public bool Enabled { get; set; }
+    public string? ModelPath { get; set; }
 
     /// <summary>
-    /// <see cref="SensitiveClassifierProvider.Onnx"/> (a model file, <see cref="ModelPath"/>) or
-    /// <see cref="SensitiveClassifierProvider.Development"/> (a stand-in that flags strongly red pictures, for local
-    /// testing only; refused outside the Development environment).
+    /// Nudity score (0 to 1) at or above which media is held for a moderator instead of being published. Only
+    /// classifiers that score nudity (Clip) use it. Low, to over-flag: dashcam footage scores near 0.
     /// </summary>
-    public SensitiveClassifierProvider Provider { get; set; } = SensitiveClassifierProvider.Onnx;
-
-    /// <summary>The image classification model (ONNX), e.g. <c>/opt/bjk/models/graphic-content.onnx</c>.</summary>
-    public string? ModelPath { get; set; }
+    [Range(0.01, 1.0)]
+    public double NudityThreshold { get; set; } = 0.3;
 
     /// <summary>
     /// Score (0 to 1) at or above which media is marked sensitive. Deliberately low, to over-flag: a moderator confirms
@@ -391,85 +384,39 @@ public sealed class SensitiveDetectionOptions
     /// </summary>
     [Range(1, 100)]
     public int SampleEvery { get; set; } = 3;
-
-    /// <summary>The model's input width in pixels (frames are resized to it, ignoring aspect ratio).</summary>
-    [Range(16, 2048)]
-    public int InputWidth { get; set; } = 224;
-
-    /// <summary>The model's input height in pixels.</summary>
-    [Range(16, 2048)]
-    public int InputHeight { get; set; } = 224;
-
-    /// <summary>
-    /// Per-channel mean (R,G,B), comma-separated, subtracted after pixels are scaled to 0 to 1. ImageNet's by default,
-    /// which most classifiers fine-tuned from ImageNet expect.
-    /// </summary>
-    public string Mean { get; set; } = "0.485,0.456,0.406";
-
-    /// <summary>Per-channel standard deviation (R,G,B), comma-separated, divided by after the mean is subtracted.</summary>
-    public string Std { get; set; } = "0.229,0.224,0.225";
-
-    /// <summary>How to read the model's output (its first output, shape [1, classes]).</summary>
-    public SensitiveModelOutput Output { get; set; } = SensitiveModelOutput.Softmax;
-
-    /// <summary>
-    /// Which output classes mean graphic content, comma-separated indices (e.g. "1" for a [safe, graphic] model). With
-    /// Softmax or Probabilities their probabilities are added; with Sigmoid the highest is taken.
-    /// </summary>
-    public string SensitiveClasses { get; set; } = "1";
-
-    /// <summary>The parsed <see cref="Mean"/>.</summary>
-    public float[] MeanValues => ParseFloats(Mean, nameof(Mean));
-
-    /// <summary>The parsed <see cref="Std"/>.</summary>
-    public float[] StdValues => ParseFloats(Std, nameof(Std));
-
-    /// <summary>The parsed <see cref="SensitiveClasses"/>.</summary>
-    public int[] SensitiveClassIndices =>
-        SensitiveClasses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(v => int.Parse(v, System.Globalization.CultureInfo.InvariantCulture))
-            .ToArray();
-
-    /// <summary>True if the comma-separated settings parse and make sense.</summary>
-    public bool IsValid()
-    {
-        try
-        {
-            return MeanValues.Length == 3 && StdValues.Length == 3 && StdValues.All(v => v > 0)
-                && SensitiveClassIndices.Length > 0 && SensitiveClassIndices.All(i => i >= 0);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-    }
-
-    private static float[] ParseFloats(string value, string name) =>
-        (value ?? throw new FormatException($"{name} is empty."))
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(v => float.Parse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture))
-            .ToArray();
 }
 
-/// <summary>Which graphic content classifier the worker uses (<c>Media:SensitiveDetection:Provider</c>).</summary>
-public enum SensitiveClassifierProvider
+/// <summary>
+/// Checking uploads against known illegal images (section <c>Media:KnownImages</c>; the media worker reads it). The
+/// hashes are in SQL (<c>media.KnownImageHashes</c>): from hash lists such as the IWF's, written by
+/// <see cref="Infrastructure.Processing.Safety.IKnownImageSource"/> sync jobs; added by moderators when they remove an
+/// image; or harmless test hashes locally. Every photo, and sampled video frames, are hashed with PDQ, and the file
+/// with SHA-256 and MD5; a match blocks the upload, deletes its files and records the match for moderators.
+/// </summary>
+public sealed class KnownImageOptions
 {
-    /// <summary>An ONNX image classification model from <c>Media:SensitiveDetection:ModelPath</c>.</summary>
-    Onnx,
+    public const string SectionName = "Media:KnownImages";
 
-    /// <summary>A stand-in for local development that scores the share of strongly red pixels. Development only.</summary>
-    Development,
-}
+    /// <summary>On by default (an empty list blocks nothing); required when deployed.</summary>
+    public bool Enabled { get; set; } = true;
 
-/// <summary>How the classifier model's output is turned into a score (<c>Media:SensitiveDetection:Output</c>).</summary>
-public enum SensitiveModelOutput
-{
-    /// <summary>Logits: softmax over all classes, then the sensitive classes' probabilities added.</summary>
-    Softmax,
+    /// <summary>How often the worker checks SQL for changes to the list (it reloads only if something changed).</summary>
+    public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>Independent logits: sigmoid of each sensitive class, the highest taken (multi-label models).</summary>
-    Sigmoid,
+    /// <summary>
+    /// How many of PDQ's 256 bits may differ for a match. 31 is the figure Meta and the hash-sharing programmes use;
+    /// higher catches more edited copies and more false matches.
+    /// </summary>
+    [Range(0, 64)]
+    public int PdqMaxDistance { get; set; } = 31;
 
-    /// <summary>Already probabilities (the model ends in softmax): the sensitive classes' values added.</summary>
-    Probabilities,
+    /// <summary>
+    /// Frames whose PDQ quality (0 to 100) is below this aren't checked: flat or blank pictures give hashes that match
+    /// too easily. 50 is the usual figure.
+    /// </summary>
+    [Range(0, 100)]
+    public int PdqMinQuality { get; set; } = 50;
+
+    /// <summary>How often each hash list source (<c>IKnownImageSource</c>) is synced into SQL.</summary>
+    public TimeSpan SyncInterval { get; set; } = TimeSpan.FromHours(6);
 }

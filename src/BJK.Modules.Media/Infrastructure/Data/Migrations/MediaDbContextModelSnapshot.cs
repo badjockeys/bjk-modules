@@ -23,6 +23,108 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BJK.Modules.Media.Domain.KnownImageHash", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("AddedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Source", "Kind", "Value")
+                        .IsUnique();
+
+                    b.ToTable("KnownImageHashes", "media");
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.KnownImageMatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Distance")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("HashId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTimeOffset>("MatchedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("MatchedValue")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReportReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("ReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchedAt");
+
+                    b.HasIndex("MediaId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("KnownImageMatches", "media");
+                });
+
             modelBuilder.Entity("BJK.Modules.Media.Domain.MediaItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -63,6 +165,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<double?>("NudityScore")
+                        .HasColumnType("float");
+
                     b.Property<string>("OriginalContentType")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -86,6 +191,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
 
                     b.Property<long?>("OriginalSizeBytes")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("PerceptualHashes")
+                        .HasMaxLength(520)
+                        .HasColumnType("nvarchar(520)");
 
                     b.Property<int?>("PlatesBlurred")
                         .HasColumnType("int");
@@ -153,6 +262,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("UploadedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("UsageCheckedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -160,6 +272,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Media_UnusedUploads")
+                        .HasFilter("[UsageCheckedAt] IS NULL AND [Status] <> 'Deleted'");
 
                     b.HasIndex("Status", "CreatedAt");
 

@@ -1,4 +1,5 @@
 using BJK.Modules.Notifications.Domain;
+using BJK.Modules.Shared.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -18,6 +19,8 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
 
     public DbSet<AreaAlertItem> AreaAlertItems => Set<AreaAlertItem>();
 
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(NotificationsModule.Schema);
@@ -34,6 +37,7 @@ internal sealed class NotificationConfiguration : IEntityTypeConfiguration<Notif
         builder.Property(n => n.Id).ValueGeneratedNever();
         builder.Property(n => n.Type).HasConversion<string>().HasMaxLength(40);
         builder.Property(n => n.PostTitle).HasMaxLength(Notification.PostTitleMaxLength);
+        builder.Property(n => n.Detail).HasMaxLength(NotificationRequest.DetailMaxLength);
         builder.Ignore(n => n.IsRead);
 
         // The bell: a user's newest first, and their unread count.
@@ -52,6 +56,26 @@ internal sealed class NotificationSettingConfiguration : IEntityTypeConfiguratio
         builder.ToTable("NotificationSettings");
         builder.HasKey(s => new { s.UserId, s.Type });
         builder.Property(s => s.Type).HasConversion<string>().HasMaxLength(40);
+
+        // Existing rows predate push: they keep push on, as the defaults have it.
+        builder.Property(s => s.Push).HasDefaultValue(true);
+    }
+}
+
+internal sealed class PushSubscriptionConfiguration : IEntityTypeConfiguration<PushSubscription>
+{
+    public void Configure(EntityTypeBuilder<PushSubscription> builder)
+    {
+        builder.ToTable("PushSubscriptions");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Endpoint).HasMaxLength(PushSubscription.EndpointMaxLength).IsRequired();
+        builder.Property(s => s.P256dh).HasMaxLength(PushSubscription.KeyMaxLength).IsRequired();
+        builder.Property(s => s.Auth).HasMaxLength(PushSubscription.KeyMaxLength).IsRequired();
+
+        // One row per browser; a user's devices.
+        builder.HasIndex(s => s.Endpoint).IsUnique();
+        builder.HasIndex(s => s.UserId);
     }
 }
 

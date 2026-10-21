@@ -8,7 +8,8 @@ namespace BJK.Modules.Profiles.UseCases;
 /// A profile. <c>RoadUser</c> (Driver, Cyclist or Both) is shown to others only if the user chose to show it;
 /// <c>ShowRoadUser</c> is only filled in for the user themselves (null for others). <c>FollowerCount</c> and
 /// <c>FollowingCount</c> count active profiles; <c>IsFollowing</c> (you follow them) and <c>FollowsYou</c> are null
-/// when signed out or for yourself.
+/// when signed out or for yourself. <c>Badges</c>: Founding member, Trusted reporter, Local regular (never shown for
+/// under-18s).
 /// </summary>
 public sealed record ProfileDto(
     Guid Id,
@@ -23,7 +24,8 @@ public sealed record ProfileDto(
     int FollowerCount = 0,
     int FollowingCount = 0,
     bool? IsFollowing = null,
-    bool? FollowsYou = null)
+    bool? FollowsYou = null,
+    IReadOnlyList<Badge>? Badges = null)
 {
     internal static ProfileDto From(Profile profile, Uri? avatarUrl, bool forOwner = true) => new(
         profile.Id,
@@ -77,6 +79,14 @@ internal static class Avatars
     }
 
     /// <summary>The profile with its follow counts, and whether the viewer and they follow each other.</summary>
+    /// <summary>Adds the badges the profile shows (Local regular is left out for under-18s).</summary>
+    public static async Task<ProfileDto> WithBadgesAsync(
+        IProfileRepository profiles,
+        ProfileDto dto,
+        Profile profile,
+        CancellationToken cancellationToken) =>
+        dto with { Badges = ProfileBadge.Visible(await profiles.ListBadgesAsync(profile.Id, cancellationToken), profile.IsMinor) };
+
     public static async Task<ProfileDto> WithFollowsAsync(
         IProfileRepository profiles,
         ProfileDto dto,

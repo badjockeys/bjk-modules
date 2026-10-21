@@ -27,7 +27,7 @@ src/
       AgeChecks/                 Age check (18+, on demand, for sensitive posts): selfie or photo ID, status, admin reset
       AccountLifecycle.cs        Deactivate / reactivate / delete, each with an outbox event
     Infrastructure/Services/     IUserRepository, IIdentityService (implemented by the host)
-    Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; HTTP estimator adapter;
+    Infrastructure/AgeAssurance/ ILivenessChecker, IAgeEstimator, IDocumentAgeCheck; Yoti estimator;
                                  Development stand-ins; settings checked at startup
     Contracts/                   IAccountAgeLookup and the age_verified and minor claims, for the identity server's tokens
     Infrastructure/Data/         UserDbContext (schema: users: Accounts, Outbox) and Migrations/
@@ -124,7 +124,7 @@ app.MapControllers();
 | Key | Notes |
 |---|---|
 | `ConnectionStrings:<name>` | The name passed to `new UserModule(...)`. The module's tables live in the `users` schema of the `idsrv` database (the identity server hosts this module). |
-| `Messaging:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server sets `Messaging:ConnectionStringName` and `Messaging:CreateTables=false`. |
+| `Queues:*` | Durable queues in SQL Server; every key has a default. See [Messaging](#messaging-sql-server-queues). The identity server puts its queues in bjk-core's database in code (`UseQueuesIn("BadJockeysDatabase", createTables: false)`), not by a setting. |
 | `Users:DeactivationGracePeriod` | Identity server only. Default `90.00:00:00`. |
 | `Users:RetentionCheckInterval` | Identity server only. Default `01:00:00`. |
 | `AgeAssurance:*` | Identity server only. The age check for sensitive posts: see [Age policy](#age-policy-13-and-the-age-check-for-sensitive-posts). |
@@ -135,13 +135,12 @@ app.MapControllers();
 | `Posts:AllowedRegions` | Where incidents may be posted. Default (empty): `GB`, the UK including Northern Ireland. Also `IM` (Isle of Man), `JE` (Jersey), `GG` (Guernsey). Unknown codes stop startup. bjk-core only. |
 | `Posts:ReportsInbox` | Where every new report is emailed, as well as going to the moderation queue (until there's a ticketing system). Default `support@badjockeys.com`; empty turns it off. Must be a valid address. bjk-core only. |
 | `Posts:AppUrl` | The web app's address (e.g. `https://badjockeys.com`), for the "Open it on Bad Jockeys" link in report emails. Optional. bjk-core only. |
-| `Screening:Provider` | `Keywords` (default) or `Http`. bjk-core only. See "Online safety". |
-| `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | Classifier URL (required for `Http`); thresholds default 0.5 and 0.8; timeout default 3 s. |
+| `Screening:Endpoint`, `:FlagThreshold`, `:HoldThreshold`, `:Timeout` | bjk-core only. The keyword list always runs; `Endpoint` (optional) adds a classifier service. Thresholds default 0.5 and 0.8; timeout default 3 s. See "Online safety". |
 | `Plans:Overrides:<user id>` | `free`, `premium` or `premium_plus`, for testing paid features before billing exists. See [Plans](#plans-and-entitlements). |
 | `Reels:*` | Daily plays and the ranking job. bjk-core only. See [Reels](#reels). |
 | `Heatmap:*` | Suppression threshold and history by plan. bjk-core only. See [Incident heat map](#incident-heat-map). |
 | `Hashtags:*` | Trending's minimums (`TrendingMinPosts` 3, `TrendingMinAuthors` 3), how many it shows (`TrendingTags` 10, `TrendingPlaces` 5), `BaselineDays` (7), `RebuildInterval` (5 minutes), `HourlyRetention` (90 days) and a `Blocklist` of extra tags never recorded. All optional. bjk-core only. See [Hashtags and Trending](#hashtags-and-trending). |
-| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | bjk-core: the public report form. `Turnstile` (default; needs the secret, which is checked at startup) or `AlwaysPass` (tests). Same keys as the identity server. Secret. |
+| `Captcha:TurnstileSecretKey` | bjk-core: the public report form, checked with Cloudflare Turnstile. Required (checked at startup); locally Cloudflare's test key. Same key as the identity server. Secret. |
 
 `user-secrets.template.json` lists these with local development values.
 
@@ -152,9 +151,9 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | Setting | Required outside Development | From |
 |---|---|---|
 | `MediatR:LicenseKey` | Set | Every host |
-| `Email:Provider` | `SendGrid` (`Log`, the default, sends nothing; use SendGrid's `SandboxMode` on test servers) | Email module |
-| `SMS:Provider` | `Twilio` (`Log` sends nothing) | SMS module |
-| `Captcha:Provider`, `Captcha:TurnstileSecretKey` | `Turnstile` (or unset); a real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
+| `Email:SendGrid:ApiKey`, `Email:FromAddress` | Set (without the key emails are only logged; use SendGrid's `SandboxMode` on test servers) | Email module |
+| `SMS:Twilio:AccountSid` (and its credentials) | Set (without Twilio texts are only logged) | SMS module |
+| `Captcha:TurnstileSecretKey` | A real secret, not one of Cloudflare's `1x0000`/`2x0000`/`3x0000` test keys | Captcha (Posts' public report form) |
 | `Notifications:AppUrl` | An https address | Notifications module |
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
@@ -234,13 +233,12 @@ The "highly effective" age check is no longer part of sign-up. A signed-in user 
 | `AgeAssurance:ChallengeAge` | 25 | At least 18 |
 | `AgeAssurance:MaxAttemptsPerDay` | 3 | |
 | `AgeAssurance:MaxVideoBytes`, `MaxImageBytes` | 15 MB, 10 MB | |
-| `AgeAssurance:Liveness:Provider` | `Development` | `YuNet` (identity server) for real checks |
-| `AgeAssurance:Estimator:Provider` | `Development` | `Http` for a real provider |
-| `AgeAssurance:Estimator:Http:Name`, `Endpoint`, `ApiKey` (secret), `ApiKeyHeader`, `ApiKeyPrefix`, `VideoField`, `AgePath`, `UncertaintyPath`, `Timeout` | | Generic adapter. It POSTs the video as multipart/form-data and reads the age (and an optional margin of error) from the JSON response by dot path, e.g. `result.age.estimate`. A vendor with a different API gets its own `IAgeEstimator`. |
-| `AgeAssurance:Document:Provider` | `Development` | No real photo-ID provider is built yet. Plug one in by registering an `IDocumentAgeCheck`. |
-| `AgeAssurance:*:Development:Age`, `AgeAssurance:Liveness:Development:Pass` | 30, true | What the Development stand-ins answer, for trying every path locally |
+| `AgeAssurance:Liveness:ModelPath` | | OpenCV Zoo's `face_detection_yunet_2023mar.onnx`. Set: the identity server's YuNet head-turn check runs (it reads the rest of `AgeAssurance:Liveness`) |
+| `AgeAssurance:Yoti:SdkId`, `PrivateKey` (secret) | | Yoti's facial age estimation with anti-spoofing (`YotiAgeEstimator`), used when both are set. One frame from the start of the selfie video goes to Yoti's `/age-antispoofing`, with each request signed (SHA256withRSA over the method, path with `nonce` and `timestamp`, and base64 body). A spoof, a margin over `MaxUncertainty`, or a picture Yoti can't use (no face, too dark...) counts as "couldn't tell", so photo ID is offered |
+| `AgeAssurance:Yoti:BaseUrl`, `Timeout`, `MaxUncertainty`, `FfmpegPath` | `https://api.yoti.com/ai/v1`, 20 s, 6, `ffmpeg` | |
+| `AgeAssurance:Development:LivenessPasses`, `EstimatedAge`, `DocumentAge` | true, 30, 30 | What the stand-ins answer locally, for trying every path. Ignored outside Development |
 
-**Development providers never run anywhere else.** They don't check anything real, so startup refuses them outside the Development environment, along with an unknown provider name or an Http estimator with no HTTPS endpoint or key. A host adds a provider by registering another `ILivenessChecker`, `IAgeEstimator` or `IDocumentAgeCheck` singleton with its own `Name`.
+**No provider switches.** Each step uses the real provider whose settings are filled in. Without one, the Development environment uses a stand-in (and logs that it does); anywhere else the app refuses to start and names what's missing. Photo ID has no real provider yet (Yoti's document check needs their hosted session flow, still to build), so for now **deployed environments won't start** until it is. A host adds a provider by registering another `ILivenessChecker`, `IAgeEstimator` or `IDocumentAgeCheck` singleton that reports `IsConfigured`.
 
 ## Deactivation, retention and deletion
 
@@ -286,7 +284,7 @@ Durable jobs and events are rows in SQL Server, in the `messaging` schema of the
 
 Rebus only appears in `Messaging/SqlServer/`. Going back to a broker later (Rebus has RabbitMQ and Azure Service Bus transports) is a change there and in configuration, not in the modules.
 
-**Tables**, created on first use (`Messaging:CreateTables`):
+**Tables**, created on first use (except by the identity server, below):
 
 | Table | What |
 |---|---|
@@ -300,14 +298,14 @@ Each queue row has `id`, `priority`, `visible` (hidden until then: delays and re
 
 **How a message is handled.**
 
-- **Competing consumers.** A consumer claims the next visible row with `UPDLOCK, READPAST, ROWLOCK` (others skip locked rows, so each message goes to one consumer) and leases it for `Messaging:LeaseDuration` (60 s), renewed every 20 s while the work goes on. Done: the row is deleted. Replicas share a queue simply by reading the same table.
+- **Competing consumers.** A consumer claims the next visible row with `UPDLOCK, READPAST, ROWLOCK` (others skip locked rows, so each message goes to one consumer) and leases it for `Queues:LeaseDuration` (60 s), renewed every 20 s while the work goes on. Done: the row is deleted. Replicas share a queue simply by reading the same table.
 - **Attempts.** `deliverycount` goes up on every claim, including claims by a worker that then crashed, like RabbitMQ's `x-delivery-count`; it reaches the code as `ReceivedMessage.Attempt` (Rebus's `rbs2-delivery-count` header). A host that stops cleanly hands its message back without using up an attempt.
-- **Retries.** A failure (an exception or `Retry`) hides the message for `Messaging:RetryDelay` (5 s), doubling each time up to `Messaging:MaxRetryDelay` (5 min).
+- **Retries.** A failure (an exception or `Retry`) hides the message for `Queues:RetryDelay` (5 s), doubling each time up to `Queues:MaxRetryDelay` (5 min).
 - **Dead letters.** If the last attempt fails, `OnGivenUpAsync` runs (the media worker marks the media `Failed`) and the message moves to `<queue>.failed`. If a worker crashed on the last attempt, the next delivery gives up straight away without running the work again. A consumer can also dead-letter an unreadable message at once.
 - **Crashes.** A worker that dies stops renewing its lease, so the message is delivered again when the lease ends (within about a minute).
 - **At least once.** A message can occasionally be handled twice (a crash after the work but before the delete), so every handler is idempotent.
 
-**The identity server (another database).** The identity server's data is in `idsrv`; the queues are in `badjockeys` on the same server. The identity server keeps its transactional outbox (`users.Outbox`, in the same transaction as the account change) and its outbox publisher writes the events straight into bjk-core's queue tables through a second connection string, `ConnectionStrings:Messaging`, chosen with `Messaging:ConnectionStringName=Messaging`. Because that's another database, an event is published first and then marked as published, so it may very occasionally be delivered twice (handlers are idempotent). Events wait in the outbox while no queue subscribes to `bjk.users`, so a fresh environment loses nothing before bjk-core's first start. The identity server sets `Messaging:CreateTables=false`; bjk-core creates the tables.
+**The identity server (another database).** The identity server's data is in `idsrv`; the queues are in `badjockeys` on the same server. The identity server keeps its transactional outbox (`users.Outbox`, in the same transaction as the account change) and its outbox publisher writes the events straight into bjk-core's queue tables through a second connection string, `ConnectionStrings:BadJockeysDatabase`, chosen in code with `services.UseQueuesIn("BadJockeysDatabase", createTables: false)`. Because that's another database, an event is published first and then marked as published, so it may very occasionally be delivered twice (handlers are idempotent). Events wait in the outbox while no queue subscribes to `bjk.users`, so a fresh environment loses nothing before bjk-core's first start. The identity server never creates tables; bjk-core does.
 
 That connection uses its own database user in `badjockeys`, allowed to read the subscriptions and add rows to the queue tables, and nothing else (no access to bjk-core's data, no deletes, no schema changes):
 
@@ -320,17 +318,15 @@ GRANT SELECT ON OBJECT::[messaging].[subscriptions] TO [bjk-identity-server];
 GRANT INSERT ON SCHEMA::[messaging] TO [bjk-identity-server];
 ```
 
-**Settings** (section `Messaging`, all optional):
+**Settings** (section `Queues`, all optional):
 
 | Key | Default | Notes |
 |---|---|---|
-| `ConnectionStringName` | the module's own | The connection string holding the queues. bjk-core: leave empty (`AppDatabase`). Identity server: `Messaging`. |
 | `Schema` | `messaging` | |
 | `PollingInterval` | `00:00:01` | How often an idle consumer looks for new messages. |
 | `LeaseDuration` | `00:01:00` | How soon a crashed worker's message is retried. |
 | `RetryDelay`, `MaxRetryDelay` | `00:00:05`, `00:05:00` | Waits between attempts. |
-| `CreateTables` | `true` | `false` where the login can't create tables (the identity server). |
-| `UserEventsQueue`, `MediaEventsQueue` | `bjk-core.user-events`, `bjk-core.media-events` | bjk-core's queues. |
+| `UserEvents`, `MediaEvents`, `MediaProcessing` | `bjk-core.user-events`, `bjk-core.media-events`, `media.process` | bjk-core's queues. |
 
 **Why Rebus, not Wolverine.** Both are MIT, support .NET 10 and have a SQL Server transport with row locking, retries, dead letters, delayed messages and pub/sub. Rebus is a small bus that sits next to MediatR rather than replacing it, has a stable API (v8; the project is over ten years old), needs no code generation at startup (the media worker scales from zero), stores the queues in plain tables we can query (and scale on with KEDA), and its transport's connection is independent of the app database, which makes the identity server's cross-database publishing simple. Wolverine has more built in (durable attempt counts, an EF Core outbox) but is a whole application framework: a second handler model alongside MediatR, runtime code generation, a dozen tables plus node and leader agents, its transport tied to its own message store's database, and crash recovery that depends on detecting dead nodes. Rebus's SQL transport doesn't keep a delivery count or delay retries, so `SqlServerQueueTransport` adds both (about 200 lines over Rebus's lease transport).
 
@@ -408,11 +404,12 @@ Configuration (user secrets locally, container settings and secrets when deploye
 | `Media:Storage:SensitiveBucket` | Optional private bucket for the real files of sensitive media (default: the originals bucket, under `sensitive/`). Set it if the originals bucket has any deletion (lifecycle) rule |
 | `Media:SensitiveLinkLifetime` | How long signed links to sensitive media work (default 10 minutes, 1 minute to 1 hour) |
 | `Media:Processing:SensitivePreviewSourceSize`, `SensitivePreviewSize` | Blurred preview: shrink to 64 px, then enlarge to 480 px (worker) |
-| `Media:SensitiveDetection:*` | Automatic graphic content detection (worker; see below) |
-| `Media:Queue:QueueName` | Default `media.process` (table `[messaging].[media.process]`); jobs given up on go to `[messaging].[media.process.failed]` |
+| `Media:SensitiveDetection:*` | Automatic graphic content and nudity checks (worker; required when deployed; see below) |
+| `Media:KnownImages:*` | Checking uploads against known illegal images (worker; see below) |
+| `Queues:MediaProcessing` | Default `media.process` (table `[messaging].[media.process]`); jobs given up on go to `[messaging].[media.process.failed]` |
 | `Media:MaxVideoBytes`, `Media:MaxImageBytes`, `Media:MaxVideoDurationSeconds`, `Media:UploadUrlLifetime` | Defaults: 150 MB (157286400), 25 MB, 30 s, 15 min |
 | `Media:UnusedOriginalRetention`, `Media:OriginalSweepInterval` | Defaults 24 hours and 1 hour: the most an original is kept when nothing releases it sooner, and how often the API host sweeps (see "Originals"). `Media:OriginalRetention` (90 days) is gone |
-| `Messaging:MediaEventsQueue` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (dead-lettered to `.failed` after 5 attempts) |
+| `Queues:MediaEvents` | Default `bjk-core.media-events`: the API host's queue for `media.ready` / `media.failed` (dead-lettered to `.failed` after 5 attempts) |
 
 ### Originals (deleted as soon as they're not needed)
 
@@ -435,7 +432,7 @@ A 30-second video is processed as six 5-second pieces by up to six worker replic
 
 ### Media events (`media.ready`, `media.failed`)
 
-When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the topic **`bjk.media`** (message type `media.ready` or `media.failed`) using Shared's outbox publisher, as for user events; the queues are in the same database, so each batch is published and marked as published in one transaction. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration, connectionStringName)`; the host reads them from `Messaging:MediaEventsQueue` (5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
+When media becomes `Ready` (processed, or approved by a moderator) or `Failed` (processing failed, too long or too big, rejected by a moderator), or is deleted before it was ready, `MediaDbContext` writes a `MediaEvent` (`eventId`, `mediaId`, `userId`, `type`: `Ready` / `Failed`, `reason`, `occurredAt`) to `media.Outbox` in the same transaction as the status change, whichever host made it (the API or a worker). The API host publishes the outbox to the topic **`bjk.media`** (message type `media.ready` or `media.failed`) using Shared's outbox publisher, as for user events; the queues are in the same database, so each batch is published and marked as published in one transaction. Workers write to the outbox but don't publish it. Consumers register `IMediaEventHandler` with `services.AddMediaEventHandler<T>(configuration, connectionStringName)`; the host reads them from `Queues:MediaEvents` (5 attempts, then `.failed`). A message can arrive twice, so handlers re-read the current state. `NeedsReview` doesn't publish an event (it's still on its way).
 
 ### Automatic blurring (faces and number plates)
 
@@ -525,24 +522,54 @@ Media in a post tagged sensitive (by its author, a moderator, or automatic detec
 - **Cloudflare cache purge.** Published files are cached for a year, so after the public copies are deleted Cloudflare can keep serving them until purged. `IMediaCachePurger` is the hook; the default only logs a warning (event id 4801, `MediaCachePurgeNeeded`, naming the media id and file names). Purging (Cloudflare's purge-by-URL API, or a cache rule) is infra work: register a real `IMediaCachePurger` in the worker host before `AddMediaProcessing`, or alert on that event.
 - **Who gets what.** `IMediaDirectory.GetAsync` returns restricted media with no playback or thumbnail address, only `PreviewUrl`; `GetWithSensitiveLinksAsync` returns signed links (`Media:SensitiveLinkLifetime`, 10 minutes, `LinksExpireAt`). The Posts module decides who may see them (age-verified adults, the author, moderators). `GET /api/media/{id}` blurs sensitive media (`isBlurred: true`, `previewUrl` only) for anyone but the uploader, moderators and age-verified adults; `GET /api/media/mine` always gives the uploader their own files; data exports give 24-hour signed links; the moderator review endpoints give signed links. Deleting media deletes its private copies and preview too.
 
-### Automatic graphic content detection
+### Automatic content checks: graphic content, nudity and known illegal images
 
-The media worker can tag graphic content (blood, injuries, the aftermath of serious crashes) itself, so it's blurred before anyone sees it. Settings in `Media:SensitiveDetection` (worker only):
+Every photo, and sampled frames of every video, are checked by the media worker **before anything is published**, inside the existing blurring pass (frames already decoded and scaled down for face and plate detection, so nothing is decoded twice). Three checks, one pass:
+
+| Check | How | What happens |
+|---|---|---|
+| **Known illegal images** | Meta's PDQ perceptual hash (`Pdq`, open source) of each checked frame against the PDQ hashes in `media.KnownImageHashes`; SHA-256 and MD5 of the original file against the file hashes there, before any processing | **Blocked.** Nothing is published, the original (and any copy) is deleted, the media is `Failed` with "This file can't be posted.", a `media.KnownImageMatches` row is kept (uploader, matched hash, list, distance; no picture), and a critical log entry is written |
+| **Nudity** | OpenAI's CLIP (ViT-B/32, MIT licence; Xenova's quantised ONNX export of the vision model) as a zero-shot classifier: the frame's embedding against built-in text embeddings (`clip-prompts.json`) for ordinary road scenes, graphic content and nudity | At or above `NudityThreshold`: **held** (`NeedsReview`, "Possible nudity…"), never public until a moderator approves it |
+| **Graphic content** | The same CLIP run (one model run per frame covers both) | At or above `Threshold`: marked sensitive automatically, so it's shown blurred and its post is queued for a moderator (below) |
+
+Settings in `Media:SensitiveDetection` (worker only). There's no on/off or provider setting: with `ModelPath` set CLIP runs; without it a stand-in that flags mostly red pictures runs locally, and **deployed workers won't start**. A model that's missing or fails sends every upload to review (fail safe):
 
 | Setting | Default | |
 |---|---|---|
-| `Enabled` | `false` | Off until a model has been chosen and tested. Once on, a missing or failing model sends every upload to review (fail safe) |
-| `Provider` | `Onnx` | `Onnx` runs `ModelPath`; `Development` is a stand-in that flags mostly red pictures, refused outside the Development environment |
-| `ModelPath` | | An image classification model in ONNX format |
-| `Threshold` | `0.35` | Score at or above which media is marked sensitive. Low on purpose: over-flag, moderators confirm or undo |
-| `SampleEvery` | `3` | Score every Nth frame the blurring pass analyses (it analyses every 5th): about 2 frames a second at 30 fps. Photos are always scored |
-| `InputWidth`, `InputHeight`, `Mean`, `Std`, `Output`, `SensitiveClasses` | 224, 224, ImageNet mean/std, `Softmax`, `1` | How to feed the model (NCHW float RGB scaled to 0–1, then normalised) and read its first output (`[1, classes]`; `Softmax` for logits, `Sigmoid` for multi-label logits, `Probabilities` if it ends in softmax); `SensitiveClasses` lists the graphic class indices |
+| `ModelPath` | | The quantised CLIP vision model, `https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/onnx/vision_model_quantized.onnx` (89 MB, SHA-256 `583fd111…9299`); bjk-core's `pipelines/scripts/download-redaction-models.sh` and local setup fetch it |
+| `Threshold` | `0.35` | Graphic content score at or above which media is marked sensitive. Low on purpose: over-flag, moderators confirm or undo |
+| `NudityThreshold` | `0.3` | Nudity score at or above which media is held for a moderator |
+| `SampleEvery` | `3` | Check every Nth frame the blurring pass analyses (it analyses every 5th): about 2 frames a second at 30 fps. Photos are always checked |
 
-**How it works.** Scoring runs inside the existing blurring pass on frames already decoded and scaled down for face and plate detection (640 px for videos), so nothing is decoded twice; `ISensitiveContentClassifier` is the swappable interface (`OnnxSensitiveContentClassifier` on ONNX Runtime's CPU provider, like the detectors). The highest score of any frame (the max over segments for videos processed in parts) is kept on the media (`SensitiveScore`). At or above the threshold, the worker marks the media sensitive (`Automatic`) **before** publishing, so it goes straight to the sensitive bucket with a blurred preview and is never public; the Posts module then tags its post (`sensitiveSource: Automatic`) and queues it for a moderator. If the classifier is unavailable or fails on any frame, the media goes to `NeedsReview` ("The graphic content check failed.") instead of being published unchecked.
+Settings in `Media:KnownImages` (worker only):
 
-**The model.** No suitable openly licensed graphic-injury/gore classifier could be obtained and vetted from this build environment (no network access to model hubs), so none is bundled or downloaded: this ships the interface, the pluggable ONNX implementation (tested with a small model built in the tests) and the Development stand-in. Options to evaluate before enabling: a classifier fine-tuned (MobileNetV3 or EfficientNet-B0, Apache-2.0/BSD weights from torchvision or timm) on labelled dashcam frames, starting with the moderators' confirm/undo outcomes recorded here; or a zero-shot CLIP image encoder (OpenAI CLIP weights are MIT) scored against fixed text prompts, exported to ONNX as a two-class head. Check the licence of the weights **and** of the training data, test on real UK crash footage, and set `Threshold` from the recorded scores. Limitations of any such model: dashcam crashes rarely show injuries close up; red cars, brake lights, sunsets and fire engines cause false positives (hence moderator review); small or distant casualties will be missed (hence user and moderator tagging still matter).
+| Setting | Default | |
+|---|---|---|
+| `Enabled` | `true` | Can't be `false` outside Development. An empty list blocks nothing |
+| `RefreshInterval` | `00:05:00` | How often each worker checks SQL for changes to the list (it reloads only when the row count or newest row changed) |
+| `PdqMaxDistance` | `31` | Bits (of 256) that may differ for a PDQ match: the figure Meta and the hash-sharing programmes use |
+| `PdqMinQuality` | `50` | Frames with a lower PDQ quality (flat or blank pictures) aren't checked or recorded |
+| `SyncInterval` | `06:00:00` | How often each hash list source is synced into SQL |
 
-**Latency.** A 224×224 MobileNet-class model takes roughly 5–15 ms per frame on one 4-vCPU worker (EfficientNet-B0 about 15–30 ms). At `SampleEvery=3` a 30-second clip at 30 fps has 60 frames scored (900 frames, every 5th analysed, every 3rd of those scored): about **0.3–0.9 s of CPU per clip** (1–2 s with EfficientNet-B0), but spread over the six 5-second segments processed in parallel, so roughly **0.1–0.3 s added to the time until the clip is live**, plus a one-off model load (under a second) per worker replica. Photos: one frame, about 10–30 ms. Not measured in CI, since no production model is configured; the Redaction timing step can be extended once one is chosen.
+**The known-image list lives in SQL**, not in files: `media.KnownImageHashes` (kind `Pdq`, `Sha256` or `Md5`; value; `Source`; optional `Reference`). Rows come from three places:
+
+1. **Hash list providers** (the IWF Hash List once we're members): an `IKnownImageSource` implementation per provider, registered in the worker host, fetches the provider's whole list over its API; `KnownImageSync` replaces that source's rows every `SyncInterval` (adds new hashes, removes withdrawn ones; a failed fetch keeps the previous list and logs a critical error). None is registered yet: the IWF adapter gets written against their API once we're members, and should be pointed at their test feed (if they have one) in DEV and QA first.
+2. **Moderators** (`Source = Moderation`): `POST /api/admin/media/{id}/block-copies` adds a removed image's SHA-256 and the PDQ hashes recorded when it was processed (`media.Media.PerceptualHashes`: one for a photo, up to 8 spread through a video; not kept for videos processed in segments, which get the file hash only), so the same picture, or a resized or recompressed copy, is blocked if anyone uploads it again. Admins can also add a hash by hand (e.g. one given by the police).
+3. **Tests** (`Source = Test`): harmless test hashes that bjk-core's local setup adds, so the blocking flow can be tried end to end.
+
+Each worker keeps the list in memory (`KnownImageList`, refreshed by `KnownImageListRefresher`): a check is a few milliseconds of arithmetic (a linear scan of PDQ hashes: about 1 ms per 100,000 hashes per frame) with no database or network call. Until the list has loaded once, uploads go to review ("The known-image list hasn't loaded yet."). A frame match is passed from the blurring pass to the processor as a review reason starting `known-image:` (so it survives the segment path, where results are stored as reasons); the processor blocks the media and the marker is never shown to anyone.
+
+**What we keep after a block.** The match record (no picture), the critical log entry, and the media row (`Failed`). The files are deleted. Whether to preserve evidence for the police instead is a legal question to settle with the IWF/NCA when we join; reporting is recorded with `POST /api/admin/known-images/matches/{id}/reported`.
+
+**Scores are kept for tuning.** Every processed media keeps its highest graphic content score (`media.Media.SensitiveScore`) and nudity score (`NudityScore`) whether or not they crossed a threshold. For videos processed in segments the nudity score isn't kept (a high one still sends the video to review).
+
+**How sensitive marks work.** At or above `Threshold`, the worker marks the media sensitive (`Automatic`) **before** publishing, so it goes straight to the sensitive bucket with a blurred preview and is never public; the Posts module then tags its post (`sensitiveSource: Automatic`) and queues it for a moderator. If the classifier is unavailable or fails on any frame, the media goes to `NeedsReview` ("The graphic content and nudity check failed.") instead of being published unchecked.
+
+**Accuracy.** Zero-shot CLIP is a rough classifier, so it only ever adds caution: nudity holds media for a person, graphic content blurs it for a person to confirm; neither removes anything. Expect false positives (red cars, brake lights, sunsets, fire engines for graphic content; skin-toned or blurry frames for nudity) and misses (small or distant casualties). Tune both thresholds from the recorded scores against moderators' decisions. The ONNX export was checked against the PyTorch model (cosine similarity 0.987 for the quantised file). PDQ is checked in the tests against Meta's reference implementation.
+
+**What these checks don't cover.** New illegal images that aren't on any list (the nudity check and user reports are the safeguards there); text-only harms (content screening, in the Posts module); audio (removed by default). The IWF lists themselves need membership.
+
+**Latency.** CLIP ViT-B/32 (quantised) takes roughly 30–60 ms per frame on a 4-vCPU worker; PDQ about 1–5 ms. At `SampleEvery=3` a 30-second clip has 60 frames checked: about 2–4 s of CPU, spread over the six 5-second segments processed in parallel, so roughly **0.5–1 s added before the clip is live**, plus a one-off model load (about a second) per worker replica. Photos: one frame, under 100 ms.
 
 ### Moderation of media (`/api/admin/media`, `bjk.media.manage` + Moderator/Admin with two-factor)
 
@@ -555,7 +582,19 @@ The media worker can tag graphic content (blood, injuries, the aftermath of seri
 | `POST /api/admin/media/{id}/reject` `{ "reason": "..." }` | Sets `Failed` with the reason (shown to the uploader) and removes the review copies |
 | `POST /api/admin/media/{id}/redactions` `{ "regions": [{ "x":0.1, "y":0.4, "width":0.2, "height":0.1, "startSeconds":3, "endSeconds":8 }] }` | Adds blur regions (fractions of the picture from the top left; optional time range for videos) and processes the media again **from its current processed file** (copied aside to `{userId}/{mediaId}/rework/r{revision}.mp4|webp` in the originals bucket, since originals are deleted once the post is published): automatic detection plus every manual region, on top of the blurring already there. Works on `NeedsReview` or `Ready` media (e.g. after a report); a Ready item's public files are deleted at once (purge Cloudflare's cache too). The result comes back to the queue. Each re-processing gets new file names (`720p-r1.mp4`), because published files are cached as immutable |
 
-Approvals, rejections and added regions are recorded in the moderation audit log too (`ApproveMedia`, `RejectMedia`, `AddMediaRedactions`, with before/after status). Re-processing never needs the original. The unblurred-original link (admins) works only while the original still exists.
+| `POST /api/admin/media/{id}/block-copies` `{ "reason": "..." }` | Puts the media's file hash and recorded perceptual hashes on the known-image list (source `Moderation`), so copies are blocked if uploaded again. Use after removing it. Returns `{ "hashesAdded": n }` |
+
+**Known images (`/api/admin/known-images`, admins only):**
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/admin/known-images/matches?page=&pageSize=` | Blocked uploads, newest first: media, uploader, kind, list, reference, PDQ distance, SHA-256, when, and whether it's been reported |
+| `POST /api/admin/known-images/matches/{id}/reported` `{ "reference": "..." }` | Records that the match was reported (e.g. to the NCA or the IWF), with their reference (`ReportKnownImageMatch`) |
+| `GET /api/admin/known-images?source=&page=&pageSize=` | The hashes, newest first |
+| `POST /api/admin/known-images` `{ "kind": "Pdq", "value": "...", "reference": "..." }` | Adds a hash by hand (`Moderation`) |
+| `DELETE /api/admin/known-images/{id}` | Removes a `Moderation` or `Test` hash (a synced list's hashes would come back with the next sync) |
+
+Approvals, rejections, added regions, blocked copies and known-image changes are recorded in the moderation audit log too (`ApproveMedia`, `RejectMedia`, `AddMediaRedactions`, `BlockMediaCopies`, `AddKnownImageHash`, `RemoveKnownImageHash`, `ReportKnownImageMatch`, with before/after status). Re-processing never needs the original. The unblurred-original link (admins) works only while the original still exists.
 
 ## Profiles module
 
@@ -639,9 +678,9 @@ Configuration: `ConnectionStrings:<name>`, the name passed to `new PostsModule(.
 
 ```csharp
 builder.Services.AddBjkModules(builder.Configuration,
-    new MediaModule("AppDatabase"),
-    new ProfilesModule("AppDatabase"),
-    new PostsModule("AppDatabase"),
+    new MediaModule("BadJockeysDatabase"),
+    new ProfilesModule("BadJockeysDatabase"),
+    new PostsModule("BadJockeysDatabase"),
     new EmailModule()); // report and appeal emails
 ```
 
@@ -711,6 +750,7 @@ Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).
 - **Content screening.** Every comment, reply and post text goes through `IContentScreener`, scoring 0 to 1. At or above `Screening:HoldThreshold` (0.8) it's **held for review**: only its author sees it (status `HeldForReview`) until a moderator approves or removes it. At or above `Screening:FlagThreshold` (0.5) it's published but **flagged** for a moderator. The default provider is a built-in keyword and phrase list (threats, slurs, abuse, and calls to find or confront people) with three severities; text is normalised so "k1lll" matches "kill". The `Http` provider also calls a classifier service, intended for an open-source Detoxify model in a sidecar container: `POST {"text": "..."}` returning `{"scores": {"toxicity": 0.97, ...}}`; the higher of the two scores wins, and if the service is down the keyword result is used (labelled `classifier_unavailable`). Edits are screened again; a flag stays until a moderator clears it.
 - **Sensitive posts are shown blurred** (revised 19 Oct 2026, with the 13+ age policy). `isSensitive` (graphic injuries, serious crashes) is set by the author on create or edit, by a moderator, or by automatic detection in the media worker (see "Sensitive media" in the Media module). Sensitive posts appear for **everyone**, in the feed, profile lists and on the post page, with their title, description and details, but their photos and video come **blurred** unless the caller may see them: a signed-in user whose token has `age_verified` = `"true"` (they passed the on-demand age check), the post's author, or a moderator (moderator rights, with or without the claim). For everyone else (logged out, or not age-verified) the post has `requiresAgeVerification: true` and each `media` entry has `isBlurred: true`, `playbackUrl: null`, `thumbnailUrl: null` and only `previewUrl`, a heavily blurred low-resolution WebP (null for the few seconds until the worker makes it: show a placeholder). This holds even while the media's files are still being moved: the response never contains a real address for a blurred viewer. Callers who may see it get the real files: for sensitive media, short-lived signed links (`Media:SensitiveLinkLifetime`, 10 minutes) with `linksExpireAt`; fetch the post again for fresh links. `sensitiveSource` says who tagged it (`Author`, `Moderator`, `Automatic`). Authors can remove only a tag they set themselves, and not if detection also flagged the media (400). Tagging or untagging moves the media's files (Media module) within seconds.
 - **Automatic sensitive tags and the review queue.** If the media worker's graphic content detection marked any of a post's media (`MediaSummary.isAutoSensitive`), the post is tagged sensitive with `sensitiveSource: "Automatic"` before it's published (when it's created with media already flagged, in the same save that publishes a post waiting for its media, or when a published post's media is processed again), recorded in the audit log (`AutoTagSensitive`, actor role `Automatic`) and put in the moderators' queue (`sensitiveReview: Pending`, `GET /api/admin/posts/sensitive-review`). A moderator confirms or undoes it (`POST /api/admin/posts/{id}/sensitive-review`, audited as `ReviewSensitiveTag`); undoing publishes the media again, and detection won't tag that post again. The outcome (`SensitiveReview` Confirmed/Undone, who, when) is kept on the post with the detection score (`SensitiveScore`), and every processed media keeps its own score (`media.Media.SensitiveScore`) whether or not it crossed the threshold, so the threshold can be tuned (or a model trained) against moderators' decisions, e.g. `SELECT p.SensitiveReview, m.SensitiveScore FROM posts.Posts p JOIN posts.PostMedia pm ON pm.PostId = p.Id JOIN media.Media m ON m.Id = pm.MediaId WHERE p.SensitiveReview IN ('Confirmed','Undone')`. A moderator setting the tag with `PUT .../sensitive` settles a pending review too.
+- **Blocked web addresses.** Text containing an address on the blocked list (`posts.BlockedUrls`) is always **held for review** (score 1, label `blocked_url`), whatever else screening says. Entries are stored as host and path in lower case without `https://` or `www.`; a bare host (`example.com`) covers the whole site and its subdomains, an entry with a path covers that page and the pages under it. Addresses are found in text with or without `http(s)://`. The list is in SQL and held in memory in the API (`BlockedUrlList`, implementing Shared's `IBlockedUrlList`), refreshed every `BlockedUrls:RefreshInterval` (5 minutes). Rows come from an `IBlockedUrlSource` per provider (the IWF URL List once we're members; synced every `BlockedUrls:SyncInterval`, 6 hours), from moderators (`GET/POST /api/admin/blocked-urls`, `DELETE /api/admin/blocked-urls/{id}?reason=`, audited as `BlockUrl` / `UnblockUrl`), and harmless `Test` entries from bjk-core's local setup.
 - **No comments for logged-out viewers.** The comment and reply lists need a signed-in token. Post responses to logged-out callers carry `commentsRequireSignIn: true`; the comment count is still included (it shows activity without revealing anything), so the apps can show "Sign in to see 12 comments".
 - **UK only at launch.** The pin as given, before rounding, must be inside an allowed region (`Posts:AllowedRegions`, default the UK), or the post is refused with a 400 on `Location`: "Bad Jockeys only accepts incidents in the UK for now." The outlines are simplified polygons embedded in code (`ServiceRegions`), drawn at roughly 5 to 15 km accuracy: mainland Great Britain; Northern Ireland following the land border with Ireland; and the islands (Isle of Wight, Anglesey, Scilly, Arran, the Inner and Outer Hebrides, Orkney, Fair Isle, Shetland and Rathlin). They're generous at sea and tight on the Irish border and the Dover Strait, so Ireland, France and the Netherlands are refused. The Isle of Man and the Channel Islands are outside the UK, so they're refused unless added (`IM`, `JE`, `GG`). Points within a kilometre or two of the Irish border can fall either way (for example, Belcoo and Blacklion face each other across a stream).
 - **Location rounding.** Map pins are rounded to about 500 m when saved (`PinRounding`): latitude to a grid of 0.0045° (500 m north–south), then longitude to 0.0045° / cos(latitude) (about 500 m east–west). The API returns only the rounded pin and the place name. The OnlineSafety migration rounds existing rows the same way (an update; nothing is deleted).
@@ -775,8 +815,8 @@ await smsSender.SendAsync(SMSTemplates.SignInCode("+447700900123", code), cancel
 
 - **Templates live in code.** The wording of every email is in `BJK.Modules.Email/Templates/EmailTemplates.cs` and of every text in `BJK.Modules.SMS/Templates/SMSTemplates.cs`, so changes go through pull requests and are tested. We don't use SendGrid Dynamic Templates or Twilio Content Templates. To add a message, add a method there.
 - **Sent straight away, not queued.** Each send calls the provider while the request waits, so the caller knows at once whether it worked (for example, the sign-in page can say "couldn't send the code"). There's deliberately no queue for email or SMS.
-- **Providers.** `Email:Provider` is `SendGrid` or `Log`; `SMS:Provider` is `Twilio` or `Log`. Both default to `Log`: nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development, `Log` only records that a message was dropped, never its content.
-- **Checked at startup.** Choosing SendGrid or Twilio without the keys they need stops the app starting, with a message naming the missing setting.
+- **No provider switches.** SendGrid sends when `Email:SendGrid:ApiKey` is set, Twilio when `SMS:Twilio:AccountSid` is. Without them nothing is sent, and in Development the whole message is written to the console (`DEVELOPMENT ONLY - email not sent` / `SMS not sent`). Outside Development the app won't start without them.
+- **Checked at startup.** A SendGrid key without a sender address, or a Twilio account without credentials or a sender, stops the app starting, with a message naming the missing setting.
 - **Retries.** Timeouts, connection failures, 429 and 5xx are retried 3 times with backoff (honouring `Retry-After`, up to 10 seconds), using `ProviderRetry` from Shared. A rejection (bad number, unverified sender, bad key) isn't retried. Both throw `MessageDeliveryException` (Shared), whose `IsTransient` says which it was.
 - **No click tracking.** Our emails carry sign-in, confirmation and reset codes in links, so SendGrid click and open tracking are switched off for every email.
 - **Privacy.** Outside Development, logs show masked addresses only (`r***@example.com`, `+44********23`) plus the provider's message id, so a delivery can be traced in SendGrid or Twilio without logging personal data.
@@ -786,15 +826,13 @@ Both providers are called over their REST APIs with `HttpClient`, so there are n
 
 | Key | Notes |
 |---|---|
-| `Email:Provider` | `Log` (default) or `SendGrid` |
 | `Email:FromAddress`, `Email:FromName` | Sender. The address (or its domain) must be verified in SendGrid. Name defaults to `Bad Jockeys`. |
 | `Email:ReplyToAddress` | Optional, e.g. `support@badjockeys.com` |
 | `Email:LogoUrl` | Optional absolute URL of a PNG logo for the top of branded emails (Gmail and Outlook don't show SVG) |
-| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. |
+| `Email:SendGrid:ApiKey` | Secret. A key with the **Mail Send** permission only. Set: emails go through SendGrid |
 | `Email:SendGrid:BaseUrl` | Default `https://api.sendgrid.com`; `https://api.eu.sendgrid.com` for an EU-pinned subuser |
 | `Email:SendGrid:SandboxMode` | `true` = SendGrid checks each request but delivers nothing |
-| `SMS:Provider` | `Log` (default) or `Twilio` |
-| `SMS:Twilio:AccountSid` | `AC…` |
+| `SMS:Twilio:AccountSid` | `AC…`. Set: texts go through Twilio |
 | `SMS:Twilio:ApiKeySid`, `SMS:Twilio:ApiKeySecret` | Secret. Recommended: an API key can be revoked without changing the account's auth token. |
 | `SMS:Twilio:AuthToken` | Secret. Used only if no API key is set. |
 | `SMS:Twilio:MessagingServiceSid` | `MG…`, recommended: Twilio picks the sender from the service's pool |

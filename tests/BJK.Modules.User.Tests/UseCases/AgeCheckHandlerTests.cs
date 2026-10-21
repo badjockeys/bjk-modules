@@ -36,6 +36,9 @@ public sealed class AgeCheckHandlerTests
         _liveness.Name.Returns("Development");
         _estimator.Name.Returns("Development");
         _document.Name.Returns("Development");
+        _liveness.IsConfigured.Returns(true);
+        _estimator.IsConfigured.Returns(true);
+        _document.IsConfigured.Returns(true);
         _liveness.CheckAsync(Arg.Any<SelfieVideo>(), Arg.Any<CancellationToken>()).Returns(LivenessResult.Live);
         _account = UserAccount.Create(User1, TestDates.Adult, Now.AddDays(-1));
         _users.GetByIdAsync(_account.Id, Arg.Any<CancellationToken>()).Returns(_account);
@@ -339,7 +342,7 @@ public sealed class AgeCheckHandlerTests
         [_liveness],
         [_estimator],
         [_document],
-        new StaticOptionsMonitor<AgeAssuranceOptions>(_settings));
+        Substitute.For<Microsoft.Extensions.Hosting.IHostEnvironment>());
 
     private SubmitFaceAgeCheckCommandHandler Face() => new(
         _users, _caller, Providers(), Options.Create(_settings), _clock, NullLogger<SubmitFaceAgeCheckCommandHandler>.Instance);

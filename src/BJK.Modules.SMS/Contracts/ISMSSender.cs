@@ -8,7 +8,7 @@ namespace BJK.Modules.SMS.Contracts;
 public sealed record SMSMessage(string To, string Body);
 
 /// <summary>
-/// Sends SMS. The provider is chosen by <c>SMS:Provider</c>: <c>Twilio</c>, or <c>Log</c> for local development.
+/// Sends SMS. Twilio when <c>SMS:Twilio:AccountSid</c> is set; otherwise only logged (local development).
 /// </summary>
 public interface ISMSSender
 {

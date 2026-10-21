@@ -30,7 +30,7 @@ public sealed record ScreeningResult(double Score, IReadOnlyList<string> Labels,
 
 /// <summary>
 /// Scores comments and post text for abuse, threats, slurs and calls to confront people. High scores are held for
-/// review; medium scores publish but are flagged. Chosen by <c>Screening:Provider</c>.
+/// review; medium scores publish but are flagged. The keyword list, plus a classifier when <c>Screening:Endpoint</c> is set.
 /// </summary>
 public interface IContentScreener
 {
@@ -42,19 +42,11 @@ public sealed class ScreeningOptions
 {
     public const string SectionName = "Screening";
 
-    public const string KeywordsProvider = "Keywords";
-    public const string HttpProvider = "Http";
-
     /// <summary>
-    /// <c>Keywords</c> (default): the built-in keyword and phrase list only. <c>Http</c>: the keyword list plus a
-    /// classifier service at <see cref="Endpoint"/> (such as an open-source Detoxify model in a sidecar container);
-    /// the higher score wins.
-    /// </summary>
-    public string Provider { get; set; } = KeywordsProvider;
-
-    /// <summary>
-    /// The classifier, for the <c>Http</c> provider. It receives <c>POST {"text": "..."}</c> and answers
-    /// <c>{"scores": {"toxicity": 0.97, "threat": 0.12, ...}}</c> with scores from 0 to 1.
+    /// Optional classifier service (such as an open-source Detoxify model in a sidecar container). Set: the keyword
+    /// list plus the classifier, the higher score wins. Empty (the default): the built-in keyword and phrase list only.
+    /// It receives <c>POST {"text": "..."}</c> and answers <c>{"scores": {"toxicity": 0.97, "threat": 0.12, ...}}</c>
+    /// with scores from 0 to 1.
     /// </summary>
     public Uri? Endpoint { get; set; }
 
@@ -78,14 +70,9 @@ internal sealed class ScreeningOptionsValidator : IValidateOptions<ScreeningOpti
     public ValidateOptionsResult Validate(string? name, ScreeningOptions options)
     {
         var failures = new List<string>();
-        if (options.Provider is not (ScreeningOptions.KeywordsProvider or ScreeningOptions.HttpProvider))
+        if (options.Endpoint is { IsAbsoluteUri: false })
         {
-            failures.Add($"Screening:Provider must be '{ScreeningOptions.KeywordsProvider}' or '{ScreeningOptions.HttpProvider}'.");
-        }
-
-        if (options.Provider == ScreeningOptions.HttpProvider && options.Endpoint is not { IsAbsoluteUri: true })
-        {
-            failures.Add("Screening:Endpoint must be an absolute URL when Screening:Provider is Http.");
+            failures.Add("Screening:Endpoint must be an absolute URL.");
         }
 
         if (options.FlagThreshold is <= 0 or > 1 || options.HoldThreshold is <= 0 or > 1 || options.FlagThreshold > options.HoldThreshold)

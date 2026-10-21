@@ -8,25 +8,9 @@ internal sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
     public ValidateOptionsResult Validate(string? name, EmailOptions options)
     {
         var failures = new List<string>();
-        switch (options.Provider)
+        if (options.UsesSendGrid && string.IsNullOrWhiteSpace(options.FromAddress))
         {
-            case EmailOptions.LogProvider:
-                break;
-            case EmailOptions.SendGridProvider:
-                if (string.IsNullOrWhiteSpace(options.FromAddress))
-                {
-                    failures.Add("Email:FromAddress is required when Email:Provider is SendGrid.");
-                }
-
-                if (string.IsNullOrWhiteSpace(options.SendGrid.ApiKey))
-                {
-                    failures.Add("Email:SendGrid:ApiKey is required when Email:Provider is SendGrid.");
-                }
-
-                break;
-            default:
-                failures.Add($"Email:Provider must be '{EmailOptions.LogProvider}' or '{EmailOptions.SendGridProvider}'.");
-                break;
+            failures.Add("Email:FromAddress is required when Email:SendGrid:ApiKey is set.");
         }
 
         if (options.LogoUrl is { IsAbsoluteUri: false })

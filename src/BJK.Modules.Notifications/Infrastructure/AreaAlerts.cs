@@ -12,7 +12,7 @@ namespace BJK.Modules.Notifications.Infrastructure;
 /// <summary>
 /// Premium area alerts. When a post goes public, everyone with alerts switched on whose home area is within their
 /// radius hears about it (not the author, and not people who've blocked them or whom they've blocked): Instant
-/// subscribers straight away (up to 10 a day, never in quiet hours, 22:00 to 07:00 UK time), and everything else is
+/// subscribers straight away, in the bell and as a push (up to 10 a day, never in quiet hours, 22:00 to 07:00 UK time), and everything else is
 /// held for the next summary (<see cref="AreaSummaries"/>). Never throws.
 /// </summary>
 internal sealed class AreaAlerts(
@@ -62,7 +62,7 @@ internal sealed class AreaAlerts(
                         [(post.Title, post.PlaceName, sender.Link($"/p/{post.PostId:D}"))],
                         sender.Link("/account/notifications"))
                     : null;
-                await sender.DeliverAsync(request, inApp: true, byEmail: subscription.Email, email, cancellationToken);
+                await sender.DeliverAsync(request, inApp: true, byEmail: subscription.Email, email, cancellationToken, byPush: true);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -81,7 +81,8 @@ public sealed class CreatePostCommandHandler(
     INotificationSender? notifications = null,
     IAreaAlerts? areaAlerts = null,
     IDraftRepository? drafts = null,
-    Hashtags.HashtagSync? hashtags = null)
+    Hashtags.HashtagSync? hashtags = null,
+    IEngagementRepository? engagement = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -165,7 +166,12 @@ public sealed class CreatePostCommandHandler(
             await media.SetSensitiveAsync(request.MediaIds, isSensitive: true, cancellationToken);
         }
 
+        // The vote closes when the author's setting says (7 days unless they changed it), and they follow their post.
+        var preferences = engagement is null ? null : await engagement.GetPreferencesAsync(userId, cancellationToken);
+        post.SetVoteDuration(preferences?.VoteDuration ?? VoteDuration.Days7);
+
         posts.Add(post);
+        engagement?.AddFollow(PostFollow.Create(post.Id, userId, post.CreatedAt));
         if (hashtags is not null)
         {
             await hashtags.SyncAsync(post, cancellationToken);

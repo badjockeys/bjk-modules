@@ -1,6 +1,8 @@
 using System.Text;
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.Infrastructure.Processing;
 using BJK.Modules.Media.Infrastructure.Processing.Redaction;
+using BJK.Modules.Media.Infrastructure.Processing.Safety;
 using BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,13 +21,19 @@ public sealed class SensitiveContentTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
-    private static MediaRedactor Redactor(ISensitiveContentClassifier? classifier, SensitiveDetectionOptions? detection = null, int detectionMaxSize = 0) => new(
+    private static MediaRedactor Redactor(
+        ISensitiveContentClassifier? classifier,
+        SensitiveDetectionOptions? detection = null,
+        int detectionMaxSize = 0,
+        IKnownImageList? known = null) => new(
         [FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate)],
         Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions { DetectionMaxSize = detectionMaxSize }),
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions()),
         NullLogger<MediaRedactor>.Instance,
         classifier,
-        Microsoft.Extensions.Options.Options.Create(detection ?? new SensitiveDetectionOptions { Enabled = true }));
+        Microsoft.Extensions.Options.Options.Create(detection ?? new SensitiveDetectionOptions()),
+        known,
+        Microsoft.Extensions.Options.Options.Create(new KnownImageOptions()));
 
     private string Video(string colour = "gray")
     {
@@ -39,7 +47,7 @@ public sealed class SensitiveContentTests : IDisposable
     {
         RequireFfmpeg();
         var classifier = new FakeClassifier(_ => 0.2f);
-        var detection = new SensitiveDetectionOptions { Enabled = true, SampleEvery = 3 };
+        var detection = new SensitiveDetectionOptions { SampleEvery = 3 };
 
         var result = await Redactor(classifier, detection, detectionMaxSize: 640)
             .RedactVideoAsync(Video(), new ProbeResult(true, 2m, 1920, 1080, 30), [], Path.Combine(_folder, "out.mp4"), Ct);
@@ -60,7 +68,7 @@ public sealed class SensitiveContentTests : IDisposable
         var calls = 0;
         var classifier = new FakeClassifier(_ => ++calls == 3 ? 0.91f : 0.1f);
 
-        var result = await Redactor(classifier, new SensitiveDetectionOptions { Enabled = true, SampleEvery = 1 })
+        var result = await Redactor(classifier, new SensitiveDetectionOptions { SampleEvery = 1 })
             .RedactVideoAsync(Video(), new ProbeResult(true, 2m, 1920, 1080, 30), [], Path.Combine(_folder, "out.mp4"), Ct);
 
         Assert.Equal(0.91, result.SensitiveScore!.Value, 3);
@@ -79,6 +87,54 @@ public sealed class SensitiveContentTests : IDisposable
         Assert.Equal(1.0, result.SensitiveScore!.Value, 3);
     }
 
+    // Nudity and known images
+
+    [Fact]
+    public async Task A_high_nudity_score_sends_the_media_to_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var low = new FakeClassifier(_ => 0f, nudity: 0.05f);
+        var high = new FakeClassifier(_ => 0f, nudity: 0.8f);
+
+        var clean = await Redactor(low).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+        var held = await Redactor(high).RedactImageAsync(input, [], Path.Combine(_folder, "b.ppm"), Ct);
+
+        Assert.False(clean.NeedsReview, string.Join(" ", clean.ReviewReasons));
+        Assert.Equal(0.05, clean.NudityScore!.Value, 3);
+        Assert.Contains(held.ReviewReasons, r => r.StartsWith("Possible nudity (score 0.80)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_photo_matching_a_known_image_is_reported_and_its_hash_recorded()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var hit = new KnownImageHit(Guid.NewGuid(), KnownHashKind.Pdq, new string('a', 64), "Test", null, 3);
+        var known = Substitute.For<IKnownImageList>();
+        known.IsLoaded.Returns(true);
+        known.MatchPdq(Arg.Any<PdqHash>()).Returns(hit);
+
+        var result = await Redactor(new FakeClassifier(_ => 0f), known: known).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+
+        Assert.Equal(hit.ToReason(), result.ReviewReasons[0]);
+        Assert.Single(result.PerceptualHashes!);
+        Assert.Equal(64, result.PerceptualHashes![0].Length);
+    }
+
+    [Fact]
+    public async Task Until_the_known_image_list_has_loaded_media_goes_to_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var known = Substitute.For<IKnownImageList>();
+        known.IsLoaded.Returns(false);
+
+        var result = await Redactor(new FakeClassifier(_ => 0f), known: known).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+
+        Assert.Contains("The known-image list hasn't loaded yet.", result.ReviewReasons);
+    }
+
     [Fact]
     public async Task A_failing_classifier_sends_the_media_to_review_but_the_blurred_file_is_still_made()
     {
@@ -89,7 +145,7 @@ public sealed class SensitiveContentTests : IDisposable
         var result = await Redactor(classifier).RedactVideoAsync(Video(), new ProbeResult(true, 2m, 1920, 1080, 30), [], output, Ct);
 
         Assert.True(result.NeedsReview);
-        Assert.Contains(result.ReviewReasons, r => r.Contains("graphic content check failed"));
+        Assert.Contains(result.ReviewReasons, r => r.Contains("graphic content and nudity check failed"));
         Assert.Equal(1, classifier.Calls);
         Assert.Null(result.SensitiveScore);
         Assert.True(File.Exists(output));
@@ -100,10 +156,10 @@ public sealed class SensitiveContentTests : IDisposable
     {
         RequireFfmpeg();
         var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
-        var unconfigured = new OnnxSensitiveContentClassifier(
-            Microsoft.Extensions.Options.Options.Create(new SensitiveDetectionOptions { Enabled = true }),
+        var unconfigured = new ClipContentClassifier(
+            Microsoft.Extensions.Options.Options.Create(new SensitiveDetectionOptions()),
             Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
-            NullLogger<OnnxSensitiveContentClassifier>.Instance);
+            NullLogger<ClipContentClassifier>.Instance);
 
         var missing = await Redactor(null).RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
         var unavailable = await Redactor(unconfigured).RedactImageAsync(input, [], Path.Combine(_folder, "b.ppm"), Ct);
@@ -113,90 +169,27 @@ public sealed class SensitiveContentTests : IDisposable
     }
 
     [Fact]
-    public async Task With_detection_off_nothing_is_scored()
+    public async Task Without_the_detection_settings_nothing_is_scored()
     {
         RequireFfmpeg();
         var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
         var classifier = new FakeClassifier(_ => 1f);
 
-        var result = await Redactor(classifier, new SensitiveDetectionOptions { Enabled = false })
-            .RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
+        var redactor = new MediaRedactor(
+            [FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate)],
+            Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
+            Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions()),
+            NullLogger<MediaRedactor>.Instance,
+            classifier,
+            detectionOptions: null,
+            knownImages: null,
+            Microsoft.Extensions.Options.Options.Create(new KnownImageOptions()));
+
+        var result = await redactor.RedactImageAsync(input, [], Path.Combine(_folder, "a.ppm"), Ct);
 
         Assert.Equal(0, classifier.Calls);
         Assert.Null(result.SensitiveScore);
         Assert.False(result.NeedsReview);
-    }
-
-    // The ONNX classifier
-
-    [Fact]
-    public void Model_outputs_are_turned_into_a_score_for_the_sensitive_classes()
-    {
-        Assert.Equal(0.5f, OnnxSensitiveContentClassifier.ScoreOf([0f, 0f], SensitiveModelOutput.Softmax, [1]), 3);
-        Assert.Equal(0.881f, OnnxSensitiveContentClassifier.ScoreOf([0f, 2f], SensitiveModelOutput.Softmax, [1]), 3);
-        Assert.Equal(0.731f, OnnxSensitiveContentClassifier.ScoreOf([-3f, 1f, -1f], SensitiveModelOutput.Sigmoid, [1, 2]), 3);
-        Assert.Equal(0.7f, OnnxSensitiveContentClassifier.ScoreOf([0.3f, 0.2f, 0.5f], SensitiveModelOutput.Probabilities, [1, 2]), 3);
-        Assert.Throws<InvalidOperationException>(() => OnnxSensitiveContentClassifier.ScoreOf([0f, 1f], SensitiveModelOutput.Softmax, [2]));
-    }
-
-    [Fact]
-    public void Input_is_resized_planar_rgb_normalised_per_channel()
-    {
-        var frame = Solid(10, 10, 255, 0, 51);
-
-        var input = OnnxSensitiveContentClassifier.ToInput(frame, 4, 4, [0.5f, 0f, 0f], [0.5f, 1f, 0.1f]);
-
-        Assert.Equal(3 * 16, input.Length);
-        Assert.All(input[..16], v => Assert.Equal(1f, v, 3));
-        Assert.All(input[16..32], v => Assert.Equal(0f, v, 3));
-        Assert.All(input[32..], v => Assert.Equal(2f, v, 3));
-    }
-
-    [Fact]
-    public void A_real_onnx_model_is_loaded_and_run()
-    {
-        // A tiny hand-built model: the mean of each colour channel, as "probabilities" of three classes.
-        var path = Path.Combine(_folder, "mean-colour.onnx");
-        File.WriteAllBytes(path, TinyOnnxModel.ChannelMeans(224, 224));
-        using var classifier = new OnnxSensitiveContentClassifier(
-            Microsoft.Extensions.Options.Options.Create(new SensitiveDetectionOptions
-            {
-                Enabled = true,
-                ModelPath = path,
-                Mean = "0,0,0",
-                Std = "1,1,1",
-                Output = SensitiveModelOutput.Probabilities,
-                SensitiveClasses = "0",
-            }),
-            Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions { InferenceThreads = 1 }),
-            NullLogger<OnnxSensitiveContentClassifier>.Instance);
-
-        Assert.True(classifier.IsAvailable, classifier.UnavailableReason);
-        Assert.Equal(1f, classifier.Score(Solid(640, 360, 255, 0, 0)), 2);
-        Assert.Equal(0f, classifier.Score(Solid(640, 360, 0, 0, 255)), 2);
-    }
-
-    [Fact]
-    public void A_missing_model_file_makes_the_classifier_unavailable()
-    {
-        var classifier = new OnnxSensitiveContentClassifier(
-            Microsoft.Extensions.Options.Options.Create(new SensitiveDetectionOptions { Enabled = true, ModelPath = Path.Combine(_folder, "nope.onnx") }),
-            Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
-            NullLogger<OnnxSensitiveContentClassifier>.Instance);
-
-        Assert.False(classifier.IsAvailable);
-        Assert.Contains("missing", classifier.UnavailableReason);
-        Assert.Throws<InvalidOperationException>(() => classifier.Score(Solid(10, 10, 0, 0, 0)));
-    }
-
-    [Fact]
-    public void Settings_with_bad_lists_are_refused()
-    {
-        Assert.True(new SensitiveDetectionOptions().IsValid());
-        Assert.False(new SensitiveDetectionOptions { Mean = "0.5,0.5" }.IsValid());
-        Assert.False(new SensitiveDetectionOptions { Std = "1,0,1" }.IsValid());
-        Assert.False(new SensitiveDetectionOptions { SensitiveClasses = "" }.IsValid());
-        Assert.False(new SensitiveDetectionOptions { SensitiveClasses = "one" }.IsValid());
     }
 
     // The development stand-in
@@ -233,8 +226,10 @@ public sealed class SensitiveContentTests : IDisposable
 }
 
 /// <summary>A classifier for tests: scores with the given function and remembers the frame sizes it saw.</summary>
-internal sealed class FakeClassifier(Func<RgbFrame, float> score, bool available = true) : ISensitiveContentClassifier
+internal sealed class FakeClassifier(Func<RgbFrame, float> score, bool available = true, float? nudity = null) : ISensitiveContentClassifier
 {
+    public ContentScores Classify(RgbFrame frame) => new(Score(frame), nudity);
+
     private readonly object _lock = new();
 
     public int Calls { get; private set; }
@@ -255,53 +250,4 @@ internal sealed class FakeClassifier(Func<RgbFrame, float> score, bool available
 
         return score(frame);
     }
-}
-
-/// <summary>
-/// Writes a minimal ONNX model by hand (protobuf), so the ONNX classifier can be tested without downloading a model:
-/// input "x" float [1, 3, H, W], one ReduceMean over the picture (opset 13), output "m" float [1, 3].
-/// </summary>
-internal static class TinyOnnxModel
-{
-    public static byte[] ChannelMeans(int width, int height)
-    {
-        var axes = Bytes(Field(1, "axes"), Varint(8, 2), Varint(8, 3), Varint(20, 7));
-        var keepDims = Bytes(Field(1, "keepdims"), Varint(3, 0), Varint(20, 2));
-        var node = Bytes(Field(1, "x"), Field(2, "m"), Field(3, "mean"), Field(4, "ReduceMean"), Field(5, axes), Field(5, keepDims));
-        var graph = Bytes(
-            Field(1, node),
-            Field(2, "g"),
-            Field(11, ValueInfo("x", 1, 3, height, width)),
-            Field(12, ValueInfo("m", 1, 3)));
-        return Bytes(Varint(1, 8), Field(2, "bjk-test"), Field(7, graph), Field(8, Bytes(Field(1, string.Empty), Varint(2, 13))));
-    }
-
-    private static byte[] ValueInfo(string name, params long[] dims)
-    {
-        var shape = Bytes(dims.Select(d => Field(1, Varint(1, d))).ToArray());
-        var tensor = Bytes(Varint(1, 1), Field(2, shape));
-        return Bytes(Field(1, name), Field(2, Field(1, tensor)));
-    }
-
-    private static byte[] Varint(int field, long value) => Bytes(Raw(((ulong)field << 3) | 0), Raw((ulong)value));
-
-    private static byte[] Field(int field, string value) => Field(field, Encoding.UTF8.GetBytes(value));
-
-    private static byte[] Field(int field, byte[] value) => Bytes(Raw(((ulong)field << 3) | 2), Raw((ulong)value.Length), value);
-
-    private static byte[] Raw(ulong value)
-    {
-        var bytes = new List<byte>();
-        do
-        {
-            var b = (byte)(value & 0x7F);
-            value >>= 7;
-            bytes.Add(value != 0 ? (byte)(b | 0x80) : b);
-        }
-        while (value != 0);
-
-        return [.. bytes];
-    }
-
-    private static byte[] Bytes(params byte[][] parts) => parts.SelectMany(p => p).ToArray();
 }

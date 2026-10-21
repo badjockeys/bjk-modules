@@ -4,8 +4,8 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.User.Infrastructure.AgeAssurance;
 
 /// <summary>
-/// DEVELOPMENT ONLY. Accepts any non-empty video (or fails every one, with
-/// <c>AgeAssurance:Liveness:Development:Pass=false</c>). Startup refuses it outside Development.
+/// DEVELOPMENT ONLY. Used when <c>AgeAssurance:Liveness:ModelPath</c> isn't set. Accepts any non-empty video (or
+/// fails every one, with <c>AgeAssurance:Development:LivenessPasses=false</c>). Never used outside Development.
 /// </summary>
 internal sealed class DevelopmentLivenessChecker(IOptionsMonitor<AgeAssuranceOptions> options, ILogger<DevelopmentLivenessChecker> logger)
     : ILivenessChecker
@@ -13,6 +13,8 @@ internal sealed class DevelopmentLivenessChecker(IOptionsMonitor<AgeAssuranceOpt
     public string Name => AgeAssuranceOptions.DevelopmentProvider;
 
     public bool IsDevelopmentOnly => true;
+
+    public bool IsConfigured => true;
 
     public Task<LivenessResult> CheckAsync(SelfieVideo video, CancellationToken cancellationToken)
     {
@@ -22,15 +24,15 @@ internal sealed class DevelopmentLivenessChecker(IOptionsMonitor<AgeAssuranceOpt
             return Task.FromResult(LivenessResult.Failed(LivenessFailure.Unreadable));
         }
 
-        return Task.FromResult(options.CurrentValue.Liveness.Development.Pass
+        return Task.FromResult(options.CurrentValue.Development.LivenessPasses
             ? LivenessResult.Live
             : LivenessResult.Failed(LivenessFailure.NoHeadTurn));
     }
 }
 
 /// <summary>
-/// DEVELOPMENT ONLY. Returns <c>AgeAssurance:Estimator:Development:Age</c> for every video (0 = couldn't tell).
-/// Startup refuses it outside Development.
+/// DEVELOPMENT ONLY. Used when Yoti isn't set up. Returns <c>AgeAssurance:Development:EstimatedAge</c> for every
+/// video (0 = couldn't tell). Never used outside Development.
 /// </summary>
 internal sealed class DevelopmentAgeEstimator(IOptionsMonitor<AgeAssuranceOptions> options, ILogger<DevelopmentAgeEstimator> logger)
     : IAgeEstimator
@@ -39,17 +41,19 @@ internal sealed class DevelopmentAgeEstimator(IOptionsMonitor<AgeAssuranceOption
 
     public bool IsDevelopmentOnly => true;
 
+    public bool IsConfigured => true;
+
     public Task<AgeEstimate> EstimateAsync(SelfieVideo video, CancellationToken cancellationToken)
     {
         logger.LogWarning("DEVELOPMENT ONLY - age not really estimated.");
-        var age = options.CurrentValue.Estimator.Development.Age;
+        var age = options.CurrentValue.Development.EstimatedAge;
         return Task.FromResult(new AgeEstimate(age > 0 ? age : null, 0, Name));
     }
 }
 
 /// <summary>
-/// DEVELOPMENT ONLY. Returns <c>AgeAssurance:Document:Development:Age</c> for every ID photo (0 = unreadable).
-/// Startup refuses it outside Development.
+/// DEVELOPMENT ONLY. Returns <c>AgeAssurance:Development:DocumentAge</c> for every ID photo (0 = unreadable). Never
+/// used outside Development.
 /// </summary>
 internal sealed class DevelopmentDocumentAgeCheck(IOptionsMonitor<AgeAssuranceOptions> options, ILogger<DevelopmentDocumentAgeCheck> logger)
     : IDocumentAgeCheck
@@ -58,10 +62,12 @@ internal sealed class DevelopmentDocumentAgeCheck(IOptionsMonitor<AgeAssuranceOp
 
     public bool IsDevelopmentOnly => true;
 
+    public bool IsConfigured => true;
+
     public Task<DocumentAgeResult> CheckAsync(DocumentImage image, CancellationToken cancellationToken)
     {
         logger.LogWarning("DEVELOPMENT ONLY - photo ID not really checked.");
-        var age = options.CurrentValue.Document.Development.Age;
+        var age = options.CurrentValue.Development.DocumentAge;
         return Task.FromResult(new DocumentAgeResult(age > 0 && !image.Content.IsEmpty ? age : null, Name));
     }
 }

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Hosting;
 namespace BJK.Modules.Media.Infrastructure.Processing.Sensitive;
 
 /// <summary>
-/// A stand-in classifier for local development and demos (<c>Media:SensitiveDetection:Provider</c> = Development): the
+/// A stand-in classifier for local development, used when <c>Media:SensitiveDetection:ModelPath</c> isn't set: the
 /// score is the share of strongly red pixels, times four, so a mostly red picture is flagged and ordinary dashcam
 /// footage isn't. It knows nothing about real graphic content. Outside the Development environment it reports itself
 /// unavailable, so a misconfigured server sends media to review rather than trusting it.
@@ -15,7 +15,7 @@ internal sealed class DevelopmentSensitiveContentClassifier(IHostEnvironment env
 
     public string? UnavailableReason => IsAvailable
         ? null
-        : "The development graphic content classifier only runs in the Development environment (Media:SensitiveDetection:Provider).";
+        : "The development graphic content classifier only runs in the Development environment (set Media:SensitiveDetection:ModelPath to the CLIP model).";
 
     public float Score(RgbFrame frame)
     {

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace BJK.Modules.Email.Infrastructure;
 
 /// <summary>
-/// <c>Email:Provider</c> = <c>Log</c>: nothing leaves the server. In Development the whole plain-text email, including
+/// No SendGrid key: nothing leaves the server. In Development the whole plain-text email, including
 /// any code or link, is written to the log so flows can be tested end to end. In any other environment only the fact
 /// that an email was dropped is logged, never its content.
 /// </summary>
@@ -17,7 +17,7 @@ internal sealed class LoggingEmailSender(IHostEnvironment environment, ILogger<L
         if (environment.IsDevelopment())
         {
             logger.LogWarning(
-                "DEVELOPMENT ONLY - email not sent (Email:Provider is Log).\nTo: {To}\nSubject: {Subject}\n{Body}",
+                "DEVELOPMENT ONLY - email not sent (no Email:SendGrid:ApiKey).\nTo: {To}\nSubject: {Subject}\n{Body}",
                 message.To,
                 message.Subject,
                 message.TextBody);
@@ -25,7 +25,7 @@ internal sealed class LoggingEmailSender(IHostEnvironment environment, ILogger<L
         else
         {
             logger.LogError(
-                "Email \"{Subject}\" was not sent because no email provider is configured (Email:Provider is Log).",
+                "Email \"{Subject}\" was not sent because Email:SendGrid:ApiKey isn't set.",
                 message.Subject);
         }
 

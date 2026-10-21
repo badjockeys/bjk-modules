@@ -63,3 +63,13 @@ public interface IProfileModeration
     /// </summary>
     Task<bool> ResetPublicDetailsAsync(Guid userId, CancellationToken cancellationToken);
 }
+
+/// <summary>Badges other modules give automatically. Registered by the Profiles module.</summary>
+public interface IProfileBadges
+{
+    /// <summary>
+    /// Gives these members the Local regular badge (posted in their home area in at least 3 different months of the
+    /// last 6), if they don't already hold it. Members without a profile are skipped.
+    /// </summary>
+    Task AwardLocalRegularAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+}

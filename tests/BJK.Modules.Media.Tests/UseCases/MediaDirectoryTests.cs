@@ -3,6 +3,7 @@ using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Messaging;
 using BJK.Modules.Media.Infrastructure.Storage;
+using BJK.Modules.Shared.Uploads;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -67,6 +68,59 @@ public sealed class MediaDirectoryTests
         Assert.Equal(1, deleted);
         await _storage.Received(1).DeleteOriginalAsync(failed.OriginalKey, Arg.Any<CancellationToken>());
         Assert.Equal(Now, failed.OriginalDeletedAt);
+    }
+
+    [Fact]
+    public async Task Uploads_nothing_uses_are_deleted_after_24_hours_and_used_ones_are_never_checked_again()
+    {
+        var inPost = Ready();
+        var avatar = Ready();
+        var unused = Ready();
+        var abandoned = MediaItem.Create(UserId, "abandoned.mp4", "video/mp4", Now.AddDays(-2));
+        _media.ListUnusedCandidatesAsync(Now.AddHours(-24), UnusedMediaCleanup.SweepBatchSize, Arg.Any<CancellationToken>())
+            .Returns(new List<MediaItem> { inPost, avatar, unused, abandoned });
+        var posts = Usage("posts and drafts", inPost.Id);
+        var profiles = Usage("avatars", avatar.Id);
+        var cleanup = new UnusedMediaCleanup(
+            _media, _storage, [posts, profiles], Options(), new FixedTimeProvider(Now), NullLogger<UnusedMediaCleanup>.Instance);
+
+        var looked = await cleanup.SweepAsync(Ct);
+
+        Assert.Equal(4, looked);
+        Assert.Equal((MediaStatus.Ready, Now), (inPost.Status, inPost.UsageCheckedAt!.Value));
+        Assert.Equal((MediaStatus.Ready, Now), (avatar.Status, avatar.UsageCheckedAt!.Value));
+        Assert.Equal(MediaStatus.Deleted, unused.Status);
+        Assert.Equal(MediaStatus.Deleted, abandoned.Status);
+        Assert.Null(unused.UsageCheckedAt);
+        await _storage.Received(1).DeleteOriginalAsync(unused.OriginalKey, Arg.Any<CancellationToken>());
+        await _storage.Received(1).DeleteOriginalAsync(abandoned.OriginalKey, Arg.Any<CancellationToken>());
+        await _storage.DidNotReceive().DeleteOriginalAsync(inPost.OriginalKey, Arg.Any<CancellationToken>());
+        await _storage.DidNotReceive().DeleteOriginalAsync(avatar.OriginalKey, Arg.Any<CancellationToken>());
+        await _media.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await posts.Received(1).InUseAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 4),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Without_a_module_reporting_what_is_in_use_nothing_is_deleted()
+    {
+        var cleanup = new UnusedMediaCleanup(
+            _media, _storage, [], Options(), new FixedTimeProvider(Now), NullLogger<UnusedMediaCleanup>.Instance);
+
+        Assert.Equal(0, await cleanup.SweepAsync(Ct));
+
+        await _media.DidNotReceiveWithAnyArgs().ListUnusedCandidatesAsync(default, default, Ct);
+        await _storage.DidNotReceiveWithAnyArgs().DeleteOriginalAsync(default!, Ct);
+    }
+
+    private static IMediaUsage Usage(string name, params Guid[] inUse)
+    {
+        var usage = Substitute.For<IMediaUsage>();
+        usage.Name.Returns(name);
+        usage.InUseAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(c => (IReadOnlySet<Guid>)c.Arg<IReadOnlyCollection<Guid>>().Intersect(inUse).ToHashSet());
+        return usage;
     }
 
     private static MediaItem Ready(string contentType = "video/mp4")

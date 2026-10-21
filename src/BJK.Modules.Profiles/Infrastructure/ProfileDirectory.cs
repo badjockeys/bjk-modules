@@ -97,3 +97,26 @@ internal sealed class ProfileModeration(IProfileRepository profiles, IMediaDirec
         return true;
     }
 }
+
+internal sealed class ProfileBadges(IProfileRepository profiles, TimeProvider clock) : IProfileBadges
+{
+    public async Task AwardLocalRegularAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return;
+        }
+
+        var now = clock.GetUtcNow();
+        var existing = await profiles.GetManyAsync(userIds, cancellationToken);
+        foreach (var profile in existing)
+        {
+            if (await profiles.GetBadgeAsync(profile.Id, Domain.Badge.LocalRegular, cancellationToken) is null)
+            {
+                profiles.AddBadge(Domain.ProfileBadge.Award(profile.Id, Domain.Badge.LocalRegular, now));
+            }
+        }
+
+        await profiles.SaveChangesAsync(cancellationToken);
+    }
+}

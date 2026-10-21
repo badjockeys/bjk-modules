@@ -36,6 +36,12 @@ public sealed class Notification
     /// <summary>The post's title when it happened.</summary>
     public string? PostTitle { get; private set; }
 
+    /// <summary>A short sentence some types carry, such as a closed vote's result.</summary>
+    public string? Detail { get; private set; }
+
+    /// <summary>When it was last sent as a push notification (grouped reactions push at most hourly).</summary>
+    public DateTimeOffset? LastPushedAt { get; private set; }
+
     /// <summary>How many people (1 unless grouped).</summary>
     public int Count { get; private set; }
 
@@ -66,6 +72,7 @@ public sealed class Notification
             PostId = request.PostId,
             CommentId = request.CommentId,
             PostTitle = string.IsNullOrEmpty(title) ? null : title.Length <= PostTitleMaxLength ? title : title[..PostTitleMaxLength],
+            Detail = Trimmed(request.Detail, NotificationRequest.DetailMaxLength),
             Count = 1,
             CreatedAt = now,
             UpdatedAt = now,
@@ -81,6 +88,17 @@ public sealed class Notification
     }
 
     public void MarkRead(DateTimeOffset now) => ReadAt ??= now;
+
+    /// <summary>True if it may be pushed again: never pushed, or last pushed over an hour ago.</summary>
+    public bool MayPush(DateTimeOffset now) => LastPushedAt is not { } last || now - last >= TimeSpan.FromHours(1);
+
+    public void MarkPushed(DateTimeOffset now) => LastPushedAt = now;
+
+    private static string? Trimmed(string? value, int max)
+    {
+        var text = value?.Trim();
+        return string.IsNullOrEmpty(text) ? null : text.Length <= max ? text : text[..max];
+    }
 }
 
 /// <summary>
@@ -104,13 +122,17 @@ public sealed class NotificationSetting
     /// <summary>Also send an email.</summary>
     public bool Email { get; private set; }
 
-    public static NotificationSetting Create(Guid userId, NotificationType type, bool inApp, bool email) =>
-        new() { UserId = userId, Type = type, InApp = inApp, Email = email };
+    /// <summary>Also send a push notification to the devices where they turned push on.</summary>
+    public bool Push { get; private set; } = true;
 
-    public void Change(bool inApp, bool email)
+    public static NotificationSetting Create(Guid userId, NotificationType type, bool inApp, bool email, bool push = true) =>
+        new() { UserId = userId, Type = type, InApp = inApp, Email = email, Push = push };
+
+    public void Change(bool inApp, bool email, bool push)
     {
         InApp = inApp;
         Email = email;
+        Push = push;
     }
 }
 
@@ -158,14 +180,17 @@ public sealed class NotificationContact
     }
 }
 
-/// <summary>What each type does when someone hasn't chosen: everything in the bell; email only for what needs them.</summary>
+/// <summary>
+/// What each type does when someone hasn't chosen: everything in the bell and as a push (on devices where they turned
+/// push on); email only for what needs them.
+/// </summary>
 public static class NotificationDefaults
 {
-    /// <summary>The bell and email defaults for a type.</summary>
-    public static (bool InApp, bool Email) For(NotificationType type) => type switch
+    /// <summary>The bell, email and push defaults for a type.</summary>
+    public static (bool InApp, bool Email, bool Push) For(NotificationType type) => type switch
     {
-        NotificationType.PassengerTagged => (true, true),
-        _ => (true, false),
+        NotificationType.PassengerTagged => (true, true, true),
+        _ => (true, false, true),
     };
 
     /// <summary>Types a person can change, in the order the settings page lists them.</summary>
@@ -177,5 +202,7 @@ public static class NotificationDefaults
         NotificationType.ReplyToComment,
         NotificationType.ReactionOnPost,
         NotificationType.NewFollower,
+        NotificationType.CommentOnFollowedPost,
+        NotificationType.VoteClosed,
     ];
 }

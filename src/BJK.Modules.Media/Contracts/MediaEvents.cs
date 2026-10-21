@@ -70,11 +70,11 @@ public static class MediaEvents
 
     /// <summary>
     /// Registers a module's handler. The first call also starts reading the host's
-    /// <see cref="MessagingOptions.MediaEventsQueue"/> (subscribed to <see cref="Topic"/>), passing each event to every
+    /// <see cref="MessagingOptions.MediaEvents"/> (subscribed to <see cref="Topic"/>), passing each event to every
     /// registered handler.
     /// </summary>
     /// <param name="services">The host's services.</param>
-    /// <param name="configuration">Its configuration (<c>Messaging</c>).</param>
+    /// <param name="configuration">Its configuration (<c>Queues</c>).</param>
     /// <param name="connectionStringName">The module's connection string (the queues' default database).</param>
     public static IServiceCollection AddMediaEventHandler<THandler>(
         this IServiceCollection services,
@@ -83,8 +83,8 @@ public static class MediaEvents
         where THandler : class, IMediaEventHandler
     {
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMediaEventHandler, THandler>());
-        var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.MediaEventsQueue
-            ?? new MessagingOptions().MediaEventsQueue;
+        var queue = configuration.GetSection(MessagingOptions.SectionName).Get<MessagingOptions>()?.MediaEvents
+            ?? new MessagingOptions().MediaEvents;
         services.AddMessageConsumer<MediaEventConsumer>(
             configuration,
             connectionStringName,

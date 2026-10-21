@@ -5,6 +5,7 @@ using BJK.Modules.Email.Contracts;
 using BJK.Modules.Notifications.Domain;
 using BJK.Modules.Notifications.Infrastructure;
 using BJK.Modules.Notifications.Infrastructure.Data;
+using BJK.Modules.Notifications.Infrastructure.Push;
 using BJK.Modules.Notifications.UseCases;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Shared.Exceptions;
@@ -31,6 +32,7 @@ public sealed class AreaAlertTests
     private readonly INotificationRepository _notifications = Substitute.For<INotificationRepository>();
     private readonly IBlockDirectory _blocks = Substitute.For<IBlockDirectory>();
     private readonly IEmailSender _email = Substitute.For<IEmailSender>();
+    private readonly IPushSender _push = Substitute.For<IPushSender>();
     private readonly FixedTimeProvider _clock = new(Afternoon);
     private readonly List<Notification> _added = [];
     private readonly List<AreaAlertItem> _held = [];
@@ -48,6 +50,7 @@ public sealed class AreaAlertTests
         _notifications,
         Substitute.For<IProfileDirectory>(),
         _email,
+        _push,
         Options.Create(new EmailOptions()),
         Options.Create(new NotificationsOptions { AppUrl = new Uri("https://badjockeys.com") }),
         _clock,

@@ -70,7 +70,7 @@ public sealed class ListNotificationsQueryHandler(INotificationRepository notifi
                 n.CommentId,
                 n.PostTitle,
                 n.Count,
-                NotificationTexts.Sentence(n.Type, actor?.DisplayName, n.Count, n.PostTitle),
+                NotificationTexts.Sentence(n.Type, actor?.DisplayName, n.Count, n.PostTitle, n.Detail),
                 n.UpdatedAt,
                 n.IsRead);
         }).ToList();
@@ -167,8 +167,8 @@ public sealed class MarkNotificationsReadCommandHandler(INotificationRepository 
             cancellationToken);
 }
 
-/// <summary>One type's setting: show it in the bell, and email it.</summary>
-public sealed record NotificationSettingDto(NotificationType Type, string Label, bool InApp, bool Email);
+/// <summary>One type's setting: show it in the bell, email it, and push it to devices where push is on.</summary>
+public sealed record NotificationSettingDto(NotificationType Type, string Label, bool InApp, bool Email, bool Push = true);
 
 /// <summary>The signed-in user's notification settings, every type, defaults filled in.</summary>
 public sealed record GetNotificationSettingsQuery : IRequest<IReadOnlyList<NotificationSettingDto>>;
@@ -183,13 +183,13 @@ public sealed class GetNotificationSettingsQueryHandler(INotificationRepository 
         NotificationDefaults.Configurable.Select(type =>
         {
             var setting = chosen.FirstOrDefault(s => s.Type == type);
-            var (inApp, email) = setting is null ? NotificationDefaults.For(type) : (setting.InApp, setting.Email);
-            return new NotificationSettingDto(type, NotificationTexts.Label(type), inApp, email);
+            var (inApp, email, push) = setting is null ? NotificationDefaults.For(type) : (setting.InApp, setting.Email, setting.Push);
+            return new NotificationSettingDto(type, NotificationTexts.Label(type), inApp, email, push);
         }).ToList();
 }
 
-/// <summary>A change to one type's setting.</summary>
-public sealed record NotificationSettingChange(NotificationType Type, bool InApp, bool Email);
+/// <summary>A change to one type's setting. <c>Push</c> left out keeps the current push choice.</summary>
+public sealed record NotificationSettingChange(NotificationType Type, bool InApp, bool Email, bool? Push = null);
 
 /// <summary>Changes the signed-in user's settings for the types given; others stay as they are.</summary>
 public sealed record UpdateNotificationSettingsCommand(IReadOnlyList<NotificationSettingChange> Settings)
@@ -220,13 +220,18 @@ public sealed class UpdateNotificationSettingsCommandHandler(INotificationReposi
             var setting = current.FirstOrDefault(s => s.Type == change.Type);
             if (setting is null)
             {
-                setting = NotificationSetting.Create(userId, change.Type, change.InApp, change.Email);
+                setting = NotificationSetting.Create(
+                    userId,
+                    change.Type,
+                    change.InApp,
+                    change.Email,
+                    change.Push ?? NotificationDefaults.For(change.Type).Push);
                 notifications.AddSetting(setting);
                 current.Add(setting);
             }
             else
             {
-                setting.Change(change.InApp, change.Email);
+                setting.Change(change.InApp, change.Email, change.Push ?? setting.Push);
             }
         }
 

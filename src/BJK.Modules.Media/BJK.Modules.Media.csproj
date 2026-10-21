@@ -27,6 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- CLIP text embeddings for the nudity and graphic content check (see ClipContentClassifier). -->
+    <EmbeddedResource Include="Infrastructure\Processing\Sensitive\clip-prompts.json" LogicalName="BJK.Modules.Media.clip-prompts.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="BJK.Modules.Media.Tests" />
     <!-- NSubstitute needs this to mock internal interfaces. -->
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
