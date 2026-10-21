@@ -13,9 +13,9 @@ namespace BJK.Modules.Shared.Observability;
 
 /// <summary>
 /// Logs, traces and metrics for every host, through OpenTelemetry. They're sent over OTLP to
-/// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>: locally the <c>otel-lgtm</c> container in bjk-core's Docker group
-/// (http://localhost:4318), when deployed Grafana Cloud (its OTLP address, with <c>OTEL_EXPORTER_OTLP_HEADERS</c> for
-/// the key). Only the address changes between them, never the code. Without an address nothing is exported and
+/// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>: locally Elastic's OpenTelemetry collector in bjk-core's Docker group
+/// (http://localhost:4318, viewed in Kibana), when deployed Elastic Cloud's managed OTLP endpoint (with
+/// <c>OTEL_EXPORTER_OTLP_HEADERS</c> for its API key). Only the address changes between them, never the code. Without an address nothing is exported and
 /// logging works as before (console). Outside Development the address is required (<see cref="DeployedSettingRule"/>).
 /// </summary>
 /// <remarks>
@@ -39,7 +39,7 @@ public static class ObservabilityExtensions
 
         builder.Services.RequireWhenDeployed(
             EndpointSetting,
-            "the https OTLP address logs, traces and metrics go to (Grafana Cloud's, with OTEL_EXPORTER_OTLP_HEADERS for its key)",
+            "the https OTLP address logs, traces and metrics go to (Elastic Cloud's, with OTEL_EXPORTER_OTLP_HEADERS for its API key)",
             DeployedSettingChecks.IsHttps);
 
         if (string.IsNullOrWhiteSpace(builder.Configuration[EndpointSetting]))

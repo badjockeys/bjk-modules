@@ -165,7 +165,7 @@ The modules' other checks (SendGrid or Twilio keys once chosen, the age check pr
 
 ### Logs, traces and metrics (OpenTelemetry)
 
-Every host calls `builder.AddBjkObservability("<service name>")` (`BJK.Modules.Shared.Observability`): ASP.NET Core requests (not `/health`), outgoing HTTP calls and SQL Server calls are traced, request, HTTP client and .NET runtime metrics are recorded, and logs go out with them. Everything is sent over OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT` (with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`): locally bjk-core's `otel-lgtm` container (`http://localhost:4318`), when deployed Grafana Cloud's OTLP address with `OTEL_EXPORTER_OTLP_HEADERS` for its key. Only those settings change between them. Without an address nothing is exported; outside Development an https address is required. No personal data: query string values are redacted, SQL text isn't recorded, nothing identifies the user, and log messages never contain emails, names or IP addresses.
+Every host calls `builder.AddBjkObservability("<service name>")` (`BJK.Modules.Shared.Observability`): ASP.NET Core requests (not `/health`), outgoing HTTP calls and SQL Server calls are traced, request, HTTP client and .NET runtime metrics are recorded, and logs go out with them. Everything is sent over OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT` (with `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`): locally Elastic's OpenTelemetry collector in bjk-core's Docker group (`http://localhost:4318`, viewed in Kibana at http://localhost:5601), when deployed Elastic Cloud's managed OTLP endpoint with `OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey <key>`. Only those settings change between them. Without an address nothing is exported; outside Development an https address is required. No personal data: query string values are redacted, SQL text isn't recorded, nothing identifies the user, and log messages never contain emails, names or IP addresses.
 
 ### One id per person, one copy of each fact
 
@@ -337,7 +337,7 @@ SELECT COUNT(*) FROM [messaging].[media.process] WITH (NOLOCK)
 WHERE [visible] <= SYSDATETIMEOFFSET() AND [expiration] > SYSDATETIMEOFFSET()
 ```
 
-Dead letters to watch (e.g. a Grafana alert): `SELECT COUNT(*) FROM [messaging].[media.process.failed]`, and the same for the other `.failed` tables.
+Dead letters to watch (they should stay at 0): `SELECT COUNT(*) FROM [messaging].[media.process.failed]`, and the same for the other `.failed` tables.
 
 ## Media module
 
