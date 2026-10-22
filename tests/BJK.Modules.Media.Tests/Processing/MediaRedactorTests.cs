@@ -76,12 +76,13 @@ public sealed class MediaRedactorTests : IDisposable
     }
 
     [Fact]
-    public async Task Video_detection_runs_on_a_640_pixel_copy_and_boxes_are_mapped_back_to_the_frame()
+    public async Task Video_plates_are_searched_in_a_640_pixel_copy_and_faces_in_a_1440_one_and_boxes_are_mapped_back()
     {
         RequireFfmpeg();
         var input = CheckerVideo("input.mp4", seconds: 1, audio: false);
         var output = Path.Combine(_folder, "720p.mp4");
         var sizes = new List<(int, int)>();
+        var plateSizes = new List<(int, int)>();
 
         // Answers in the coordinates of whatever it's given: the same spot as Face, as fractions of the picture.
         var face = new FakeDetector(RedactionTarget.Face, f =>
@@ -95,10 +96,22 @@ public sealed class MediaRedactorTests : IDisposable
             return [new DetectionBox(RedactionTarget.Face, Face.X * sx, Face.Y * sy, Face.Width * sx, Face.Height * sy, 0.95f)];
         });
 
-        await Redactor(new MediaRedactionOptions(), face, FakeDetector.Nothing(RedactionTarget.NumberPlate))
+        var plates = new FakeDetector(RedactionTarget.NumberPlate, f =>
+        {
+            lock (plateSizes)
+            {
+                plateSizes.Add((f.Width, f.Height));
+            }
+
+            return [];
+        });
+
+        await Redactor(new MediaRedactionOptions(), face, plates)
             .RedactVideoAsync(input, new ProbeResult(true, 1m, 1920, 1080, 60), [], output, Ct);
 
-        Assert.All(sizes, s => Assert.Equal((640, 360), s));
+        Assert.NotEmpty(sizes);
+        Assert.All(sizes, s => Assert.Equal((1440, 810), s));
+        Assert.All(plateSizes, s => Assert.Equal((640, 360), s));
         var frames = await Frames(output);
         Assert.InRange(Detail(frames[10], 520, 220, 680, 330), 0, 30);
         Assert.InRange(Detail(frames[10], 900, 400, 1200, 700), 80, 255);
