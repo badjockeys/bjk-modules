@@ -5,6 +5,12 @@ public enum RedactionTarget
 {
     Face,
     NumberPlate,
+
+    /// <summary>
+    /// The head of a person found by the person detector: a backup for faces the face model can't see (dark, side-on,
+    /// turned away, far off). Blurred like a face, but never sends media to review on its own.
+    /// </summary>
+    Head,
 }
 
 /// <summary>One picture in memory: 8-bit RGB, rows top to bottom, no padding between rows.</summary>

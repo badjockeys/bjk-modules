@@ -218,6 +218,37 @@ public sealed class MediaRedactorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_head_from_the_person_detector_is_blurred_without_sending_the_photo_to_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", $"color=c=gray:s=800x600,format=yuv420p,{Checkerboard}", "-frames:v", "1");
+        var output = Path.Combine(_folder, "redacted.ppm");
+        var heads = new FakeDetector(RedactionTarget.Head, _ => [new DetectionBox(RedactionTarget.Head, 300, 100, 120, 60, 0.5f)]);
+
+        var result = await Redactor(null, FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate), heads)
+            .RedactImageAsync(input, [], output, Ct);
+
+        Assert.False(result.NeedsReview, string.Join(" ", result.ReviewReasons));
+        var frame = Assert.Single(await Frames(output));
+        Assert.InRange(Detail(frame, 310, 110, 410, 150), 0, 30);
+        Assert.InRange(Detail(frame, 600, 400, 780, 580), 80, 255);
+    }
+
+    [Fact]
+    public async Task An_unavailable_person_detector_means_review()
+    {
+        RequireFfmpeg();
+        var input = Make(Path.Combine(_folder, "photo.png"), "-f", "lavfi", "-i", "testsrc=size=800x600", "-frames:v", "1");
+        var heads = new FakeDetector(RedactionTarget.Head, _ => [], available: false);
+
+        var result = await Redactor(null, FakeDetector.Nothing(RedactionTarget.Face), FakeDetector.Nothing(RedactionTarget.NumberPlate), heads)
+            .RedactImageAsync(input, [], Path.Combine(_folder, "redacted.ppm"), Ct);
+
+        Assert.True(result.NeedsReview);
+        Assert.Contains(result.ReviewReasons, r => r.Contains("Head"));
+    }
+
+    [Fact]
     public async Task Review_everything_sends_confident_results_to_review_too()
     {
         RequireFfmpeg();

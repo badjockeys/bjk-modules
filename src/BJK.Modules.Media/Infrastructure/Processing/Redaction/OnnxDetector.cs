@@ -171,6 +171,35 @@ internal static class FrameOps
     }
 
     /// <summary>
+    /// Planar RGB floats (0 to 255) of a <paramref name="size"/> x <paramref name="size"/> letterbox: the frame scaled
+    /// to fit (by the returned scale) in the top left, the rest grey (114), as YOLOX expects.
+    /// </summary>
+    public static (float[] Data, float Scale) ToRgbLetterbox(RgbFrame frame, int size)
+    {
+        var scale = Math.Min(size / (float)frame.Width, size / (float)frame.Height);
+        var w = Math.Clamp((int)(frame.Width * scale), 1, size);
+        var h = Math.Clamp((int)(frame.Height * scale), 1, size);
+        var resized = w == frame.Width && h == frame.Height ? frame : Resize(frame, w, h);
+        var plane = size * size;
+        var data = new float[plane * 3];
+        Array.Fill(data, 114f);
+        var pixels = resized.Pixels;
+        for (var y = 0; y < h; y++)
+        {
+            var i = y * resized.Stride;
+            var o = y * size;
+            for (var x = 0; x < w; x++, i += 3, o++)
+            {
+                data[o] = pixels[i];
+                data[plane + o] = pixels[i + 1];
+                data[(2 * plane) + o] = pixels[i + 2];
+            }
+        }
+
+        return (data, scale);
+    }
+
+    /// <summary>
     /// Planar BGR floats (0 to 255, the layout OpenCV's blobFromImage gives the YuNet models) of size
     /// <paramref name="width"/> x <paramref name="height"/>; the frame goes in the top left and the rest is zero.
     /// </summary>

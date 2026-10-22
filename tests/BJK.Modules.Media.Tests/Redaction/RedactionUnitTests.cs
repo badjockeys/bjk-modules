@@ -320,3 +320,33 @@ public sealed class PlateDetectorGeometryTests
         Assert.Equal(expected, MediaRedactor.FrameRate(source), 3);
     }
 }
+
+public sealed class PersonDetectorTests
+{
+    [Fact]
+    public void The_head_is_the_top_of_the_person_box()
+    {
+        var head = YoloxPersonDetector.HeadOf(new DetectionBox(RedactionTarget.Head, 100, 50, 40, 200, 0.8f));
+
+        Assert.Equal((100f, 50f, 40f), (head.X, head.Y, head.Width));
+        Assert.Equal(200 * YoloxPersonDetector.HeadFraction, head.Height, 3);
+        Assert.Equal(0.8f, head.Confidence);
+    }
+
+    [Fact]
+    public void The_letterbox_scales_the_frame_into_the_top_left_and_pads_with_grey()
+    {
+        var frame = new RgbFrame(1280, 720);
+        Array.Fill(frame.Pixels, (byte)200);
+
+        var (data, scale) = FrameOps.ToRgbLetterbox(frame, 640);
+
+        Assert.Equal(0.5f, scale);
+        Assert.Equal(3 * 640 * 640, data.Length);
+        Assert.Equal(200f, data[0]);                      // inside the picture (red plane)
+        Assert.Equal(200f, data[(359 * 640) + 639]);      // last row of the picture
+        Assert.Equal(114f, data[(360 * 640) + 10]);       // below it: padding
+        Assert.Equal(114f, data[(2 * 640 * 640) + (639 * 640) + 639]); // padding in the blue plane
+    }
+}
+

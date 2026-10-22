@@ -321,6 +321,21 @@ public sealed class MediaRedactionOptions
     [Range(0.05, 1.0)]
     public double PlateConfidentAt { get; set; } = 0.8;
 
+    /// <summary>
+    /// The YOLOX-S person detection model (ONNX), e.g. <c>/opt/bjk/models/object_detection_yolox_2022nov.onnx</c>. Each
+    /// person's head is blurred, catching faces the face model misses (at night, far off, side-on, turned away). Not
+    /// set or missing: every upload goes to review.
+    /// </summary>
+    public string? PersonModelPath { get; set; }
+
+    /// <summary>People scoring at least this have their head blurred. Head blurs never send media to review.</summary>
+    [Range(0.05, 1.0)]
+    public double HeadMinConfidence { get; set; } = 0.4;
+
+    /// <summary>Videos: a weaker person detection, down to this, can continue a head already being blurred.</summary>
+    [Range(0.05, 1.0)]
+    public double HeadTrackConfidence { get; set; } = 0.25;
+
     /// <summary>Extra margin added to every side of a detected box, as a fraction of its width or height.</summary>
     [Range(0.0, 1.0)]
     public double BoxPadding { get; set; } = 0.25;

@@ -166,7 +166,7 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | `Notifications:AppUrl` | An https address | Notifications module |
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
-| `Media:Redaction:FaceModelPath`, `PlateModelPath` | Set | Media worker |
+| `Media:Redaction:FaceModelPath`, `PlateModelPath`, `PersonModelPath` | Set | Media worker |
 
 The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
 
@@ -450,7 +450,7 @@ Every photo and video is blurred by the worker before anything is published (Onl
 **How it works**
 
 1. ffmpeg decodes the picture (photos: upright, at most 2048 px; videos: at most 720p and 30 fps) into memory over a pipe. Nothing unblurred is written out.
-2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus a 2x2 grid of overlapping zoomed tiles for small, distant plates).
+2. Open-source detection models run on the CPU with ONNX Runtime (`Microsoft.ML.OnnxRuntime`, MIT): YuNet for faces (each frame at full size and again at 640 px for faces close to the camera) and LPD-YuNet for number plates (the whole frame plus a 2x2 grid of overlapping zoomed tiles for small, distant plates), plus **YOLOX-S for people** (OpenCV Zoo's `object_detection_yolox_2022nov.onnx`, Apache-2.0, COCO). The top 22% of every person found, full width, is blurred as their head (`RedactionTarget.Head`). Person detectors find pedestrians far more reliably than face detectors at night, at a distance, side-on or from behind. On the owner's night-time clip, YOLOX found 141 people in 48 of 60 sampled frames, where YuNet found 51 faces. Head blurs never send media to review; a missing or broken person model does. Added 22 Oct 2026.
    For videos, plate detection (and the content checks) run on a copy of each analysed frame scaled down to at most 640 pixels on its longest side (`DetectionMaxSize`), and the boxes are mapped back to the full frame; plates are searched in zoomed 2x2 tiles of that copy, so small ones are still found. **Faces are searched in their own copy, scaled up or down to 1440 pixels on its longest side** (`FaceDetectionSize`; changed 22 Oct 2026 after the owner's night-time test clip showed most pedestrians' faces unblurred). YuNet finds faces down to about 10 pixels, and finds far more of the 10–20 pixel faces on pavements and behind windscreens once they're enlarged. On that clip (724x470, 30 s, sampled twice a second) the old 640 px copy found 5 faces in 60 frames, full size 11, and 1440 px 51 (in 27 of the 60 frames). It costs roughly 100–200 ms per analysed frame. It still misses faces that are very dark, side-on or turned away: a person detector that blurs the head area is the next step for those. Photos are always analysed at full size.
 3. Each box is grown by 25% on every side (`BoxPadding`) and blurred irreversibly: reduced to a few large blocks of average colour (at most about 8 across and 3 down a plate) and then smoothed. A light Gaussian blur, which can be partly undone, isn't used.
 4. **Videos:** detection runs on every 5th frame (`DetectEveryNthFrame`). A tracker links boxes from one pass to the next (by overlap, or by distance for fast movers), matching each detection against where a track is heading (its last box moved on by its speed) rather than where it was last seen, and interpolates a box for every frame in between. Once a face or plate is being followed, a weaker detection (down to `FaceTrackConfidence` / `PlateTrackConfidence`, 0.3) still continues it, so the blur holds while a plate turns side-on or blurs with motion; weak detections never start a new blur on their own. A face or plate missed by up to 3 passes in a row (`MaxMissedDetections`) stays blurred across the gap, and each track starts one interval before its first detection and ends one after its last, following its motion, so blurs don't flicker, drop out or appear late. The video is read once; frames wait in memory only until detection has run far enough ahead (about 20 frames, ~55 MB at 720p).
@@ -493,6 +493,8 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | `FaceModelPath`, `PlateModelPath` | Not set: the detector is unavailable and media goes to review |
 | `FaceMinConfidence`, `PlateMinConfidence` | 0.5: boxes scoring at least this are blurred |
 | `FaceConfidentAt`, `PlateConfidentAt` | 0.8: anything blurred that never scores this sends the media to review |
+| `PersonModelPath` | YOLOX-S model; not set: the person detector is unavailable and media goes to review |
+| `HeadMinConfidence`, `HeadTrackConfidence` | 0.4 and 0.25: people scoring at least this have their head blurred (videos: weaker detections continue a head already blurred) |
 | `FaceTrackConfidence`, `PlateTrackConfidence` | 0.3: videos only; a weaker detection can continue a face or plate already being blurred (at most the MinConfidence) |
 | `BoxPadding` | 0.25 of the box's width/height added on each side |
 | `DetectEveryNthFrame` | 5 (6 detection passes a second at 30 fps) |

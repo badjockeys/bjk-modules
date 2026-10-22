@@ -493,11 +493,20 @@ internal sealed class MediaRedactor(
         return maxSize <= 0 || longest <= maxSize ? 1f : maxSize / (float)longest;
     }
 
-    private float MinConfidence(RedactionTarget target) =>
-        (float)(target == RedactionTarget.Face ? _options.FaceMinConfidence : _options.PlateMinConfidence);
+    private float MinConfidence(RedactionTarget target) => (float)(target switch
+    {
+        RedactionTarget.Face => _options.FaceMinConfidence,
+        RedactionTarget.Head => _options.HeadMinConfidence,
+        _ => _options.PlateMinConfidence,
+    });
 
-    private float ConfidentAt(RedactionTarget target) =>
-        (float)(target == RedactionTarget.Face ? _options.FaceConfidentAt : _options.PlateConfidentAt);
+    /// <summary>The score from which a detection needs no review. Heads are a backup and never need review.</summary>
+    private float ConfidentAt(RedactionTarget target) => (float)(target switch
+    {
+        RedactionTarget.Face => _options.FaceConfidentAt,
+        RedactionTarget.Head => 0,
+        _ => _options.PlateConfidentAt,
+    });
 
     private RedactionResult Result(DetectionPass pass, int faces, int plates, int uncertain, int frames, int analysed, TimeSpan elapsed)
     {
@@ -608,6 +617,13 @@ internal sealed class MediaRedactor(
             foreach (var target in Enum.GetValues<RedactionTarget>())
             {
                 var detector = detectors.FirstOrDefault(d => d.Target == target);
+                if (detector is null && target == RedactionTarget.Head)
+                {
+                    // The head (person) detector is an extra; the worker always registers it, and a registered one
+                    // that's unavailable still sends media to review below.
+                    continue;
+                }
+
                 if (detector is null)
                 {
                     _problems.Add($"No {target} detector is registered.");
@@ -791,9 +807,12 @@ internal sealed class MediaRedactor(
                 {
                     var frame = inputFor(detector.Target);
                     // Down to the tracking minimum: weaker boxes can keep an existing face or plate blurred in a video.
-                    var min = (float)(detector.Target == RedactionTarget.Face
-                        ? Math.Min(_options.FaceMinConfidence, _options.FaceTrackConfidence)
-                        : Math.Min(_options.PlateMinConfidence, _options.PlateTrackConfidence));
+                    var min = (float)(detector.Target switch
+                    {
+                        RedactionTarget.Face => Math.Min(_options.FaceMinConfidence, _options.FaceTrackConfidence),
+                        RedactionTarget.Head => Math.Min(_options.HeadMinConfidence, _options.HeadTrackConfidence),
+                        _ => Math.Min(_options.PlateMinConfidence, _options.PlateTrackConfidence),
+                    });
                     var found = detector.Detect(frame, min);
                     if (ReferenceEquals(frame, full))
                     {
