@@ -653,23 +653,13 @@ internal sealed class MediaRedactor(
             _timer.Start();
             try
             {
-                // Videos: detect on a smaller copy (Media:Redaction:DetectionMaxSize), then map the boxes back to the frame.
-                var scale = DetectionScale(frame.Width, frame.Height, _maxSize);
-                if (scale >= 1)
-                {
-                    Classify(frame, classify);
-                    return DetectAll(frame);
-                }
-
-                var small = FrameOps.Resize(
-                    frame,
-                    Math.Max(1, (int)MathF.Round(frame.Width * scale)),
-                    Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+                // Videos: plates (and the content checks) use a smaller copy (Media:Redaction:DetectionMaxSize); plates
+                // have zoomed tiles for small ones. Faces use a larger one (FaceDetectionMaxSize, full size for 720p),
+                // because faces through windscreens or across the road are only a few pixels high. Photos use full size.
+                var small = Scaled(frame, _maxSize);
                 Classify(small, classify);
-                var (sx, sy) = (frame.Width / (float)small.Width, frame.Height / (float)small.Height);
-                return DetectAll(small)
-                    .Select(b => b with { X = b.X * sx, Y = b.Y * sy, Width = b.Width * sx, Height = b.Height * sy })
-                    .ToList();
+                var faces = _maxSize <= 0 ? frame : Scaled(frame, _options.FaceDetectionMaxSize);
+                return DetectAll(target => target == RedactionTarget.Face ? faces : small, frame);
             }
             finally
             {
@@ -763,18 +753,40 @@ internal sealed class MediaRedactor(
             }
         }
 
-        private List<DetectionBox> DetectAll(RgbFrame frame)
+        private static RgbFrame Scaled(RgbFrame frame, int maxSize)
+        {
+            var scale = DetectionScale(frame.Width, frame.Height, maxSize);
+            return scale >= 1
+                ? frame
+                : FrameOps.Resize(
+                    frame,
+                    Math.Max(1, (int)MathF.Round(frame.Width * scale)),
+                    Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+        }
+
+        /// <summary>Runs each detector on its own copy of the frame and maps the boxes back to the full frame.</summary>
+        private List<DetectionBox> DetectAll(Func<RedactionTarget, RgbFrame> inputFor, RgbFrame full)
         {
             var boxes = new List<DetectionBox>();
             foreach (var detector in _active.ToList())
             {
                 try
                 {
+                    var frame = inputFor(detector.Target);
                     // Down to the tracking minimum: weaker boxes can keep an existing face or plate blurred in a video.
                     var min = (float)(detector.Target == RedactionTarget.Face
                         ? Math.Min(_options.FaceMinConfidence, _options.FaceTrackConfidence)
                         : Math.Min(_options.PlateMinConfidence, _options.PlateTrackConfidence));
-                    boxes.AddRange(detector.Detect(frame, min));
+                    var found = detector.Detect(frame, min);
+                    if (ReferenceEquals(frame, full))
+                    {
+                        boxes.AddRange(found);
+                    }
+                    else
+                    {
+                        var (sx, sy) = (full.Width / (float)frame.Width, full.Height / (float)frame.Height);
+                        boxes.AddRange(found.Select(b => b with { X = b.X * sx, Y = b.Y * sy, Width = b.Width * sx, Height = b.Height * sy }));
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

@@ -365,13 +365,21 @@ public sealed class MediaRedactionOptions
     public int InferenceThreads { get; set; }
 
     /// <summary>
-    /// Detection runs on a copy of each frame scaled down so its longest side is at most this many pixels (boxes are
-    /// mapped back to the full picture before blurring). Much faster for faces; plates are searched in zoomed tiles of
-    /// the smaller copy, so their cost barely changes. Faces smaller than about 10 pixels in the copy (20 pixels in a
-    /// 720p frame) may be missed. 0 runs detection at full resolution.
+    /// Videos: plate detection and the content checks run on a copy of each frame scaled down so its longest side is
+    /// at most this many pixels (boxes are mapped back to the full picture before blurring). Plates are searched in
+    /// zoomed tiles of the smaller copy, so small ones are still found. Faces use <see cref="FaceDetectionMaxSize"/>.
+    /// 0 runs detection at full resolution.
     /// </summary>
     [Range(0, 4096)]
     public int DetectionMaxSize { get; set; } = 640;
+
+    /// <summary>
+    /// Videos: the longest side of the copy faces are looked for in. 1280 (the default) is full size for a 720p
+    /// video, so small faces (through windscreens, across the road) are found; 0 means always full size. Faces at full
+    /// 720p take roughly 25–60 ms per analysed frame.
+    /// </summary>
+    [Range(0, 4096)]
+    public int FaceDetectionMaxSize { get; set; } = 1280;
 
     /// <summary>
     /// Where the detection models run. <see cref="RedactionExecutionProvider.Cpu"/> (the default) works everywhere.
