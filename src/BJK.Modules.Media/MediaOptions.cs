@@ -294,9 +294,14 @@ public sealed class MediaRedactionOptions
     [Range(0.05, 1.0)]
     public double FaceMinConfidence { get; set; } = 0.5;
 
-    /// <summary>A face (or, in a video, a face's whole track) that never scores this much is uncertain: the media goes to review.</summary>
+    /// <summary>
+    /// A face (or, in a video, a face's whole track) that never scores this much is uncertain: the media goes to review.
+    /// 0.5 (the default, the same as <see cref="FaceMinConfidence"/>): faces never hold an upload, because anything
+    /// found is blurred and heads are blurred from the person detector too (owner, 22 Oct 2026). Plates still do
+    /// (<see cref="PlateConfidentAt"/>), because a plate identifies the driver a post is about.
+    /// </summary>
     [Range(0.05, 1.0)]
-    public double FaceConfidentAt { get; set; } = 0.8;
+    public double FaceConfidentAt { get; set; } = 0.5;
 
     /// <summary>Number plates scoring at least this are blurred.</summary>
     [Range(0.05, 1.0)]

@@ -461,7 +461,7 @@ Every photo and video is blurred by the worker before anything is published (Onl
 
 - either model isn't configured, its file is missing, or it won't load;
 - a detector throws on any frame (it's then not used again for that job);
-- any detection is uncertain: a photo detection, or a video track whose best score never reaches `FaceConfidentAt` / `PlateConfidentAt` (0.8), while scoring at least `FaceMinConfidence` / `PlateMinConfidence` (0.5), the blur threshold;
+- any detection is uncertain: a photo detection, or a video track whose best score never reaches `FaceConfidentAt` / `PlateConfidentAt` (0.8), while scoring at least `FaceMinConfidence` / `PlateMinConfidence` (0.5), the blur threshold. `FaceConfidentAt` is 0.5 by default (owner, 22 Oct 2026), so faces never hold an upload (anything found is blurred, and heads are blurred from the person detector); plates do, at 0.8;
 - a moderator added blur regions (the result is always checked again);
 - `ReviewEverything` is on.
 
@@ -492,7 +492,7 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 |---|---|
 | `FaceModelPath`, `PlateModelPath` | Not set: the detector is unavailable and media goes to review |
 | `FaceMinConfidence`, `PlateMinConfidence` | 0.5: boxes scoring at least this are blurred |
-| `FaceConfidentAt`, `PlateConfidentAt` | 0.8: anything blurred that never scores this sends the media to review |
+| `FaceConfidentAt`, `PlateConfidentAt` | 0.5 and 0.8: anything blurred that never scores this sends the media to review (so faces never do; plates under 0.8 do) |
 | `BoxPadding` | 0.25 of the box's width/height added on each side |
 | `DetectEveryNthFrame` | 5 (6 detection passes a second at 30 fps) |
 | `MaxMissedDetections` | 3 |
