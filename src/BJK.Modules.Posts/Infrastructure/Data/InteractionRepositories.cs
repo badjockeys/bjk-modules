@@ -11,6 +11,9 @@ public interface IReactionRepository
 
     void Remove(Reaction reaction);
 
+    /// <summary>A post's reactions, newest first, at most <paramref name="max"/>. Untracked.</summary>
+    Task<IReadOnlyList<Reaction>> ListForPostAsync(Guid postId, int max, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
@@ -126,6 +129,13 @@ internal sealed class ReactionRepository(PostsDbContext db) : IReactionRepositor
     public void Add(Reaction reaction) => db.Reactions.Add(reaction);
 
     public void Remove(Reaction reaction) => db.Reactions.Remove(reaction);
+
+    public async Task<IReadOnlyList<Reaction>> ListForPostAsync(Guid postId, int max, CancellationToken cancellationToken) =>
+        await db.Reactions.AsNoTracking()
+            .Where(r => r.PostId == postId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(max)
+            .ToListAsync(cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }

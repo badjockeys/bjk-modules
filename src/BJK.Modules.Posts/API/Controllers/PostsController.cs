@@ -189,6 +189,24 @@ public sealed class PostsController(ISender sender) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Who reacted to a post, newest first, with the totals per reaction. Signed-in members only. Filter with
+    /// <c>type</c> (Like, Heart, Angry, Shocked) and search names with <c>search</c>. Under-18s are counted but not named.
+    /// </summary>
+    [HttpGet("{id:guid}/reactions")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PostReactionsDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<PostReactionsDto> ListReactions(
+        Guid id,
+        [FromQuery] ReactionType? type = null,
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 30,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new ListReactionsQuery(id, type, search, page, pageSize), cancellationToken);
+
     [HttpDelete("{id:guid}/reaction")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

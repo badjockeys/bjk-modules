@@ -90,12 +90,15 @@ public enum SensitiveReviewStatus
     Undone,
 }
 
+/// <summary>
+/// The reactions, stored by name. Heart replaced Laugh on 22 Oct 2026 (existing Laugh reactions became Like).
+/// </summary>
 public enum ReactionType
 {
     Like,
+    Heart,
     Angry,
     Shocked,
-    Laugh,
 }
 
 public enum CommentStatus

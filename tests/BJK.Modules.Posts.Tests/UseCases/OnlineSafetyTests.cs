@@ -371,7 +371,7 @@ public sealed class OnlineSafetyTests
         _commentReactions.GetStatsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), UserId, Arg.Any<CancellationToken>())
             .Returns(new Dictionary<Guid, CommentReactionStats>
             {
-                [comment.Id] = new(new Dictionary<ReactionType, int> { [ReactionType.Like] = 4, [ReactionType.Laugh] = 1 }, ReactionType.Like),
+                [comment.Id] = new(new Dictionary<ReactionType, int> { [ReactionType.Like] = 4, [ReactionType.Heart] = 1 }, ReactionType.Like),
             });
 
         var shown = Assert.Single((await CommentsHandler().Handle(new ListCommentsQuery(post.Id), Ct)).Items);
