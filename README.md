@@ -467,7 +467,7 @@ Every photo and video is blurred by the worker before anything is published (Onl
 
 The blurred files are still produced, but kept in the **private** bucket under `{userId}/{mediaId}/review/` (originals bucket) until a moderator approves them. They're never public before that, and the media can't be posted (Posts only accepts `Ready` media). The reason is in `ReviewReason`.
 
-**Limits to know.** Detection can miss things without being "uncertain" (nothing is found at all), so a miss doesn't always reach review; moderators add missed blurs by hand. The plate model was trained on Chinese plates: in our test a synthetic UK plate scored 0.75 (uncertain, so reviewed), and real UK plates may score lower or be missed. Consider `ReviewEverything=true` at launch until real-world accuracy has been checked, and replace the plate model if a permissively licensed UK/EU-trained one becomes available (the `IRedactionDetector` interface makes that a new class).
+**Limits to know.** Detection can miss things without being "uncertain" (nothing is found at all), so a miss doesn't always reach review; moderators add missed blurs by hand. The plate model was trained on Chinese plates: in our test a synthetic UK plate scored 0.75 (uncertain, so reviewed), and real UK plates may score lower or be missed. In a night dashcam test (22 Oct 2026) it found rear yellow plates but missed the white front plates of oncoming cars, so each vehicle's plate area is blurred when no plate is found on it (`BlurPlateAreas`). Consider `ReviewEverything=true` at launch until real-world accuracy has been checked, and replace the plate model if a permissively licensed UK/EU-trained one becomes available (the `IRedactionDetector` interface makes that a new class).
 
 **Models and licences**
 
@@ -495,6 +495,8 @@ ENV Media__Redaction__FaceModelPath=/opt/bjk/models/face_detection_yunet_2026may
 | `FaceConfidentAt`, `PlateConfidentAt` | 0.5 and 0.8: anything blurred that never scores this sends the media to review (so faces never do; plates under 0.8 do) |
 | `PersonModelPath` | YOLOX-S model; not set: the person detector is unavailable and media goes to review |
 | `HeadMinConfidence`, `HeadTrackConfidence` | 0.4 and 0.25: people scoring at least this have their head blurred (videos: weaker detections continue a head already blurred) |
+| `BlurPlateAreas` | true: the person model also finds vehicles (cars, motorbikes, buses, vans and lorries); where the plate model found no plate on one, the lower middle of the vehicle (middle 70% of its width, 45–92% of its height) is blurred. Never sends media to review |
+| `VehicleMinConfidence`, `VehicleTrackConfidence` | 0.3 and 0.2: vehicles scoring at least this have their plate area blurred (videos: weaker detections continue one already blurred) |
 | `FaceTrackConfidence`, `PlateTrackConfidence` | 0.3: videos only; a weaker detection can continue a face or plate already being blurred (at most the MinConfidence) |
 | `BoxPadding` | 0.25 of the box's width/height added on each side |
 | `DetectEveryNthFrame` | 5 (6 detection passes a second at 30 fps) |

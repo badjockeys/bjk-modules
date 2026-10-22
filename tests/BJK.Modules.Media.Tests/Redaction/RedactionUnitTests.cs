@@ -334,6 +334,19 @@ public sealed class PersonDetectorTests
     }
 
     [Fact]
+    public void The_plate_area_is_the_lower_middle_of_the_vehicle_box()
+    {
+        var area = YoloxPersonDetector.PlateAreaOf(new DetectionBox(RedactionTarget.PlateArea, 100, 200, 200, 100, 0.7f));
+
+        Assert.Equal(RedactionTarget.PlateArea, area.Target);
+        Assert.Equal(130f, area.X, 3);
+        Assert.Equal(245f, area.Y, 3);
+        Assert.Equal(140f, area.Width, 3);
+        Assert.Equal(47f, area.Height, 3);
+        Assert.Equal(0.7f, area.Confidence);
+    }
+
+    [Fact]
     public void The_letterbox_scales_the_frame_into_the_top_left_and_pads_with_grey()
     {
         var frame = new RgbFrame(1280, 720);

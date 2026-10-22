@@ -11,6 +11,13 @@ public enum RedactionTarget
     /// turned away, far off). Blurred like a face, but never sends media to review on its own.
     /// </summary>
     Head,
+
+    /// <summary>
+    /// Where a vehicle's number plate would be (the lower middle of a car, van, bus, lorry or motorbike the person
+    /// detector found), blurred when the plate model found no plate there. The plate model misses many UK plates,
+    /// especially white front plates in headlight glare. Never sends media to review on its own.
+    /// </summary>
+    PlateArea,
 }
 
 /// <summary>One picture in memory: 8-bit RGB, rows top to bottom, no padding between rows.</summary>
