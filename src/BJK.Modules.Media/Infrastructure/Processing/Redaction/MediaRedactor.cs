@@ -172,7 +172,8 @@ internal sealed class MediaRedactor(
 
         // Photos are analysed at full size (they're few, and small plates matter in parking photos).
         var pass = NewPass(maxSize: 0);
-        var found = pass.Detect(frame, classify: true);
+        // Weaker detections only help follow faces and plates through a video; a photo uses the usual minimum.
+        var found = pass.Detect(frame, classify: true).Where(b => b.Confidence >= MinConfidence(b.Target)).ToList();
         foreach (var box in found)
         {
             Blur(frame, box);
@@ -302,7 +303,7 @@ internal sealed class MediaRedactor(
         var lookahead = (_options.MaxMissedDetections + 1) * interval;
 
         var pass = NewPass(_options.DetectionMaxSize);
-        var tracker = new RedactionTracker(_options.MaxMissedDetections);
+        var tracker = new RedactionTracker(_options.MaxMissedDetections, startAt: MinConfidence);
         var pending = new Queue<(int Index, RgbFrame Frame)>();
         var decoded = 0;
         var written = 0;
@@ -491,6 +492,9 @@ internal sealed class MediaRedactor(
         var longest = Math.Max(width, height);
         return maxSize <= 0 || longest <= maxSize ? 1f : maxSize / (float)longest;
     }
+
+    private float MinConfidence(RedactionTarget target) =>
+        (float)(target == RedactionTarget.Face ? _options.FaceMinConfidence : _options.PlateMinConfidence);
 
     private float ConfidentAt(RedactionTarget target) =>
         (float)(target == RedactionTarget.Face ? _options.FaceConfidentAt : _options.PlateConfidentAt);
@@ -766,7 +770,10 @@ internal sealed class MediaRedactor(
             {
                 try
                 {
-                    var min = (float)(detector.Target == RedactionTarget.Face ? _options.FaceMinConfidence : _options.PlateMinConfidence);
+                    // Down to the tracking minimum: weaker boxes can keep an existing face or plate blurred in a video.
+                    var min = (float)(detector.Target == RedactionTarget.Face
+                        ? Math.Min(_options.FaceMinConfidence, _options.FaceTrackConfidence)
+                        : Math.Min(_options.PlateMinConfidence, _options.PlateTrackConfidence));
                     boxes.AddRange(detector.Detect(frame, min));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

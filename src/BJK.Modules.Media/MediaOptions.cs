@@ -294,6 +294,13 @@ public sealed class MediaRedactionOptions
     [Range(0.05, 1.0)]
     public double FaceMinConfidence { get; set; } = 0.5;
 
+    /// <summary>
+    /// Videos: a weaker face detection, down to this score, can continue a face already being followed (not start
+    /// one), so the blur holds while the face turns or blurs with motion. At most <see cref="FaceMinConfidence"/>.
+    /// </summary>
+    [Range(0.05, 1.0)]
+    public double FaceTrackConfidence { get; set; } = 0.3;
+
     /// <summary>A face (or, in a video, a face's whole track) that never scores this much is uncertain: the media goes to review.</summary>
     [Range(0.05, 1.0)]
     public double FaceConfidentAt { get; set; } = 0.8;
@@ -301,6 +308,14 @@ public sealed class MediaRedactionOptions
     /// <summary>Number plates scoring at least this are blurred.</summary>
     [Range(0.05, 1.0)]
     public double PlateMinConfidence { get; set; } = 0.5;
+
+    /// <summary>
+    /// Videos: a weaker plate detection, down to this score, can continue a plate already being followed (not start
+    /// one), so the blur holds while a moving car's plate turns, shrinks or blurs. At most
+    /// <see cref="PlateMinConfidence"/>.
+    /// </summary>
+    [Range(0.05, 1.0)]
+    public double PlateTrackConfidence { get; set; } = 0.3;
 
     /// <summary>A plate (or a plate's whole track) that never scores this much is uncertain: the media goes to review.</summary>
     [Range(0.05, 1.0)]

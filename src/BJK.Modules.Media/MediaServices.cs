@@ -48,6 +48,8 @@ public static class MediaServices
             .ValidateDataAnnotations()
             .Validate(o => o.FaceConfidentAt >= o.FaceMinConfidence, "Media:Redaction:FaceConfidentAt must be at least FaceMinConfidence.")
             .Validate(o => o.PlateConfidentAt >= o.PlateMinConfidence, "Media:Redaction:PlateConfidentAt must be at least PlateMinConfidence.")
+            .Validate(o => o.FaceTrackConfidence <= o.FaceMinConfidence, "Media:Redaction:FaceTrackConfidence must be at most FaceMinConfidence.")
+            .Validate(o => o.PlateTrackConfidence <= o.PlateMinConfidence, "Media:Redaction:PlateTrackConfidence must be at most PlateMinConfidence.")
             .ValidateOnStart();
         services.RequireWhenDeployed("Media:Redaction:FaceModelPath", "the face detection model's path in the worker image");
         services.RequireWhenDeployed("Media:Redaction:PlateModelPath", "the number plate detection model's path in the worker image");

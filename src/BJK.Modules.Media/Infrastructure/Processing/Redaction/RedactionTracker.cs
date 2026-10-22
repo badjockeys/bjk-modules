@@ -7,19 +7,32 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// track is extended by one detection interval before its first and after its last detection (following its motion),
 /// so blurs don't flicker, drop out, or appear late.
 /// </summary>
+/// <remarks>
+/// Two things keep a moving plate's blur continuous. Detections are matched to where a track is heading (its last
+/// box moved on by its speed), not where it was last seen, so a car that moved a long way during a missed pass is
+/// still the same track and the gap is interpolated. And a weak detection (below the score needed to start a track,
+/// e.g. a plate turning side-on) can still continue an existing track, so the track isn't dropped while the plate is
+/// hard to see.
+/// </remarks>
 public sealed class RedactionTracker
 {
     private readonly List<Track> _tracks = [];
     private readonly float _matchIoU;
     private readonly int _maxMissed;
+    private readonly Func<RedactionTarget, float>? _startAt;
     private int _lastFrame = -1;
 
     /// <param name="maxMissed">Detection passes a track may miss in a row and still be continued.</param>
     /// <param name="matchIoU">Minimum overlap for a detection to continue a track.</param>
-    public RedactionTracker(int maxMissed, float matchIoU = 0.2f)
+    /// <param name="startAt">
+    /// The score a detection needs to start a new track, per target. Weaker detections only continue tracks; unmatched
+    /// ones are dropped. Null: every detection may start a track.
+    /// </param>
+    public RedactionTracker(int maxMissed, float matchIoU = 0.2f, Func<RedactionTarget, float>? startAt = null)
     {
         _maxMissed = maxMissed;
         _matchIoU = matchIoU;
+        _startAt = startAt;
     }
 
     public IReadOnlyList<Track> Tracks => _tracks;
@@ -49,7 +62,7 @@ public sealed class RedactionTracker
                     continue;
                 }
 
-                var score = MatchScore(track.Last, detection);
+                var score = MatchScore(track.PredictAt(frame), detection);
                 if (score > bestScore)
                 {
                     (best, bestScore) = (track, score);
@@ -58,6 +71,12 @@ public sealed class RedactionTracker
 
             if (best is null)
             {
+                if (_startAt is not null && detection.Confidence < _startAt(detection.Target))
+                {
+                    // Too weak to be a new face or plate on its own: only good for continuing one.
+                    continue;
+                }
+
                 best = new Track(detection.Target);
                 _tracks.Add(best);
             }
@@ -126,6 +145,10 @@ public sealed class RedactionTracker
         public int Count => _keys.Count;
 
         internal DetectionBox Last => _keys[^1].Box;
+
+        /// <summary>Where the track is expected to be at a later frame: its last box moved on by its latest speed.</summary>
+        internal DetectionBox PredictAt(int frame) =>
+            _keys.Count < 2 || frame <= LastFrame ? Last : Extrapolate(_keys.Count - 1, _keys.Count - 2, frame);
 
         internal int Missed { get; set; }
 

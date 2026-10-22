@@ -10,6 +10,9 @@ public sealed class RedactionTrackerTests
     private static DetectionBox Face(float x, float y = 100, float size = 50, float confidence = 0.9f) =>
         new(RedactionTarget.Face, x, y, size, size, confidence);
 
+    private static DetectionBox Plate(float x, float y = 300, float confidence = 0.9f) =>
+        new(RedactionTarget.NumberPlate, x, y, 50, 15, confidence);
+
     [Fact]
     public void Boxes_between_detection_passes_are_interpolated()
     {
@@ -96,6 +99,40 @@ public sealed class RedactionTrackerTests
         tracker.Add(10, [Face(100, confidence: 0.7f)]);
 
         Assert.Equal(0.95f, Assert.Single(tracker.Tracks).MaxConfidence);
+    }
+
+    [Fact]
+    public void A_moving_plate_missed_for_a_couple_of_passes_stays_one_track_and_stays_blurred()
+    {
+        // A car crossing the frame at 12 px a frame: the plate is missed at frames 10 and 15, and by frame 20 it is
+        // 3.6 plate-widths from where it was last seen, but exactly where its speed says it should be.
+        var tracker = new RedactionTracker(maxMissed: 3);
+        tracker.Add(0, [Plate(100)]);
+        tracker.Add(5, [Plate(160)]);
+        tracker.Add(10, []);
+        tracker.Add(15, []);
+        tracker.Add(20, [Plate(340)]);
+
+        Assert.Single(tracker.Tracks);
+        for (var frame = 5; frame <= 20; frame++)
+        {
+            var box = Assert.Single(tracker.BoxesAt(frame, interval: 5));
+            Assert.Equal(100 + (12 * frame), box.X, 1);
+        }
+    }
+
+    [Fact]
+    public void A_weak_detection_continues_a_plate_but_cannot_start_one()
+    {
+        var tracker = new RedactionTracker(maxMissed: 0, startAt: _ => 0.5f);
+        tracker.Add(0, [Plate(100, confidence: 0.9f)]);
+        tracker.Add(5, [Plate(104, confidence: 0.35f), Plate(700, confidence: 0.35f)]);
+        tracker.Add(10, [Plate(108, confidence: 0.9f)]);
+
+        var track = Assert.Single(tracker.Tracks);
+        Assert.Equal(3, track.Count);
+        Assert.Equal(0.9f, track.MaxConfidence);
+        Assert.Empty(tracker.BoxesAt(5, interval: 5).Where(b => b.X > 600));
     }
 
     [Fact]
