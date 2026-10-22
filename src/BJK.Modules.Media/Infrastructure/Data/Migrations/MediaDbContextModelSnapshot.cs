@@ -432,6 +432,13 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<int?>("Frames")
                         .HasColumnType("int");
 
+                    b.Property<double?>("NudityScore")
+                        .HasColumnType("float");
+
+                    b.Property<string>("PerceptualHashes")
+                        .HasMaxLength(520)
+                        .HasColumnType("nvarchar(520)");
+
                     b.Property<int?>("PlatesBlurred")
                         .HasColumnType("int");
 
