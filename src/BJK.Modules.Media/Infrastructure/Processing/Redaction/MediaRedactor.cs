@@ -497,14 +497,17 @@ internal sealed class MediaRedactor(
     {
         RedactionTarget.Face => _options.FaceMinConfidence,
         RedactionTarget.Head => _options.HeadMinConfidence,
+        RedactionTarget.PlateArea => _options.VehicleMinConfidence,
         _ => _options.PlateMinConfidence,
     });
 
-    /// <summary>The score from which a detection needs no review. Heads are a backup and never need review.</summary>
+    /// <summary>
+    /// The score from which a detection needs no review. Heads and plate areas are a backup and never need review.
+    /// </summary>
     private float ConfidentAt(RedactionTarget target) => (float)(target switch
     {
         RedactionTarget.Face => _options.FaceConfidentAt,
-        RedactionTarget.Head => 0,
+        RedactionTarget.Head or RedactionTarget.PlateArea => 0,
         _ => _options.PlateConfidentAt,
     });
 
@@ -643,6 +646,12 @@ internal sealed class MediaRedactor(
 
             foreach (var target in Enum.GetValues<RedactionTarget>())
             {
+                if (target == RedactionTarget.PlateArea)
+                {
+                    // Plate areas come from the head (person and vehicle) detector.
+                    continue;
+                }
+
                 var detector = detectors.FirstOrDefault(d => d.Target == target);
                 if (detector is null && target == RedactionTarget.Head)
                 {
@@ -703,11 +712,37 @@ internal sealed class MediaRedactor(
                 var small = Scaled(frame, _maxSize);
                 Classify(small, classify);
                 var faces = _maxSize <= 0 ? frame : Resized(frame, _options.FaceDetectionSize);
-                return DetectAll(target => target == RedactionTarget.Face ? faces : small, frame);
+                return WithoutFoundPlates(DetectAll(target => target == RedactionTarget.Face ? faces : small, frame));
             }
             finally
             {
                 _timer.Stop();
+            }
+        }
+
+        /// <summary>
+        /// Drops each vehicle's plate area where the plate model found a plate (at its usual minimum score), so only
+        /// the plate itself is blurred; vehicles whose plate wasn't found keep the whole area blurred.
+        /// </summary>
+        /// <param name="boxes">Everything found in a frame.</param>
+        private List<DetectionBox> WithoutFoundPlates(List<DetectionBox> boxes)
+        {
+            var plates = boxes
+                .Where(b => b.Target == RedactionTarget.NumberPlate && b.Confidence >= _options.PlateMinConfidence)
+                .ToList();
+            if (plates.Count == 0)
+            {
+                return boxes;
+            }
+
+            return boxes
+                .Where(b => b.Target != RedactionTarget.PlateArea || !plates.Any(p => Contains(b, p)))
+                .ToList();
+
+            static bool Contains(DetectionBox area, DetectionBox plate)
+            {
+                var (cx, cy) = (plate.X + (plate.Width / 2), plate.Y + (plate.Height / 2));
+                return cx >= area.X && cx <= area.X + area.Width && cy >= area.Y && cy <= area.Y + area.Height;
             }
         }
 

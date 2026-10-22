@@ -328,8 +328,8 @@ public sealed class MediaRedactionOptions
 
     /// <summary>
     /// The YOLOX-S person detection model (ONNX), e.g. <c>/opt/bjk/models/object_detection_yolox_2022nov.onnx</c>. Each
-    /// person's head is blurred, catching faces the face model misses (at night, far off, side-on, turned away). Not
-    /// set or missing: every upload goes to review.
+    /// person's head is blurred, catching faces the face model misses (at night, far off, side-on, turned away), and it
+    /// finds the vehicles for <see cref="BlurPlateAreas"/>. Not set or missing: every upload goes to review.
     /// </summary>
     public string? PersonModelPath { get; set; }
 
@@ -340,6 +340,21 @@ public sealed class MediaRedactionOptions
     /// <summary>Videos: a weaker person detection, down to this, can continue a head already being blurred.</summary>
     [Range(0.05, 1.0)]
     public double HeadTrackConfidence { get; set; } = 0.25;
+
+    /// <summary>
+    /// Blur where each vehicle's number plate would be (the lower middle of the vehicle) when the plate model found no
+    /// plate on it. The plate model misses many UK plates, especially white front plates in headlight glare. Uses the
+    /// person model (<see cref="PersonModelPath"/>), which also finds vehicles. Plate areas never send media to review.
+    /// </summary>
+    public bool BlurPlateAreas { get; set; } = true;
+
+    /// <summary>Vehicles scoring at least this have their plate area blurred (with <see cref="BlurPlateAreas"/>).</summary>
+    [Range(0.05, 1.0)]
+    public double VehicleMinConfidence { get; set; } = 0.3;
+
+    /// <summary>Videos: a weaker vehicle detection, down to this, can continue a plate area already being blurred.</summary>
+    [Range(0.05, 1.0)]
+    public double VehicleTrackConfidence { get; set; } = 0.2;
 
     /// <summary>Extra margin added to every side of a detected box, as a fraction of its width or height.</summary>
     [Range(0.0, 1.0)]
