@@ -6,9 +6,9 @@
 #   scripts/download-redaction-models.sh /opt/bjk/models            # models only (worker image build)
 #   scripts/download-redaction-models.sh ./models --test-images      # plus sample pictures for the model tests
 #
-# Then set Media:Redaction:FaceModelPath and Media:Redaction:PlateModelPath to the two detection models, and
+# Then set Media:Redaction:FaceModelPath, PlateModelPath and PersonModelPath to the three detection models, and
 # Media:SensitiveDetection:ModelPath to clip-vit-b32-vision-quantized.onnx (89 MB).
-# Licences: YuNet face detection - MIT; LPD-YuNet plate detection - Apache 2.0; CLIP - MIT (see README "Automatic blurring").
+# Licences: YuNet face detection - MIT; LPD-YuNet plate detection - Apache 2.0; YOLOX - Apache 2.0; CLIP - MIT (see README "Automatic blurring").
 set -eu
 
 dir="${1:?usage: download-redaction-models.sh <directory> [--test-images]}"
@@ -29,6 +29,9 @@ fetch "$base/face_detection_yunet/face_detection_yunet_2026may.onnx" \
   face_detection_yunet_2026may.onnx ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0
 fetch "$base/license_plate_detection_yunet/license_plate_detection_lpd_yunet_2023mar.onnx" \
   license_plate_detection_lpd_yunet_2023mar.onnx 6d4978a7b6d25514d5e24811b82bfb511d166bdd8ca3b03aa63c1623d4d039c7
+# People, for blurring heads the face model misses (YOLOX-S, Apache 2.0, 36 MB). Media:Redaction:PersonModelPath.
+fetch "$base/object_detection_yolox/object_detection_yolox_2022nov.onnx" \
+  object_detection_yolox_2022nov.onnx c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063
 
 # The nudity and graphic content check: OpenAI CLIP ViT-B/32 (MIT), Xenova's quantised ONNX export of the vision
 # model, pinned to one revision. Then set Media:SensitiveDetection:ModelPath to it.

@@ -40,6 +40,7 @@ public sealed class RealModelTests : IDisposable
     {
         FaceModelPath = Path.Combine(models, "face_detection_yunet_2026may.onnx"),
         PlateModelPath = Path.Combine(models, "license_plate_detection_lpd_yunet_2023mar.onnx"),
+        PersonModelPath = Path.Combine(models, "object_detection_yolox_2022nov.onnx"),
     });
 
     [Fact]
@@ -68,6 +69,29 @@ public sealed class RealModelTests : IDisposable
 
         var plate = Assert.Single(plates, p => p.Confidence >= 0.8f);
         Assert.InRange(plate.Width / plate.Height, 1.5f, 8f);
+    }
+
+    [Fact]
+    public async Task YOLOX_finds_people_and_returns_their_heads_but_nobody_in_a_car_photo()
+    {
+        var models = Models();
+        using var detector = new YoloxPersonDetector(Options(models), NullLogger<YoloxPersonDetector>.Instance);
+        Assert.True(detector.IsAvailable, detector.UnavailableReason);
+
+        // The crowd photo: a few whole people stand out (checked with OpenCV Zoo's decoding: 3 at 0.4, best 0.83).
+        var crowd = Assert.Single(await Frames(Path.Combine(models, "test-faces.jpg")));
+        var heads = detector.Detect(crowd, 0.4f);
+        Assert.Contains(heads, h => h.Confidence >= 0.6f);
+        Assert.All(heads, h =>
+        {
+            Assert.Equal(RedactionTarget.Head, h.Target);
+            Assert.InRange(h.X + (h.Width / 2), 0, crowd.Width);
+            Assert.InRange(h.Y, -h.Height, crowd.Height);
+        });
+
+        // The plate photo is a car with no one in it.
+        var car = Assert.Single(await Frames(Path.Combine(models, "test-plate.jpg")));
+        Assert.Empty(detector.Detect(car, 0.4f));
     }
 
     private static int PerfSeconds()
