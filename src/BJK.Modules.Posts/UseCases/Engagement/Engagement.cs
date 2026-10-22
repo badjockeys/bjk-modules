@@ -110,7 +110,10 @@ public sealed class CastVoteCommandHandler(
 /// <summary>Whether the caller follows a post now.</summary>
 public sealed record PostFollowStateDto(Guid PostId, bool Following);
 
-/// <summary>Follows a post: the caller hears about new comments and the vote result. Safe to repeat.</summary>
+/// <summary>
+/// Follows a post: the caller hears about new comments and the vote result. Safe to repeat. Authors always follow their
+/// own posts, so they can't follow or unfollow them (400).
+/// </summary>
 public sealed record FollowPostCommand(Guid PostId) : IRequest<PostFollowStateDto>;
 
 public sealed class FollowPostCommandHandler(
@@ -121,25 +124,38 @@ public sealed class FollowPostCommandHandler(
     TimeProvider clock)
     : IRequestHandler<FollowPostCommand, PostFollowStateDto>
 {
+    /// <summary>Why following or unfollowing your own post is refused.</summary>
+    public const string OwnPost = "You always follow your own posts.";
+
     public async Task<PostFollowStateDto> Handle(FollowPostCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
         var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken);
+        if (post.IsOwnedBy(userId))
+        {
+            throw PostAccess.Invalid(nameof(request.PostId), OwnPost);
+        }
+
         await PostAccess.EnsureNotBlockedByAuthorAsync(blocks, post, userId, cancellationToken);
         await engagement.EnsureFollowingAsync(post.Id, userId, clock.GetUtcNow(), cancellationToken);
         return new PostFollowStateDto(post.Id, true);
     }
 }
 
-/// <summary>Stops following a post. Safe to repeat.</summary>
+/// <summary>Stops following a post. Safe to repeat. Not for your own posts (400).</summary>
 public sealed record UnfollowPostCommand(Guid PostId) : IRequest<PostFollowStateDto>;
 
-public sealed class UnfollowPostCommandHandler(IEngagementRepository engagement, ICurrentUser caller)
+public sealed class UnfollowPostCommandHandler(IPostRepository posts, IEngagementRepository engagement, ICurrentUser caller)
     : IRequestHandler<UnfollowPostCommand, PostFollowStateDto>
 {
     public async Task<PostFollowStateDto> Handle(UnfollowPostCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
+        if (await posts.GetAsync(request.PostId, cancellationToken) is { } post && post.IsOwnedBy(userId))
+        {
+            throw PostAccess.Invalid(nameof(request.PostId), FollowPostCommandHandler.OwnPost);
+        }
+
         if (await engagement.GetFollowAsync(request.PostId, userId, cancellationToken) is { } follow)
         {
             engagement.RemoveFollow(follow);

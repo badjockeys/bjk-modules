@@ -125,67 +125,10 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.ToTable("KnownImageMatches", "media");
                 });
 
-            modelBuilder.Entity("BJK.Modules.Media.Domain.MediaDescription", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Context")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("MediaIds")
-                        .IsRequired()
-                        .HasMaxLength(400)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(400)");
-
-                    b.Property<string>("Model")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Text")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "CreatedAt");
-
-                    b.ToTable("Descriptions", "media");
-                });
-
             modelBuilder.Entity("BJK.Modules.Media.Domain.MediaItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<byte[]>("ClipSummary")
-                        .HasMaxLength(2048)
-                        .HasColumnType("varbinary(2048)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -409,13 +352,6 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
 
                     b.Property<int>("Attempts")
                         .HasColumnType("int");
-
-                    b.Property<int>("ClipFrames")
-                        .HasColumnType("int");
-
-                    b.Property<byte[]>("ClipSummary")
-                        .HasMaxLength(2048)
-                        .HasColumnType("varbinary(2048)");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("datetimeoffset");

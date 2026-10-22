@@ -29,8 +29,7 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// types of bad driving (at least one; the first is the main one); older clients can send one <c>Category</c> instead.
 /// <c>Passengers</c> are @handles of people in the author's vehicle (driving incidents only, up to 4, adults only):
 /// each is asked to accept before their name shows on the post. <c>DraftId</c> publishes one of the author's drafts:
-/// the draft is deleted once the post is saved (its photos and videos stay, in the post). <c>SuggestedTypes</c> are the
-/// types the composer suggested ("Looks like: ..."), kept to measure how often suggestions are accepted.
+/// the draft is deleted once the post is saved (its photos and videos stay, in the post).
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -49,8 +48,7 @@ public sealed record CreatePostCommand(
     string? VehicleModel = null,
     VehicleColour? VehicleColour = null,
     bool? ReportedToPolice = null,
-    Guid? DraftId = null,
-    IReadOnlyList<IncidentCategory>? SuggestedTypes = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    Guid? DraftId = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
@@ -158,7 +156,6 @@ public sealed class CreatePostCommandHandler(
             mediaPending: pending,
             notifyEmail: pending ? caller.Email : null,
             hasVideo: request.MediaIds.Any(id => found[id].MediaType == MediaType.Video));
-        post.RecordSuggestedTypes(request.SuggestedTypes);
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         var autoTagged = publisher.TagIfDetected(post, request.MediaIds.Select(id => found[id]));
 

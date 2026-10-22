@@ -25,7 +25,6 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// <param name="ClassificationTime">Part of <paramref name="Elapsed"/> spent scoring graphic content and nudity.</param>
 /// <param name="NudityScore">The highest nudity score of the frames scored, or null if not checked.</param>
 /// <param name="PerceptualHashes">PDQ hashes (hex) of up to eight of the frames checked, spread through a video.</param>
-/// <param name="ClipSummary">The average CLIP embedding of the frames scored (normalised), or null if none were.</param>
 public sealed record RedactionResult(
     int FacesBlurred,
     int PlatesBlurred,
@@ -38,8 +37,7 @@ public sealed record RedactionResult(
     int FramesClassified = 0,
     TimeSpan ClassificationTime = default,
     double? NudityScore = null,
-    IReadOnlyList<string>? PerceptualHashes = null,
-    float[]? ClipSummary = null)
+    IReadOnlyList<string>? PerceptualHashes = null)
 {
     public bool NeedsReview => ReviewReasons.Count > 0;
 }
@@ -573,8 +571,7 @@ internal sealed class MediaRedactor(
             pass.FramesClassified,
             pass.ClassificationTime,
             pass.NudityScore,
-            pass.PerceptualHashes,
-            pass.ClipSummary);
+            pass.PerceptualHashes);
     }
 
     private DetectionPass NewPass(int maxSize) =>
@@ -596,8 +593,6 @@ internal sealed class MediaRedactor(
         private readonly IKnownImageList? _knownImages;
         private readonly int _pdqMinQuality;
         private readonly List<string> _hashes = [];
-        private float[] _clipSum = [];
-        private int _clipFrames;
         private ISensitiveContentClassifier? _classifier;
 
         public DetectionPass(
@@ -693,9 +688,6 @@ internal sealed class MediaRedactor(
 
         public int FramesClassified { get; private set; }
 
-        /// <summary>The average CLIP embedding of the frames scored (normalised), or null if none had one.</summary>
-        public float[]? ClipSummary => _clipFrames == 0 ? null : ClipEmbedding.Normalise(_clipSum);
-
         public TimeSpan ClassificationTime => _classifyTimer.Elapsed;
 
         /// <param name="frame">The full frame (blurring is applied to it by the caller).</param>
@@ -781,22 +773,6 @@ internal sealed class MediaRedactor(
                 {
                     var scores = _classifier.Classify(frame);
                     SensitiveScore = Math.Max(SensitiveScore ?? 0, scores.Graphic);
-                    if (scores.Embedding is { Length: > 0 } embedding)
-                    {
-                        if (_clipSum.Length != embedding.Length)
-                        {
-                            _clipSum = new float[embedding.Length];
-                            _clipFrames = 0;
-                        }
-
-                        for (var i = 0; i < embedding.Length; i++)
-                        {
-                            _clipSum[i] += embedding[i];
-                        }
-
-                        _clipFrames++;
-                    }
-
                     if (scores.Nudity is { } nudity)
                     {
                         NudityScore = Math.Max(NudityScore ?? 0, nudity);

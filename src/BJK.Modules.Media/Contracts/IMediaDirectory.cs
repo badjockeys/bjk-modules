@@ -42,12 +42,6 @@ public interface IMediaDirectory
     /// </summary>
     Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// The CLIP summaries (see <see cref="ClipEmbedding"/>) of the given media that belong to <paramref name="userId"/>,
-    /// are Ready and have one, by media id. For type suggestions; the caller does its own checks.
-    /// </summary>
-    Task<IReadOnlyDictionary<Guid, float[]>> GetClipSummariesAsync(Guid userId, IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
-
     /// <summary>Deletes the files and marks the media Deleted. Ids that don't exist are ignored.</summary>
     Task DeleteAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
 }

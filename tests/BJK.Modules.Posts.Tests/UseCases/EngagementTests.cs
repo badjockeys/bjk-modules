@@ -165,6 +165,32 @@ public sealed class EngagementTests
     }
 
     [Fact]
+    public async Task Authors_cannot_follow_or_unfollow_their_own_post()
+    {
+        var post = Existing(UserId);
+        SignedInAs(UserId);
+
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            new FollowPostCommandHandler(_posts, _engagement, _blocks, _caller, _clock).Handle(new FollowPostCommand(post.Id), Ct));
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            new UnfollowPostCommandHandler(_posts, _engagement, _caller).Handle(new UnfollowPostCommand(post.Id), Ct));
+        await _engagement.DidNotReceiveWithAnyArgs().EnsureFollowingAsync(default, default, default, Ct);
+        _engagement.DidNotReceiveWithAnyArgs().RemoveFollow(null!);
+    }
+
+    [Fact]
+    public async Task Others_can_follow_a_post()
+    {
+        var post = Existing(UserId);
+        SignedInAs(OtherUserId);
+
+        var state = await new FollowPostCommandHandler(_posts, _engagement, _blocks, _caller, _clock).Handle(new FollowPostCommand(post.Id), Ct);
+
+        Assert.True(state.Following);
+        await _engagement.Received(1).EnsureFollowingAsync(post.Id, OtherUserId, Now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Saving_is_capped_at_a_thousand_bookmarks()
     {
         var post = Existing(UserId);

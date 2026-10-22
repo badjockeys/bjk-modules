@@ -52,8 +52,7 @@ internal sealed class ProfileDirectory(IProfileRepository profiles, IMediaDirect
         p.DisplayName,
         avatarUrl,
         p.CreatedAt,
-        IsAdult: p.IsMinor == false,
-        RoadUser: p.PublicRoadUser?.ToString());
+        IsAdult: p.IsMinor == false);
 }
 
 internal sealed class BlockDirectory(IProfileRepository profiles) : IBlockDirectory

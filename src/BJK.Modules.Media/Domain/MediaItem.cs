@@ -149,12 +149,6 @@ public sealed class MediaItem
     public double? NudityScore { get; private set; }
 
     /// <summary>
-    /// The average CLIP embedding of the frames checked in the latest processing (512 float32s, about 2 KB; never a
-    /// picture), for type suggestions and training our own type model. Cleared when the media is deleted.
-    /// </summary>
-    public byte[]? ClipSummary { get; private set; }
-
-    /// <summary>
     /// PDQ hashes of the original (one for a photo, up to <see cref="MaxPerceptualHashes"/> sampled through a video),
     /// space-separated, so a moderator who removes it can block copies of it. Null for videos processed in segments.
     /// </summary>
@@ -259,11 +253,6 @@ public sealed class MediaItem
     /// <param name="score">The highest score of the frames checked.</param>
     public void RecordSensitiveScore(double? score) =>
         SensitiveScore = score is null ? null : Math.Round(Math.Clamp(score.Value, 0, 1), 4);
-
-    /// <summary>Records the average CLIP embedding from the latest processing (null if nothing was scored).</summary>
-    /// <param name="summary">The normalised average embedding.</param>
-    public void RecordClipSummary(float[]? summary) =>
-        ClipSummary = summary is { Length: > 0 } ? Contracts.ClipEmbedding.ToBytes(summary) : null;
 
     /// <summary>Records the nudity score and the original's perceptual hashes from the latest processing.</summary>
     /// <param name="nudityScore">The highest nudity score of the frames checked, or null.</param>
@@ -450,7 +439,6 @@ public sealed class MediaItem
         Status = MediaStatus.Deleted;
         DeletedAt = now;
         UpdatedAt = now;
-        ClipSummary = null;
         if (wasPending)
         {
             _statusChanges.Add(new MediaStatusChange(MediaStatus.Deleted, DeletedReason, now));

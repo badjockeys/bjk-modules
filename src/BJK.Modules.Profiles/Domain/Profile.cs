@@ -50,15 +50,6 @@ public sealed class Profile
     /// </summary>
     public bool? IsMinor { get; private set; }
 
-    /// <summary>How they use the road, if they've said. Private unless <see cref="ShowRoadUser"/>.</summary>
-    public RoadUser? RoadUser { get; private set; }
-
-    /// <summary>They chose to show <see cref="RoadUser"/> on their profile and posts.</summary>
-    public bool ShowRoadUser { get; private set; }
-
-    /// <summary>Their road user type as others may see it: only if they chose to show it.</summary>
-    public RoadUser? PublicRoadUser => ShowRoadUser ? RoadUser : null;
-
     public byte[] RowVersion { get; private set; } = [];
 
     public static Profile Create(
@@ -96,14 +87,6 @@ public sealed class Profile
 
         IsMinor = isMinor;
         return true;
-    }
-
-    /// <summary>Sets (or with null clears) how they use the road, and whether others see it.</summary>
-    public void SetRoadUser(RoadUser? roadUser, bool show, DateTimeOffset now)
-    {
-        RoadUser = roadUser;
-        ShowRoadUser = roadUser is not null && show;
-        UpdatedAt = now;
     }
 
     public void Update(string displayName, string? bio, string? location, DateTimeOffset now)

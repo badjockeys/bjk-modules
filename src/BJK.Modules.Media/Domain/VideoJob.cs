@@ -162,12 +162,6 @@ public sealed class VideoSegment
     /// <summary>The highest graphic content score of the frames it checked; null if detection was off.</summary>
     public double? SensitiveScore { get; private set; }
 
-    /// <summary>The average CLIP embedding of the frames it scored (512 float32s), combined into the media's summary.</summary>
-    public byte[]? ClipSummary { get; private set; }
-
-    /// <summary>How many frames went into <see cref="ClipSummary"/>.</summary>
-    public int ClipFrames { get; private set; }
-
     /// <summary>The highest nudity score of the frames it checked; null if not checked.</summary>
     public double? NudityScore { get; private set; }
 
@@ -192,8 +186,6 @@ public sealed class VideoSegment
     /// <param name="elapsed">Time taken.</param>
     /// <param name="now">The time.</param>
     /// <param name="sensitiveScore">The highest graphic content score, or null.</param>
-    /// <param name="clipSummary">The average CLIP embedding, or null.</param>
-    /// <param name="clipFrames">Frames in <paramref name="clipSummary"/>.</param>
     /// <param name="nudityScore">The highest nudity score, or null.</param>
     /// <param name="perceptualHashes">PDQ hashes of sampled frames.</param>
     public bool MarkDone(
@@ -204,8 +196,6 @@ public sealed class VideoSegment
         TimeSpan elapsed,
         DateTimeOffset now,
         double? sensitiveScore = null,
-        byte[]? clipSummary = null,
-        int clipFrames = 0,
         double? nudityScore = null,
         IEnumerable<string>? perceptualHashes = null)
     {
@@ -221,8 +211,6 @@ public sealed class VideoSegment
         ReviewReasons = JoinReasons(reviewReasons);
         ElapsedMilliseconds = (long)elapsed.TotalMilliseconds;
         SensitiveScore = sensitiveScore;
-        ClipSummary = clipSummary;
-        ClipFrames = clipSummary is null ? 0 : clipFrames;
         NudityScore = nudityScore;
         PerceptualHashes = JoinHashes(perceptualHashes);
         CompletedAt = now;

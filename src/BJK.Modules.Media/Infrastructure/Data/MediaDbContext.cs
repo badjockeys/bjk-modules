@@ -24,7 +24,6 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
 
     public DbSet<VideoSegment> VideoSegments => Set<VideoSegment>();
 
-    public DbSet<MediaDescription> Descriptions => Set<MediaDescription>();
 
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
 
@@ -74,9 +73,6 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
 
 internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaItem>
 {
-    /// <summary>A CLIP summary: 512 float32s.</summary>
-    public const int ClipSummaryBytes = 2048;
-
     public void Configure(EntityTypeBuilder<MediaItem> builder)
     {
         builder.ToTable("Media");
@@ -98,7 +94,6 @@ internal sealed class MediaItemConfiguration : IEntityTypeConfiguration<MediaIte
         builder.Property(m => m.DurationSeconds).HasPrecision(9, 3);
         builder.Property(m => m.Sha256).HasMaxLength(64).IsFixedLength();
         builder.Property(m => m.PerceptualHashes).HasMaxLength(MediaItem.PerceptualHashesMaxLength);
-        builder.Property(m => m.ClipSummary).HasMaxLength(ClipSummaryBytes);
         builder.Property(m => m.FailureReason).HasMaxLength(MediaItem.FailureReasonMaxLength);
         builder.Property(m => m.ReviewReason).HasMaxLength(MediaItem.ReviewReasonMaxLength);
         builder.Property(m => m.ManualRedactionsJson);
@@ -160,32 +155,10 @@ internal sealed class VideoSegmentConfiguration : IEntityTypeConfiguration<Video
         builder.HasKey(s => new { s.MediaId, s.Revision, s.Index });
         builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(s => s.ReviewReasons).HasMaxLength(VideoSegment.ReviewReasonsMaxLength);
-        builder.Property(s => s.ClipSummary).HasMaxLength(MediaItemConfiguration.ClipSummaryBytes);
         builder.Property(s => s.PerceptualHashes).HasMaxLength(MediaItem.PerceptualHashesMaxLength);
         builder.Ignore(s => s.IsDone);
         builder.Ignore(s => s.PerceptualHashList);
         builder.Ignore(s => s.ReviewReasonList);
-    }
-}
-
-internal sealed class MediaDescriptionConfiguration : IEntityTypeConfiguration<MediaDescription>
-{
-    public void Configure(EntityTypeBuilder<MediaDescription> builder)
-    {
-        builder.ToTable("Descriptions");
-        builder.HasKey(d => d.Id);
-        builder.Property(d => d.Id).ValueGeneratedNever();
-        builder.Property(d => d.MediaIds).HasMaxLength(MediaDescription.MediaIdsMaxLength).IsUnicode(false).IsRequired();
-        builder.Property(d => d.Context).HasMaxLength(MediaDescription.ContextMaxLength).IsRequired();
-        builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
-        builder.Property(d => d.Title).HasMaxLength(MediaDescription.TitleMaxLength);
-        builder.Property(d => d.Text).HasMaxLength(MediaDescription.TextMaxLength);
-        builder.Property(d => d.Model).HasMaxLength(MediaDescription.ModelMaxLength);
-        builder.Property(d => d.FailureReason).HasMaxLength(MediaDescription.FailureReasonMaxLength);
-        builder.Ignore(d => d.MediaIdList);
-
-        // The daily limit counts a person's requests since midnight.
-        builder.HasIndex(d => new { d.UserId, d.CreatedAt });
     }
 }
 

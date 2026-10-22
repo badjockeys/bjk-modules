@@ -130,8 +130,6 @@ internal sealed partial class MediaProcessor
                         result.ReviewReasons,
                         result.Elapsed,
                         result.SensitiveScore,
-                        result.ClipSummary,
-                        result.FramesClassified,
                         result.NudityScore,
                         result.PerceptualHashes),
                     clock.GetUtcNow(),
@@ -246,8 +244,6 @@ internal sealed partial class MediaProcessor
                 await ApplySensitiveScoreAsync(item, segments.Max(s => s.SensitiveScore), cancellationToken);
                 // The nudity score and the frames' PDQ hashes (for "block copies") come from the segments too.
                 item.RecordContentChecks(segments.Max(s => s.NudityScore), SpreadHashes(segments.Select(s => s.PerceptualHashList)));
-                item.RecordClipSummary(ClipEmbedding.Average(
-                    segments.Where(s => s.ClipSummary is not null).Select(s => (ClipEmbedding.FromBytes(s.ClipSummary!), s.ClipFrames))));
                 var reasons = ReviewReasons(segments.SelectMany(s => s.ReviewReasonList), item.ManualRedactions.Count);
                 var outcome = await PublishAsync(
                     item,

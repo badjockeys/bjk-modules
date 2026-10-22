@@ -16,22 +16,6 @@ namespace BJK.Modules.Profiles.Infrastructure.Data.Migrations
                 table: "Profiles",
                 type: "bit",
                 nullable: true);
-
-            migrationBuilder.AddColumn<string>(
-                name: "RoadUser",
-                schema: "profiles",
-                table: "Profiles",
-                type: "nvarchar(20)",
-                maxLength: 20,
-                nullable: true);
-
-            migrationBuilder.AddColumn<bool>(
-                name: "ShowRoadUser",
-                schema: "profiles",
-                table: "Profiles",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
         }
 
         /// <inheritdoc />
@@ -39,16 +23,6 @@ namespace BJK.Modules.Profiles.Infrastructure.Data.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "IsMinor",
-                schema: "profiles",
-                table: "Profiles");
-
-            migrationBuilder.DropColumn(
-                name: "RoadUser",
-                schema: "profiles",
-                table: "Profiles");
-
-            migrationBuilder.DropColumn(
-                name: "ShowRoadUser",
                 schema: "profiles",
                 table: "Profiles");
         }

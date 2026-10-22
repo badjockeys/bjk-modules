@@ -44,8 +44,6 @@ internal sealed class InMemoryVideoJobStore : IVideoJobStore
                 result.Elapsed,
                 now,
                 result.SensitiveScore,
-                result.ClipSummary is { Length: > 0 } clip ? ClipEmbedding.ToBytes(clip) : null,
-                result.ClipFrames,
                 result.NudityScore,
                 result.PerceptualHashes));
 
