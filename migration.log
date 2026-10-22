@@ -1,0 +1,30 @@
+  Determining projects to restore...
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Observability/BJK.Modules.Observability.csproj (in 3.12 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj (in 3.14 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Shared.Tests/BJK.Modules.Shared.Tests.csproj (in 9 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Safety.Tests/BJK.Modules.Safety.Tests.csproj (in 17 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.SMS.Tests/BJK.Modules.SMS.Tests.csproj (in 8 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Queues.Tests/BJK.Modules.Queues.Tests.csproj (in 53 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.User/BJK.Modules.User.csproj (in 288 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Observability.Tests/BJK.Modules.Observability.Tests.csproj (in 174 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Notifications.Tests/BJK.Modules.Notifications.Tests.csproj (in 646 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Posts.Tests/BJK.Modules.Posts.Tests.csproj (in 4.46 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Posts/BJK.Modules.Posts.csproj (in 4.46 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Profiles.Tests/BJK.Modules.Profiles.Tests.csproj (in 1.01 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Shared/BJK.Modules.Shared.csproj (in 4 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Safety/BJK.Modules.Safety.csproj (in 4 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Email.Tests/BJK.Modules.Email.Tests.csproj (in 8 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.SMS/BJK.Modules.SMS.csproj (in 4 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj (in 13 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Profiles/BJK.Modules.Profiles.csproj (in 14 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Email/BJK.Modules.Email.csproj (in 4 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Notifications/BJK.Modules.Notifications.csproj (in 20 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Media/BJK.Modules.Media.csproj (in 24 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Queues/BJK.Modules.Queues.csproj (in 210 ms).
+Tool 'dotnet-ef' (version '10.0.13') was restored. Available commands: dotnet-ef
+
+Restore was successful.
+Build succeeded.
+Build started...
+Build succeeded.
+Done. To undo this action, use 'ef migrations remove'
