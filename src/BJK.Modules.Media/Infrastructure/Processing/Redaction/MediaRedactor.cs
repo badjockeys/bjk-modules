@@ -654,11 +654,12 @@ internal sealed class MediaRedactor(
             try
             {
                 // Videos: plates (and the content checks) use a smaller copy (Media:Redaction:DetectionMaxSize); plates
-                // have zoomed tiles for small ones. Faces use a larger one (FaceDetectionMaxSize, full size for 720p),
-                // because faces through windscreens or across the road are only a few pixels high. Photos use full size.
+                // have zoomed tiles for small ones. Faces use their own copy, scaled up or down to FaceDetectionSize,
+                // because faces on the pavement or through windscreens are only 10-20 pixels high and YuNet finds far
+                // more of them enlarged. Photos use full size.
                 var small = Scaled(frame, _maxSize);
                 Classify(small, classify);
-                var faces = _maxSize <= 0 ? frame : Scaled(frame, _options.FaceDetectionMaxSize);
+                var faces = _maxSize <= 0 ? frame : Resized(frame, _options.FaceDetectionSize);
                 return DetectAll(target => target == RedactionTarget.Face ? faces : small, frame);
             }
             finally
@@ -762,6 +763,22 @@ internal sealed class MediaRedactor(
                     frame,
                     Math.Max(1, (int)MathF.Round(frame.Width * scale)),
                     Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+        }
+
+        /// <summary>The frame scaled up or down so its longest side is <paramref name="size"/>; 0 leaves it as it is.</summary>
+        private static RgbFrame Resized(RgbFrame frame, int size)
+        {
+            var longest = Math.Max(frame.Width, frame.Height);
+            if (size <= 0 || size == longest)
+            {
+                return frame;
+            }
+
+            var scale = size / (float)longest;
+            return FrameOps.Resize(
+                frame,
+                Math.Max(1, (int)MathF.Round(frame.Width * scale)),
+                Math.Max(1, (int)MathF.Round(frame.Height * scale)));
         }
 
         /// <summary>Runs each detector on its own copy of the frame and maps the boxes back to the full frame.</summary>

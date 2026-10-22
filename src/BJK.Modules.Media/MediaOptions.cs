@@ -374,12 +374,13 @@ public sealed class MediaRedactionOptions
     public int DetectionMaxSize { get; set; } = 640;
 
     /// <summary>
-    /// Videos: the longest side of the copy faces are looked for in. 1280 (the default) is full size for a 720p
-    /// video, so small faces (through windscreens, across the road) are found; 0 means always full size. Faces at full
-    /// 720p take roughly 25–60 ms per analysed frame.
+    /// Videos: faces are looked for in a copy of each frame scaled up or down so its longest side is this many pixels
+    /// (0: the frame as it is). YuNet finds faces down to about 10 pixels, and far more of the 10–20 pixel faces on
+    /// pavements and behind windscreens once enlarged: on a night-time 724 px test clip, 1440 found ten times as many as
+    /// the 640 px copy used before. Costs roughly 100–200 ms per analysed frame on the worker's CPUs.
     /// </summary>
     [Range(0, 4096)]
-    public int FaceDetectionMaxSize { get; set; } = 1280;
+    public int FaceDetectionSize { get; set; } = 1440;
 
     /// <summary>
     /// Where the detection models run. <see cref="RedactionExecutionProvider.Cpu"/> (the default) works everywhere.
