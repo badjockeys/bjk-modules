@@ -226,7 +226,7 @@ public sealed class MediaRedactorTests : IDisposable
 
         Assert.True(result.NeedsReview);
         Assert.Contains(result.ReviewReasons, r => r.Contains("Face detector failed"));
-        Assert.Contains(result.ReviewReasons, r => r.Contains("low confidence"));
+        Assert.Contains(result.ReviewReasons, r => r.StartsWith("1 number plate had low confidence", StringComparison.Ordinal));
         Assert.Equal(1, result.PlatesBlurred);
     }
 

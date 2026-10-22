@@ -182,7 +182,7 @@ internal sealed class MediaRedactor(
         BlurManual(frame, manual, seconds: null);
         await PpmWriter.WriteAsync(frame, outputPath, cancellationToken);
 
-        var uncertain = found.Count(b => b.Confidence < ConfidentAt(b.Target));
+        var uncertain = Uncertain(found.Where(b => b.Confidence < ConfidentAt(b.Target)).Select(b => b.Target));
         return Result(
             pass,
             found.Count(b => b.Target == RedactionTarget.Face),
@@ -379,7 +379,7 @@ internal sealed class MediaRedactor(
 
         // Only faces and plates that show in this range's own part count (the neighbours count the rest).
         var tracks = tracker.Tracks.Where(t => range.Overlaps(t.FirstFrame - interval, t.LastFrame + interval)).ToList();
-        var uncertain = tracks.Count(t => t.MaxConfidence < ConfidentAt(t.Target));
+        var uncertain = Uncertain(tracks.Where(t => t.MaxConfidence < ConfidentAt(t.Target)).Select(t => t.Target));
         var result = Result(
             pass,
             tracks.Count(t => t.Target == RedactionTarget.Face),
@@ -398,7 +398,7 @@ internal sealed class MediaRedactor(
             result.DetectionTime,
             result.FacesBlurred,
             result.PlatesBlurred,
-            uncertain);
+            uncertain.Faces + uncertain.Plates);
         return result;
     }
 
@@ -508,12 +508,39 @@ internal sealed class MediaRedactor(
         _ => _options.PlateConfidentAt,
     });
 
-    private RedactionResult Result(DetectionPass pass, int faces, int plates, int uncertain, int frames, int analysed, TimeSpan elapsed)
+    private static (int Faces, int Plates) Uncertain(IEnumerable<RedactionTarget> targets)
+    {
+        var list = targets.ToList();
+        return (list.Count(t => t == RedactionTarget.Face), list.Count(t => t == RedactionTarget.NumberPlate));
+    }
+
+    private RedactionResult Result(
+        DetectionPass pass,
+        int faces,
+        int plates,
+        (int Faces, int Plates) uncertain,
+        int frames,
+        int analysed,
+        TimeSpan elapsed)
     {
         var reasons = pass.Problems.ToList();
-        if (uncertain > 0)
+        if (uncertain.Faces + uncertain.Plates > 0)
         {
-            reasons.Add($"{uncertain} detection(s) had low confidence.");
+            // Said per kind, so a moderator knows whether to check plates or faces.
+            var parts = new List<string>();
+            if (uncertain.Plates > 0)
+            {
+                parts.Add($"{uncertain.Plates} number plate{(uncertain.Plates == 1 ? "" : "s")}");
+            }
+
+            if (uncertain.Faces > 0)
+            {
+                parts.Add($"{uncertain.Faces} face{(uncertain.Faces == 1 ? "" : "s")}");
+            }
+
+            reasons.Add(
+                $"{string.Join(" and ", parts)} had low confidence: blurred, but the detector wasn't sure "
+                + $"(scores under {_options.PlateConfidentAt:0.##} for plates, {_options.FaceConfidentAt:0.##} for faces). Check the blurs.");
         }
 
         if (pass.NudityScore is { } nudity && nudity >= _nudityThreshold)
