@@ -346,7 +346,7 @@ internal sealed class MediaRedactor(
                 // Only the last segment of a video may turn out empty (its length was overstated); it's then skipped.
                 if (range.CoreEnd is null && range.CoreStart > 0)
                 {
-                    return Result(pass, 0, 0, 0, frames: 0, analysed, timer.Elapsed);
+                    return Result(pass, 0, 0, (0, 0), frames: 0, analysed, timer.Elapsed);
                 }
 
                 throw new UnreadableMediaException("ffmpeg found no frames in the video.");
