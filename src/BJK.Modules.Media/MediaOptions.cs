@@ -367,7 +367,7 @@ public sealed class MediaRedactionOptions
     /// <summary>
     /// Videos: plate detection and the content checks run on a copy of each frame scaled down so its longest side is
     /// at most this many pixels (boxes are mapped back to the full picture before blurring). Plates are searched in
-    /// zoomed tiles of the smaller copy, so small ones are still found. Faces use <see cref="FaceDetectionMaxSize"/>.
+    /// zoomed tiles of the smaller copy, so small ones are still found. Faces use <see cref="FaceDetectionSize"/>.
     /// 0 runs detection at full resolution.
     /// </summary>
     [Range(0, 4096)]
