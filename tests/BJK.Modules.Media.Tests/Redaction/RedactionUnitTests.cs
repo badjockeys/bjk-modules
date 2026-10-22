@@ -132,7 +132,7 @@ public sealed class RedactionTrackerTests
         var track = Assert.Single(tracker.Tracks);
         Assert.Equal(3, track.Count);
         Assert.Equal(0.9f, track.MaxConfidence);
-        Assert.Empty(tracker.BoxesAt(5, interval: 5).Where(b => b.X > 600));
+        Assert.DoesNotContain(tracker.BoxesAt(5, interval: 5), b => b.X > 600);
     }
 
     [Fact]
