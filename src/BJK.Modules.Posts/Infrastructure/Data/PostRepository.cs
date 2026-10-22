@@ -57,7 +57,11 @@ public sealed record GeoBox(decimal MinLatitude, decimal MaxLatitude, decimal Mi
 }
 
 /// <summary>Counts shown with a post.</summary>
-public sealed record PostStats(IReadOnlyDictionary<ReactionType, int> Reactions, int CommentCount, ReactionType? MyReaction)
+public sealed record PostStats(
+    IReadOnlyDictionary<ReactionType, int> Reactions,
+    int CommentCount,
+    ReactionType? MyReaction,
+    int ShareCount = 0)
 {
     public static readonly PostStats Empty = new(new Dictionary<ReactionType, int>(), 0, null);
 }
@@ -367,6 +371,13 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             .Select(g => new { PostId = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
+        // Shares count once per viewer per UK day, like the author's reach.
+        var shares = await db.PostShares
+            .Where(s => postIds.Contains(s.PostId))
+            .GroupBy(s => s.PostId)
+            .Select(g => new { PostId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
         var mine = new Dictionary<Guid, ReactionType>();
         if (viewerId is { } userId)
         {
@@ -385,7 +396,8 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             id => new PostStats(
                 reactions.Where(r => r.PostId == id).ToDictionary(r => r.Type, r => r.Count),
                 comments.FirstOrDefault(c => c.PostId == id)?.Count ?? 0,
-                mine.TryGetValue(id, out var type) ? type : null));
+                mine.TryGetValue(id, out var type) ? type : null,
+                shares.FirstOrDefault(s => s.PostId == id)?.Count ?? 0));
     }
 
     public async Task SetAuthorDeactivatedAsync(Guid userId, bool deactivated, CancellationToken cancellationToken)

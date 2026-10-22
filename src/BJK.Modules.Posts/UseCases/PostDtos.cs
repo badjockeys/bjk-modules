@@ -66,6 +66,7 @@ public sealed record PostMediaDto(
 /// <c>Passengers</c> are the people tagged as being in the author's vehicle (see <see cref="PassengerDto"/>).
 /// <c>Vote</c> is the post's "Who's at fault?" or "How bad was it?" vote (see <see cref="Engagement.VoteSummaryDto"/>).
 /// <c>IsFollowing</c> and <c>IsSaved</c>: whether the signed-in viewer follows the post and has bookmarked it.
+/// <c>ShareCount</c>: how many times it was shared (once per viewer per UK day), shown under the post like Facebook.
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -96,7 +97,8 @@ public sealed record PostDto(
     CommentSetting CommentSetting = CommentSetting.Everyone,
     Engagement.VoteSummaryDto? Vote = null,
     bool IsFollowing = false,
-    bool IsSaved = false)
+    bool IsSaved = false,
+    int ShareCount = 0)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -323,7 +325,8 @@ public sealed class PostViews(
                 CommentSetting: p.CommentSetting,
                 Vote: Engagement.VoteSummaryDto.For(p, tallies.GetValueOrDefault(p.Id) ?? VoteTally.Empty, viewerId, now),
                 IsFollowing: following.Contains(p.Id),
-                IsSaved: saved.Contains(p.Id));
+                IsSaved: saved.Contains(p.Id),
+                ShareCount: s.ShareCount);
         }).ToList();
     }
 
