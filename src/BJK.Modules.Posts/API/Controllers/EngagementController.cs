@@ -30,18 +30,20 @@ public sealed class EngagementController(ISender sender) : ControllerBase
     public async Task<ActionResult<VoteSummaryDto>> Vote(Guid id, VoteRequest request, CancellationToken cancellationToken) =>
         Ok(await sender.Send(new CastVoteCommand(id, request.Choice), cancellationToken));
 
-    /// <summary>Follow a post: you'll be told about new comments and the vote result.</summary>
+    /// <summary>Follow a post: you'll be told about new comments and the vote result. Not your own (you always follow those).</summary>
     [HttpPut("{id:guid}/follow")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType<PostFollowStateDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PostFollowStateDto>> Follow(Guid id, CancellationToken cancellationToken) =>
         Ok(await sender.Send(new FollowPostCommand(id), cancellationToken));
 
-    /// <summary>Stop following a post.</summary>
+    /// <summary>Stop following a post. Not your own.</summary>
     [HttpDelete("{id:guid}/follow")]
     [Authorize(Policy = PostsModule.UsePolicy)]
     [ProducesResponseType<PostFollowStateDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PostFollowStateDto>> Unfollow(Guid id, CancellationToken cancellationToken) =>
         Ok(await sender.Send(new UnfollowPostCommand(id), cancellationToken));
 

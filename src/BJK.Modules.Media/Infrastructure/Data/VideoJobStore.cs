@@ -12,8 +12,6 @@ namespace BJK.Modules.Media.Infrastructure.Data;
 /// <param name="ReviewReasons">Why a moderator should check it; empty if none.</param>
 /// <param name="Elapsed">Time taken.</param>
 /// <param name="SensitiveScore">The highest graphic content score of the frames checked; null if detection was off.</param>
-/// <param name="ClipSummary">The average CLIP embedding of the frames scored; null if none.</param>
-/// <param name="ClipFrames">How many frames went into <paramref name="ClipSummary"/>.</param>
 /// <param name="NudityScore">The highest nudity score of the frames checked; null if not checked.</param>
 /// <param name="PerceptualHashes">PDQ hashes of up to eight frames checked.</param>
 public sealed record VideoSegmentResult(
@@ -23,8 +21,6 @@ public sealed record VideoSegmentResult(
     IReadOnlyList<string> ReviewReasons,
     TimeSpan Elapsed,
     double? SensitiveScore = null,
-    float[]? ClipSummary = null,
-    int ClipFrames = 0,
     double? NudityScore = null,
     IReadOnlyList<string>? PerceptualHashes = null);
 
@@ -105,8 +101,6 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
     {
         var reasons = VideoSegment.JoinReasons(result.ReviewReasons);
         var elapsed = (long)result.Elapsed.TotalMilliseconds;
-        var clip = result.ClipSummary is { Length: > 0 } summary ? ClipEmbedding.ToBytes(summary) : null;
-        var clipFrames = clip is null ? 0 : result.ClipFrames;
         var hashes = VideoSegment.JoinHashes(result.PerceptualHashes);
         var updated = await db.VideoSegments
             .Where(s => s.MediaId == mediaId && s.Revision == revision && s.Index == index && s.Status == VideoSegmentStatus.Pending)
@@ -119,8 +113,6 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
                     .SetProperty(s => s.ReviewReasons, reasons)
                     .SetProperty(s => s.ElapsedMilliseconds, elapsed)
                     .SetProperty(s => s.SensitiveScore, result.SensitiveScore)
-                    .SetProperty(s => s.ClipSummary, clip)
-                    .SetProperty(s => s.ClipFrames, clipFrames)
                     .SetProperty(s => s.NudityScore, result.NudityScore)
                     .SetProperty(s => s.PerceptualHashes, hashes)
                     .SetProperty(s => s.CompletedAt, now),

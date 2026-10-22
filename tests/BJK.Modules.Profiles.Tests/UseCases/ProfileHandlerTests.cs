@@ -146,31 +146,6 @@ public sealed class ProfileHandlerTests
         await _profiles.Received(2).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task Road_user_is_private_unless_shown()
-    {
-        var profile = Existing(UserId, "roadhog");
-        var handler = new SetRoadUserCommandHandler(_profiles, _media, _caller, _clock);
-
-        var mine = await handler.Handle(new SetRoadUserCommand(RoadUser.Cyclist), Ct);
-        Assert.Equal(RoadUser.Cyclist, mine.RoadUser);
-        Assert.False(mine.ShowRoadUser);
-
-        var seenByOthers = await new GetProfileQueryHandler(_profiles, _media).Handle(new GetProfileQuery("roadhog"), Ct);
-        Assert.Null(seenByOthers.RoadUser);
-        Assert.Null(seenByOthers.ShowRoadUser);
-
-        await handler.Handle(new SetRoadUserCommand(RoadUser.Both, Show: true), Ct);
-        seenByOthers = await new GetProfileQueryHandler(_profiles, _media).Handle(new GetProfileQuery("roadhog"), Ct);
-        Assert.Equal(RoadUser.Both, seenByOthers.RoadUser);
-        Assert.Equal(RoadUser.Both, profile.PublicRoadUser);
-
-        // Not saying clears it, and the choice to show it.
-        await handler.Handle(new SetRoadUserCommand(null, Show: true), Ct);
-        Assert.Null(profile.RoadUser);
-        Assert.False(profile.ShowRoadUser);
-    }
-
     private Profile Existing(Guid userId, string handle)
     {
         var profile = Profile.Create(userId, handle, "Someone", null, null, Now);

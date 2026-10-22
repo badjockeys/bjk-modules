@@ -5,8 +5,7 @@ using BJK.Modules.Profiles.Infrastructure.Data;
 namespace BJK.Modules.Profiles.UseCases;
 
 /// <summary>
-/// A profile. <c>RoadUser</c> (Driver, Cyclist or Both) is shown to others only if the user chose to show it;
-/// <c>ShowRoadUser</c> is only filled in for the user themselves (null for others). <c>FollowerCount</c> and
+/// A profile. <c>FollowerCount</c> and
 /// <c>FollowingCount</c> count active profiles; <c>IsFollowing</c> (you follow them) and <c>FollowsYou</c> are null
 /// when signed out or for yourself. <c>Badges</c>: Founding member, Trusted reporter, Local regular (never shown for
 /// under-18s).
@@ -19,8 +18,6 @@ public sealed record ProfileDto(
     string? Location,
     Uri? AvatarUrl,
     DateTimeOffset CreatedAt,
-    RoadUser? RoadUser = null,
-    bool? ShowRoadUser = null,
     int FollowerCount = 0,
     int FollowingCount = 0,
     bool? IsFollowing = null,
@@ -34,9 +31,7 @@ public sealed record ProfileDto(
         profile.Bio,
         profile.Location,
         avatarUrl,
-        profile.CreatedAt,
-        forOwner ? profile.RoadUser : profile.PublicRoadUser,
-        forOwner ? profile.ShowRoadUser : null);
+        profile.CreatedAt);
 }
 
 /// <summary>Is a handle free to take?</summary>

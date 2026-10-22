@@ -61,7 +61,7 @@ internal sealed class ClipContentClassifier : ISensitiveContentClassifier, IDisp
         using var runOptions = new RunOptions();
         using var outputs = session.Run(runOptions, [session.InputNames[0]], [tensor], [session.OutputNames[0]]);
         var embedding = outputs.First().GetTensorDataAsSpan<float>().ToArray();
-        return _prompts.Score(embedding) with { Embedding = ClipEmbedding.Normalise(embedding) };
+        return _prompts.Score(embedding);
     }
 
     public void Dispose()

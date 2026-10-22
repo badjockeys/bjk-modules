@@ -8,14 +8,13 @@ using BJK.Modules.Shared.Security;
 namespace BJK.Modules.Posts.UseCases;
 
 /// <summary>
-/// Who wrote a post or comment. <c>Handle</c> is null if the author's profile no longer exists. <c>RoadUser</c>
-/// ("Driver", "Cyclist" or "Both") only if they chose to show it.
+/// Who wrote a post or comment. <c>Handle</c> is null if the author's profile no longer exists.
 /// </summary>
-public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri? AvatarUrl, string? RoadUser = null)
+public sealed record AuthorDto(Guid Id, string? Handle, string DisplayName, Uri? AvatarUrl)
 {
     internal static AuthorDto From(Guid userId, IReadOnlyDictionary<Guid, ProfileSummary> profiles) =>
         profiles.TryGetValue(userId, out var p)
-            ? new AuthorDto(p.UserId, p.Handle, p.DisplayName, p.AvatarUrl, p.RoadUser)
+            ? new AuthorDto(p.UserId, p.Handle, p.DisplayName, p.AvatarUrl)
             : new AuthorDto(userId, null, "Former member", null);
 }
 

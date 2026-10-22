@@ -60,18 +60,6 @@ public sealed class ProfilesController(ISender sender) : ControllerBase
     public async Task<ProfileDto> SetAvatar(SetAvatarCommand command, CancellationToken cancellationToken) =>
         await sender.Send(command, cancellationToken);
 
-    /// <summary>
-    /// Say how you use the road (Driver, Cyclist or Both, or null to not say). Optional and private unless
-    /// <c>show</c> is true, when it appears on your profile and posts.
-    /// </summary>
-    [HttpPut("me/road-user")]
-    [Authorize(Policy = ProfilesModule.UsePolicy)]
-    [ProducesResponseType<ProfileDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ProfileDto> SetRoadUser(SetRoadUserCommand command, CancellationToken cancellationToken) =>
-        await sender.Send(command, cancellationToken);
-
     /// <summary>Everyone you've blocked, most recent first.</summary>
     [HttpGet("me/blocks")]
     [Authorize(Policy = ProfilesModule.UsePolicy)]

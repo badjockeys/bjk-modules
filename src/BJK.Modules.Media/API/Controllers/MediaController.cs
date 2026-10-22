@@ -4,7 +4,6 @@ using BJK.Modules.Media.UseCases.Get;
 using BJK.Modules.Media.UseCases.Upload;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Security;
-using BJK.Modules.Media.UseCases.Describe;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -59,30 +58,6 @@ public sealed class MediaController(ISender sender) : ControllerBase
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListMyMediaQuery(page, pageSize), cancellationToken);
-
-    /// <summary>
-    /// "Suggest a description": queues a draft title and description for your photos or video (all ready), from blurred
-    /// pictures and what you've filled in. At most 10 a day (429 with <c>code</c> <c>description_limit</c> after that).
-    /// Poll <c>GET /api/media/descriptions/{id}</c> until it's Ready or Failed (usually seconds; up to a couple of
-    /// minutes after a quiet spell).
-    /// </summary>
-    [HttpPost("descriptions")]
-    [ProducesResponseType<DescriptionDto>(StatusCodes.Status202Accepted)]
-    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
-    public async Task<IActionResult> RequestDescription(RequestDescriptionCommand request, CancellationToken cancellationToken)
-    {
-        var description = await sender.Send(request, cancellationToken);
-        return AcceptedAtAction(nameof(GetDescription), new { id = description.Id }, description);
-    }
-
-    /// <summary>A "Suggest a description" request you made: Queued, Ready (with the draft) or Failed (with why).</summary>
-    [HttpGet("descriptions/{id:guid}")]
-    [ProducesResponseType<DescriptionDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<DescriptionDto> GetDescription(Guid id, CancellationToken cancellationToken) =>
-        await sender.Send(new GetDescriptionQuery(id), cancellationToken);
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

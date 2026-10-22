@@ -135,51 +135,6 @@ public sealed class MediaStorageOptions
     public string EffectiveSensitiveBucket => string.IsNullOrWhiteSpace(SensitiveBucket) ? OriginalsBucket! : SensitiveBucket.Trim();
 }
 
-/// <summary>
-/// "Suggest a description" (section <c>Media:Describe</c>): a vision language model (Qwen3-VL) writes a draft title and
-/// description from up to <see cref="MaxFrames"/> blurred pictures of the post's media and what the person filled in.
-/// The model runs on our own servers behind an OpenAI-compatible API: vLLM on a GPU when deployed, Ollama on a laptop.
-/// It's used when <see cref="Endpoint"/> is set; without it a stand-in writes a fixed draft locally, and the media
-/// worker won't start anywhere else.
-/// </summary>
-public sealed class DescribeOptions
-{
-    public const string SectionName = "Media:Describe";
-
-    /// <summary>
-    /// The model server's OpenAI-compatible address, ending <c>/v1</c>: e.g. <c>http://localhost:11434/v1</c> for Ollama,
-    /// or the GPU container's internal address. Empty: the stand-in (Development only).
-    /// </summary>
-    public Uri? Endpoint { get; set; }
-
-    /// <summary>The model's name on that server. Default <c>qwen3-vl:8b</c> (Ollama's name for Qwen3-VL-8B-Instruct).</summary>
-    public string Model { get; set; } = "qwen3-vl:8b";
-
-    /// <summary>Optional secret, sent as a bearer token (vLLM's <c>--api-key</c>). Empty for Ollama.</summary>
-    public string? ApiKey { get; set; }
-
-    /// <summary>How long one request may take, including a cold start. Default 3 minutes.</summary>
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(3);
-
-    /// <summary>Requests per person per UK day. Default 10.</summary>
-    [Range(1, 1000)]
-    public int MaxPerDay { get; set; } = 10;
-
-    /// <summary>Most pictures sent to the model. Default 6.</summary>
-    [Range(1, 12)]
-    public int MaxFrames { get; set; } = 6;
-
-    /// <summary>Longest side of each picture sent, in pixels. Default 768.</summary>
-    [Range(224, 2048)]
-    public int FrameSize { get; set; } = 768;
-
-    /// <summary>ffmpeg, used to take pictures from the blurred video. Default <c>ffmpeg</c> on the PATH.</summary>
-    public string FfmpegPath { get; set; } = "ffmpeg";
-
-    /// <summary>True when <see cref="Endpoint"/> is set.</summary>
-    public bool IsConfigured => Endpoint is { IsAbsoluteUri: true };
-}
-
 /// <summary>The processing worker. Section <c>Media:Processing</c>; only the worker host reads it.</summary>
 public sealed class MediaProcessingOptions
 {
