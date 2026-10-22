@@ -131,7 +131,9 @@ internal sealed partial class MediaProcessor
                         result.Elapsed,
                         result.SensitiveScore,
                         result.ClipSummary,
-                        result.FramesClassified),
+                        result.FramesClassified,
+                        result.NudityScore,
+                        result.PerceptualHashes),
                     clock.GetUtcNow(),
                     cancellationToken);
                 logger.LogInformation(
@@ -242,6 +244,8 @@ internal sealed partial class MediaProcessor
                 // Counts are per segment, so a face crossing a join is counted once in each.
                 item.RecordRedaction(segments.Sum(s => s.FacesBlurred ?? 0), segments.Sum(s => s.PlatesBlurred ?? 0));
                 await ApplySensitiveScoreAsync(item, segments.Max(s => s.SensitiveScore), cancellationToken);
+                // The nudity score and the frames' PDQ hashes (for "block copies") come from the segments too.
+                item.RecordContentChecks(segments.Max(s => s.NudityScore), SpreadHashes(segments.Select(s => s.PerceptualHashList)));
                 item.RecordClipSummary(ClipEmbedding.Average(
                     segments.Where(s => s.ClipSummary is not null).Select(s => (ClipEmbedding.FromBytes(s.ClipSummary!), s.ClipFrames))));
                 var reasons = ReviewReasons(segments.SelectMany(s => s.ReviewReasonList), item.ManualRedactions.Count);
@@ -273,5 +277,18 @@ internal sealed partial class MediaProcessor
         {
             await storage.DeleteOriginalAsync(MediaKeys.Segment(item.UserId, item.Id, videoJob.Revision, segment.Index), CancellationToken.None);
         }
+    }
+
+    /// <summary>Up to <see cref="MediaItem.MaxPerceptualHashes"/> hashes spread across the segments, in order.</summary>
+    internal static List<string> SpreadHashes(IEnumerable<IReadOnlyList<string>> perSegment)
+    {
+        var all = perSegment.SelectMany(h => h).ToList();
+        var count = MediaItem.MaxPerceptualHashes;
+        if (all.Count <= count)
+        {
+            return all;
+        }
+
+        return Enumerable.Range(0, count).Select(i => all[(int)((long)i * (all.Count - 1) / (count - 1))]).ToList();
     }
 }
