@@ -161,7 +161,9 @@ internal sealed class VideoSegmentConfiguration : IEntityTypeConfiguration<Video
         builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(s => s.ReviewReasons).HasMaxLength(VideoSegment.ReviewReasonsMaxLength);
         builder.Property(s => s.ClipSummary).HasMaxLength(MediaItemConfiguration.ClipSummaryBytes);
+        builder.Property(s => s.PerceptualHashes).HasMaxLength(MediaItem.PerceptualHashesMaxLength);
         builder.Ignore(s => s.IsDone);
+        builder.Ignore(s => s.PerceptualHashList);
         builder.Ignore(s => s.ReviewReasonList);
     }
 }

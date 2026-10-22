@@ -168,6 +168,12 @@ public sealed class VideoSegment
     /// <summary>How many frames went into <see cref="ClipSummary"/>.</summary>
     public int ClipFrames { get; private set; }
 
+    /// <summary>The highest nudity score of the frames it checked; null if not checked.</summary>
+    public double? NudityScore { get; private set; }
+
+    /// <summary>PDQ hashes (hex, space-separated) of up to eight frames it checked, for the known-image list.</summary>
+    public string? PerceptualHashes { get; private set; }
+
     public DateTimeOffset? CompletedAt { get; private set; }
 
     public bool IsDone => Status == VideoSegmentStatus.Done;
@@ -188,6 +194,8 @@ public sealed class VideoSegment
     /// <param name="sensitiveScore">The highest graphic content score, or null.</param>
     /// <param name="clipSummary">The average CLIP embedding, or null.</param>
     /// <param name="clipFrames">Frames in <paramref name="clipSummary"/>.</param>
+    /// <param name="nudityScore">The highest nudity score, or null.</param>
+    /// <param name="perceptualHashes">PDQ hashes of sampled frames.</param>
     public bool MarkDone(
         int frames,
         int faces,
@@ -197,7 +205,9 @@ public sealed class VideoSegment
         DateTimeOffset now,
         double? sensitiveScore = null,
         byte[]? clipSummary = null,
-        int clipFrames = 0)
+        int clipFrames = 0,
+        double? nudityScore = null,
+        IEnumerable<string>? perceptualHashes = null)
     {
         if (IsDone)
         {
@@ -213,8 +223,22 @@ public sealed class VideoSegment
         SensitiveScore = sensitiveScore;
         ClipSummary = clipSummary;
         ClipFrames = clipSummary is null ? 0 : clipFrames;
+        NudityScore = nudityScore;
+        PerceptualHashes = JoinHashes(perceptualHashes);
         CompletedAt = now;
         return true;
+    }
+
+    /// <summary>The hashes as a list.</summary>
+    public IReadOnlyList<string> PerceptualHashList =>
+        string.IsNullOrEmpty(PerceptualHashes) ? [] : PerceptualHashes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>Joins up to <see cref="MediaItem.MaxPerceptualHashes"/> hashes for storage; null if none.</summary>
+    /// <param name="hashes">The hashes.</param>
+    public static string? JoinHashes(IEnumerable<string>? hashes)
+    {
+        var list = hashes?.Take(MediaItem.MaxPerceptualHashes).ToList();
+        return list is { Count: > 0 } ? string.Join(' ', list) : null;
     }
 
     /// <summary>The reasons as a list.</summary>
