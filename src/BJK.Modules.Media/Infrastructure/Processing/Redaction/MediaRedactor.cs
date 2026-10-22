@@ -172,7 +172,8 @@ internal sealed class MediaRedactor(
 
         // Photos are analysed at full size (they're few, and small plates matter in parking photos).
         var pass = NewPass(maxSize: 0);
-        var found = pass.Detect(frame, classify: true);
+        // Weaker detections only help follow faces and plates through a video; a photo uses the usual minimum.
+        var found = pass.Detect(frame, classify: true).Where(b => b.Confidence >= MinConfidence(b.Target)).ToList();
         foreach (var box in found)
         {
             Blur(frame, box);
@@ -181,7 +182,7 @@ internal sealed class MediaRedactor(
         BlurManual(frame, manual, seconds: null);
         await PpmWriter.WriteAsync(frame, outputPath, cancellationToken);
 
-        var uncertain = found.Count(b => b.Confidence < ConfidentAt(b.Target));
+        var uncertain = Uncertain(found.Where(b => b.Confidence < ConfidentAt(b.Target)).Select(b => b.Target));
         return Result(
             pass,
             found.Count(b => b.Target == RedactionTarget.Face),
@@ -302,7 +303,7 @@ internal sealed class MediaRedactor(
         var lookahead = (_options.MaxMissedDetections + 1) * interval;
 
         var pass = NewPass(_options.DetectionMaxSize);
-        var tracker = new RedactionTracker(_options.MaxMissedDetections);
+        var tracker = new RedactionTracker(_options.MaxMissedDetections, startAt: MinConfidence);
         var pending = new Queue<(int Index, RgbFrame Frame)>();
         var decoded = 0;
         var written = 0;
@@ -345,7 +346,7 @@ internal sealed class MediaRedactor(
                 // Only the last segment of a video may turn out empty (its length was overstated); it's then skipped.
                 if (range.CoreEnd is null && range.CoreStart > 0)
                 {
-                    return Result(pass, 0, 0, 0, frames: 0, analysed, timer.Elapsed);
+                    return Result(pass, 0, 0, (0, 0), frames: 0, analysed, timer.Elapsed);
                 }
 
                 throw new UnreadableMediaException("ffmpeg found no frames in the video.");
@@ -378,7 +379,7 @@ internal sealed class MediaRedactor(
 
         // Only faces and plates that show in this range's own part count (the neighbours count the rest).
         var tracks = tracker.Tracks.Where(t => range.Overlaps(t.FirstFrame - interval, t.LastFrame + interval)).ToList();
-        var uncertain = tracks.Count(t => t.MaxConfidence < ConfidentAt(t.Target));
+        var uncertain = Uncertain(tracks.Where(t => t.MaxConfidence < ConfidentAt(t.Target)).Select(t => t.Target));
         var result = Result(
             pass,
             tracks.Count(t => t.Target == RedactionTarget.Face),
@@ -397,7 +398,7 @@ internal sealed class MediaRedactor(
             result.DetectionTime,
             result.FacesBlurred,
             result.PlatesBlurred,
-            uncertain);
+            uncertain.Faces + uncertain.Plates);
         return result;
     }
 
@@ -492,15 +493,54 @@ internal sealed class MediaRedactor(
         return maxSize <= 0 || longest <= maxSize ? 1f : maxSize / (float)longest;
     }
 
-    private float ConfidentAt(RedactionTarget target) =>
-        (float)(target == RedactionTarget.Face ? _options.FaceConfidentAt : _options.PlateConfidentAt);
+    private float MinConfidence(RedactionTarget target) => (float)(target switch
+    {
+        RedactionTarget.Face => _options.FaceMinConfidence,
+        RedactionTarget.Head => _options.HeadMinConfidence,
+        _ => _options.PlateMinConfidence,
+    });
 
-    private RedactionResult Result(DetectionPass pass, int faces, int plates, int uncertain, int frames, int analysed, TimeSpan elapsed)
+    /// <summary>The score from which a detection needs no review. Heads are a backup and never need review.</summary>
+    private float ConfidentAt(RedactionTarget target) => (float)(target switch
+    {
+        RedactionTarget.Face => _options.FaceConfidentAt,
+        RedactionTarget.Head => 0,
+        _ => _options.PlateConfidentAt,
+    });
+
+    private static (int Faces, int Plates) Uncertain(IEnumerable<RedactionTarget> targets)
+    {
+        var list = targets.ToList();
+        return (list.Count(t => t == RedactionTarget.Face), list.Count(t => t == RedactionTarget.NumberPlate));
+    }
+
+    private RedactionResult Result(
+        DetectionPass pass,
+        int faces,
+        int plates,
+        (int Faces, int Plates) uncertain,
+        int frames,
+        int analysed,
+        TimeSpan elapsed)
     {
         var reasons = pass.Problems.ToList();
-        if (uncertain > 0)
+        if (uncertain.Faces + uncertain.Plates > 0)
         {
-            reasons.Add($"{uncertain} detection(s) had low confidence.");
+            // Said per kind, so a moderator knows whether to check plates or faces.
+            var parts = new List<string>();
+            if (uncertain.Plates > 0)
+            {
+                parts.Add($"{uncertain.Plates} number plate{(uncertain.Plates == 1 ? "" : "s")}");
+            }
+
+            if (uncertain.Faces > 0)
+            {
+                parts.Add($"{uncertain.Faces} face{(uncertain.Faces == 1 ? "" : "s")}");
+            }
+
+            reasons.Add(
+                $"{string.Join(" and ", parts)} had low confidence: blurred, but the detector wasn't sure "
+                + $"(scores under {_options.PlateConfidentAt:0.##} for plates, {_options.FaceConfidentAt:0.##} for faces). Check the blurs.");
         }
 
         if (pass.NudityScore is { } nudity && nudity >= _nudityThreshold)
@@ -604,6 +644,13 @@ internal sealed class MediaRedactor(
             foreach (var target in Enum.GetValues<RedactionTarget>())
             {
                 var detector = detectors.FirstOrDefault(d => d.Target == target);
+                if (detector is null && target == RedactionTarget.Head)
+                {
+                    // The head (person) detector is an extra; the worker always registers it, and a registered one
+                    // that's unavailable still sends media to review below.
+                    continue;
+                }
+
                 if (detector is null)
                 {
                     _problems.Add($"No {target} detector is registered.");
@@ -649,23 +696,14 @@ internal sealed class MediaRedactor(
             _timer.Start();
             try
             {
-                // Videos: detect on a smaller copy (Media:Redaction:DetectionMaxSize), then map the boxes back to the frame.
-                var scale = DetectionScale(frame.Width, frame.Height, _maxSize);
-                if (scale >= 1)
-                {
-                    Classify(frame, classify);
-                    return DetectAll(frame);
-                }
-
-                var small = FrameOps.Resize(
-                    frame,
-                    Math.Max(1, (int)MathF.Round(frame.Width * scale)),
-                    Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+                // Videos: plates (and the content checks) use a smaller copy (Media:Redaction:DetectionMaxSize); plates
+                // have zoomed tiles for small ones. Faces use their own copy, scaled up or down to FaceDetectionSize,
+                // because faces on the pavement or through windscreens are only 10-20 pixels high and YuNet finds far
+                // more of them enlarged. Photos use full size.
+                var small = Scaled(frame, _maxSize);
                 Classify(small, classify);
-                var (sx, sy) = (frame.Width / (float)small.Width, frame.Height / (float)small.Height);
-                return DetectAll(small)
-                    .Select(b => b with { X = b.X * sx, Y = b.Y * sy, Width = b.Width * sx, Height = b.Height * sy })
-                    .ToList();
+                var faces = _maxSize <= 0 ? frame : Resized(frame, _options.FaceDetectionSize);
+                return DetectAll(target => target == RedactionTarget.Face ? faces : small, frame);
             }
             finally
             {
@@ -759,15 +797,59 @@ internal sealed class MediaRedactor(
             }
         }
 
-        private List<DetectionBox> DetectAll(RgbFrame frame)
+        private static RgbFrame Scaled(RgbFrame frame, int maxSize)
+        {
+            var scale = DetectionScale(frame.Width, frame.Height, maxSize);
+            return scale >= 1
+                ? frame
+                : FrameOps.Resize(
+                    frame,
+                    Math.Max(1, (int)MathF.Round(frame.Width * scale)),
+                    Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+        }
+
+        /// <summary>The frame scaled up or down so its longest side is <paramref name="size"/>; 0 leaves it as it is.</summary>
+        private static RgbFrame Resized(RgbFrame frame, int size)
+        {
+            var longest = Math.Max(frame.Width, frame.Height);
+            if (size <= 0 || size == longest)
+            {
+                return frame;
+            }
+
+            var scale = size / (float)longest;
+            return FrameOps.Resize(
+                frame,
+                Math.Max(1, (int)MathF.Round(frame.Width * scale)),
+                Math.Max(1, (int)MathF.Round(frame.Height * scale)));
+        }
+
+        /// <summary>Runs each detector on its own copy of the frame and maps the boxes back to the full frame.</summary>
+        private List<DetectionBox> DetectAll(Func<RedactionTarget, RgbFrame> inputFor, RgbFrame full)
         {
             var boxes = new List<DetectionBox>();
             foreach (var detector in _active.ToList())
             {
                 try
                 {
-                    var min = (float)(detector.Target == RedactionTarget.Face ? _options.FaceMinConfidence : _options.PlateMinConfidence);
-                    boxes.AddRange(detector.Detect(frame, min));
+                    var frame = inputFor(detector.Target);
+                    // Down to the tracking minimum: weaker boxes can keep an existing face or plate blurred in a video.
+                    var min = (float)(detector.Target switch
+                    {
+                        RedactionTarget.Face => Math.Min(_options.FaceMinConfidence, _options.FaceTrackConfidence),
+                        RedactionTarget.Head => Math.Min(_options.HeadMinConfidence, _options.HeadTrackConfidence),
+                        _ => Math.Min(_options.PlateMinConfidence, _options.PlateTrackConfidence),
+                    });
+                    var found = detector.Detect(frame, min);
+                    if (ReferenceEquals(frame, full))
+                    {
+                        boxes.AddRange(found);
+                    }
+                    else
+                    {
+                        var (sx, sy) = (full.Width / (float)frame.Width, full.Height / (float)frame.Height);
+                        boxes.AddRange(found.Select(b => b with { X = b.X * sx, Y = b.Y * sy, Width = b.Width * sx, Height = b.Height * sy }));
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

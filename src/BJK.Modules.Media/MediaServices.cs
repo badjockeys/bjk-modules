@@ -48,14 +48,19 @@ public static class MediaServices
             .ValidateDataAnnotations()
             .Validate(o => o.FaceConfidentAt >= o.FaceMinConfidence, "Media:Redaction:FaceConfidentAt must be at least FaceMinConfidence.")
             .Validate(o => o.PlateConfidentAt >= o.PlateMinConfidence, "Media:Redaction:PlateConfidentAt must be at least PlateMinConfidence.")
+            .Validate(o => o.FaceTrackConfidence <= o.FaceMinConfidence, "Media:Redaction:FaceTrackConfidence must be at most FaceMinConfidence.")
+            .Validate(o => o.PlateTrackConfidence <= o.PlateMinConfidence, "Media:Redaction:PlateTrackConfidence must be at most PlateMinConfidence.")
+            .Validate(o => o.HeadTrackConfidence <= o.HeadMinConfidence, "Media:Redaction:HeadTrackConfidence must be at most HeadMinConfidence.")
             .ValidateOnStart();
         services.RequireWhenDeployed("Media:Redaction:FaceModelPath", "the face detection model's path in the worker image");
         services.RequireWhenDeployed("Media:Redaction:PlateModelPath", "the number plate detection model's path in the worker image");
+        services.RequireWhenDeployed("Media:Redaction:PersonModelPath", "the person detection model's path in the worker image");
         services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
         services.TryAddScoped<IVideoJobStore, VideoJobStore>();
         services.AddSingleton<IMediaTranscoder, FfmpegTranscoder>();
         services.AddSingleton<IRedactionDetector, YuNetFaceDetector>();
         services.AddSingleton<IRedactionDetector, LpdYuNetPlateDetector>();
+        services.AddSingleton<IRedactionDetector, YoloxPersonDetector>();
         services.AddOptions<SensitiveDetectionOptions>()
             .Bind(configuration.GetSection(SensitiveDetectionOptions.SectionName))
             .ValidateDataAnnotations()

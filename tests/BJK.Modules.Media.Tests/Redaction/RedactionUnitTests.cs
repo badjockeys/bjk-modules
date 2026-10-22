@@ -10,6 +10,9 @@ public sealed class RedactionTrackerTests
     private static DetectionBox Face(float x, float y = 100, float size = 50, float confidence = 0.9f) =>
         new(RedactionTarget.Face, x, y, size, size, confidence);
 
+    private static DetectionBox Plate(float x, float y = 300, float confidence = 0.9f) =>
+        new(RedactionTarget.NumberPlate, x, y, 50, 15, confidence);
+
     [Fact]
     public void Boxes_between_detection_passes_are_interpolated()
     {
@@ -96,6 +99,40 @@ public sealed class RedactionTrackerTests
         tracker.Add(10, [Face(100, confidence: 0.7f)]);
 
         Assert.Equal(0.95f, Assert.Single(tracker.Tracks).MaxConfidence);
+    }
+
+    [Fact]
+    public void A_moving_plate_missed_for_a_couple_of_passes_stays_one_track_and_stays_blurred()
+    {
+        // A car crossing the frame at 12 px a frame: the plate is missed at frames 10 and 15, and by frame 20 it is
+        // 3.6 plate-widths from where it was last seen, but exactly where its speed says it should be.
+        var tracker = new RedactionTracker(maxMissed: 3);
+        tracker.Add(0, [Plate(100)]);
+        tracker.Add(5, [Plate(160)]);
+        tracker.Add(10, []);
+        tracker.Add(15, []);
+        tracker.Add(20, [Plate(340)]);
+
+        Assert.Single(tracker.Tracks);
+        for (var frame = 5; frame <= 20; frame++)
+        {
+            var box = Assert.Single(tracker.BoxesAt(frame, interval: 5));
+            Assert.Equal(100 + (12 * frame), box.X, 1);
+        }
+    }
+
+    [Fact]
+    public void A_weak_detection_continues_a_plate_but_cannot_start_one()
+    {
+        var tracker = new RedactionTracker(maxMissed: 0, startAt: _ => 0.5f);
+        tracker.Add(0, [Plate(100, confidence: 0.9f)]);
+        tracker.Add(5, [Plate(104, confidence: 0.35f), Plate(700, confidence: 0.35f)]);
+        tracker.Add(10, [Plate(108, confidence: 0.9f)]);
+
+        var track = Assert.Single(tracker.Tracks);
+        Assert.Equal(3, track.Count);
+        Assert.Equal(0.9f, track.MaxConfidence);
+        Assert.DoesNotContain(tracker.BoxesAt(5, interval: 5), b => b.X > 600);
     }
 
     [Fact]
@@ -283,3 +320,33 @@ public sealed class PlateDetectorGeometryTests
         Assert.Equal(expected, MediaRedactor.FrameRate(source), 3);
     }
 }
+
+public sealed class PersonDetectorTests
+{
+    [Fact]
+    public void The_head_is_the_top_of_the_person_box()
+    {
+        var head = YoloxPersonDetector.HeadOf(new DetectionBox(RedactionTarget.Head, 100, 50, 40, 200, 0.8f));
+
+        Assert.Equal((100f, 50f, 40f), (head.X, head.Y, head.Width));
+        Assert.Equal(200 * YoloxPersonDetector.HeadFraction, head.Height, 3);
+        Assert.Equal(0.8f, head.Confidence);
+    }
+
+    [Fact]
+    public void The_letterbox_scales_the_frame_into_the_top_left_and_pads_with_grey()
+    {
+        var frame = new RgbFrame(1280, 720);
+        Array.Fill(frame.Pixels, (byte)200);
+
+        var (data, scale) = FrameOps.ToRgbLetterbox(frame, 640);
+
+        Assert.Equal(0.5f, scale);
+        Assert.Equal(3 * 640 * 640, data.Length);
+        Assert.Equal(200f, data[0]);                      // inside the picture (red plane)
+        Assert.Equal(200f, data[(359 * 640) + 639]);      // last row of the picture
+        Assert.Equal(114f, data[(360 * 640) + 10]);       // below it: padding
+        Assert.Equal(114f, data[(2 * 640 * 640) + (639 * 640) + 639]); // padding in the blue plane
+    }
+}
+

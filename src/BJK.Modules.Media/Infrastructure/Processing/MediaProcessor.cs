@@ -61,6 +61,9 @@ internal sealed partial class MediaProcessor(
     IKnownImageList? knownImages = null,
     IKnownImageRepository? knownImageRepository = null)
 {
+    /// <summary>Logged once for every upload held for a moderator, with its id and the reasons.</summary>
+    private static readonly EventId NeedsReviewEvent = new(4802, "MediaNeedsReview");
+
     private const string UnreadableReason = "We couldn't read this file. Try exporting it from your dashcam app again.";
     private const string GaveUpReason = "Processing failed. Try uploading the file again.";
 
@@ -292,6 +295,18 @@ internal sealed partial class MediaProcessor(
             }
 
             item.MarkNeedsReview(string.Join(" ", reasons), new FileInfo(playback).Length, details.DurationSeconds, details.Width, details.Height, details.Sha256, clock.GetUtcNow());
+
+            // One line per held upload, so it's easy to find why (Kibana: event.name "MediaNeedsReview"). No personal data.
+            logger.LogWarning(
+                NeedsReviewEvent,
+                "Media {MediaId} ({MediaType}) needs review: {ReviewReasons} Faces blurred {Faces}, plates blurred {Plates}, nudity score {NudityScore}, graphic score {SensitiveScore}.",
+                item.Id,
+                item.MediaType,
+                string.Join(" ", reasons),
+                item.FacesBlurred,
+                item.PlatesBlurred,
+                item.NudityScore,
+                item.SensitiveScore);
         }
         else if (sensitive)
         {

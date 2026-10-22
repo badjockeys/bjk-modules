@@ -294,6 +294,13 @@ public sealed class MediaRedactionOptions
     [Range(0.05, 1.0)]
     public double FaceMinConfidence { get; set; } = 0.5;
 
+    /// <summary>
+    /// Videos: a weaker face detection, down to this score, can continue a face already being followed (not start
+    /// one), so the blur holds while the face turns or blurs with motion. At most <see cref="FaceMinConfidence"/>.
+    /// </summary>
+    [Range(0.05, 1.0)]
+    public double FaceTrackConfidence { get; set; } = 0.3;
+
     /// <summary>A face (or, in a video, a face's whole track) that never scores this much is uncertain: the media goes to review.</summary>
     [Range(0.05, 1.0)]
     public double FaceConfidentAt { get; set; } = 0.8;
@@ -302,9 +309,32 @@ public sealed class MediaRedactionOptions
     [Range(0.05, 1.0)]
     public double PlateMinConfidence { get; set; } = 0.5;
 
+    /// <summary>
+    /// Videos: a weaker plate detection, down to this score, can continue a plate already being followed (not start
+    /// one), so the blur holds while a moving car's plate turns, shrinks or blurs. At most
+    /// <see cref="PlateMinConfidence"/>.
+    /// </summary>
+    [Range(0.05, 1.0)]
+    public double PlateTrackConfidence { get; set; } = 0.3;
+
     /// <summary>A plate (or a plate's whole track) that never scores this much is uncertain: the media goes to review.</summary>
     [Range(0.05, 1.0)]
     public double PlateConfidentAt { get; set; } = 0.8;
+
+    /// <summary>
+    /// The YOLOX-S person detection model (ONNX), e.g. <c>/opt/bjk/models/object_detection_yolox_2022nov.onnx</c>. Each
+    /// person's head is blurred, catching faces the face model misses (at night, far off, side-on, turned away). Not
+    /// set or missing: every upload goes to review.
+    /// </summary>
+    public string? PersonModelPath { get; set; }
+
+    /// <summary>People scoring at least this have their head blurred. Head blurs never send media to review.</summary>
+    [Range(0.05, 1.0)]
+    public double HeadMinConfidence { get; set; } = 0.4;
+
+    /// <summary>Videos: a weaker person detection, down to this, can continue a head already being blurred.</summary>
+    [Range(0.05, 1.0)]
+    public double HeadTrackConfidence { get; set; } = 0.25;
 
     /// <summary>Extra margin added to every side of a detected box, as a fraction of its width or height.</summary>
     [Range(0.0, 1.0)]
@@ -350,13 +380,22 @@ public sealed class MediaRedactionOptions
     public int InferenceThreads { get; set; }
 
     /// <summary>
-    /// Detection runs on a copy of each frame scaled down so its longest side is at most this many pixels (boxes are
-    /// mapped back to the full picture before blurring). Much faster for faces; plates are searched in zoomed tiles of
-    /// the smaller copy, so their cost barely changes. Faces smaller than about 10 pixels in the copy (20 pixels in a
-    /// 720p frame) may be missed. 0 runs detection at full resolution.
+    /// Videos: plate detection and the content checks run on a copy of each frame scaled down so its longest side is
+    /// at most this many pixels (boxes are mapped back to the full picture before blurring). Plates are searched in
+    /// zoomed tiles of the smaller copy, so small ones are still found. Faces use <see cref="FaceDetectionSize"/>.
+    /// 0 runs detection at full resolution.
     /// </summary>
     [Range(0, 4096)]
     public int DetectionMaxSize { get; set; } = 640;
+
+    /// <summary>
+    /// Videos: faces are looked for in a copy of each frame scaled up or down so its longest side is this many pixels
+    /// (0: the frame as it is). YuNet finds faces down to about 10 pixels, and far more of the 10–20 pixel faces on
+    /// pavements and behind windscreens once enlarged: on a night-time 724 px test clip, 1440 found ten times as many as
+    /// the 640 px copy used before. Costs roughly 100–200 ms per analysed frame on the worker's CPUs.
+    /// </summary>
+    [Range(0, 4096)]
+    public int FaceDetectionSize { get; set; } = 1440;
 
     /// <summary>
     /// Where the detection models run. <see cref="RedactionExecutionProvider.Cpu"/> (the default) works everywhere.

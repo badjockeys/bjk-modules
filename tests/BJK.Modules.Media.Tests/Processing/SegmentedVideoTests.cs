@@ -56,7 +56,8 @@ public sealed class SegmentedVideoTests : IDisposable
 
     private static MediaRedactor Redactor(params IRedactionDetector[] detectors) => new(
         detectors,
-        Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions()),
+        // The red square detector reads fixed pixels of the 640x360 clip, so faces are searched in the frame as it is.
+        Microsoft.Extensions.Options.Options.Create(new MediaRedactionOptions { FaceDetectionSize = 0 }),
         Microsoft.Extensions.Options.Options.Create(new MediaProcessingOptions()),
         NullLogger<MediaRedactor>.Instance);
 
