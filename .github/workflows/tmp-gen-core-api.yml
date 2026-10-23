@@ -54,8 +54,9 @@ jobs:
         run: |
           npm ci --no-audit --no-fund > ../../../web.log 2>&1
           {
-            echo "== prettier"; npx prettier --write . | grep -v "unchanged" ;
             echo "== eslint"; npx eslint . --fix --max-warnings=0;
+            echo "== prettier"; npx prettier --write . | grep -v "unchanged" ;
+            echo "== prettier check"; npx prettier --check .;
             echo "== typecheck"; npm run typecheck;
             echo "== vitest"; npx vitest run;
             echo "== build"; npm run build;
