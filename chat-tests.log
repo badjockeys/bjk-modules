@@ -1,0 +1,22 @@
+Running tests from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Chat.Tests.Evaluation.EvaluationTests.Run_the_question_set_against_a_real_model
+  Set BJK_CHAT_EVAL_ENDPOINT and BJK_CHAT_EVAL_DATABASE to run the evaluation.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31mfailed[m BJK.Modules.Chat.Tests.ChatAgentTests.Runs_the_query_and_draws_the_card_from_the_rows_not_the_models_figures [90m(39ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Assert.Contains() Failure: Sub-string not found
+  String:    "{"columns":["Year","Month","Incidents"],"rows":[[2"···
+  Not found: ""<3""
+[m[90m    at BJK.Modules.Chat.Tests.ChatAgentTests.Runs_the_query_and_draws_the_card_from_the_rows_not_the_models_figures() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatAgentTests.cs:49[90m
+    --- End of stack trace from previous location ---
+[m[m/home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64) [31mfailed with 1 error(s)[m [90m(17s 729ms)[m
+Exit code: 2
+
+[31mTest run summary: Failed!
+[m  total: 154
+[31m  failed: 1
+[m  succeeded: 152
+  skipped: 1
+  duration: 18s 091ms
+Test run completed with non-success exit code: 2 (see: https://aka.ms/testingplatform/exitcodes)
+No changes have been made to the model since the last migration.
