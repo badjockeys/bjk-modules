@@ -1,0 +1,108 @@
+
+> bjk-web@0.1.0 e2e
+> playwright test e2e/chat.spec.ts e2e/map.spec.ts e2e/feed.spec.ts e2e/mobile.spec.ts
+
+
+Running 16 tests using 1 worker
+
+  ✘   1 [desktop] › e2e/chat.spec.ts:9:5 › Premium members ask about their own town and open the answer on the map (928ms)
+  ✘   2 [desktop] › e2e/chat.spec.ts:9:5 › Premium members ask about their own town and open the answer on the map (retry #1) (696ms)
+  ✓   3 [desktop] › e2e/chat.spec.ts:35:5 › Free members without a home area see untailored examples and the locked preview (566ms)
+  ✓   4 [desktop] › e2e/feed.spec.ts:9:5 › visitors see the feed, sensitive posts blurred and no comments (619ms)
+  ✓   5 [desktop] › e2e/feed.spec.ts:55:5 › members who haven't verified their age are offered the age check for sensitive posts (502ms)
+  ✓   6 [desktop] › e2e/feed.spec.ts:77:5 › category trends show each type's line, total and change; Free is the last 7 days (364ms)
+  ✓   7 [desktop] › e2e/feed.spec.ts:98:5 › Premium members choose a longer range and narrow trends to an area (470ms)
+  ✓   8 [desktop] › e2e/feed.spec.ts:110:5 › hashtags in posts link to the tag's page, and Trending shows tags and places (548ms)
+  ✓   9 [desktop] › e2e/feed.spec.ts:129:5 › category pages filter the feed, from Category trends, with an empty state (598ms)
+  ✓  10 [desktop] › e2e/feed.spec.ts:154:5 › signing in goes to the identity server and comes back to the page (775ms)
+  ✓  11 [desktop] › e2e/feed.spec.ts:183:5 › members can sign out (607ms)
+  ✓  12 [desktop] › e2e/feed.spec.ts:190:5 › members switch between For you, Following and a custom timeline, and follow people (1.3s)
+  ✓  13 [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page (687ms)
+  ✓  14 [desktop] › e2e/map.spec.ts:9:5 › visitors are asked to sign in to see the incident map (251ms)
+  ✓  15 [desktop] › e2e/map.spec.ts:18:5 › Free members get the 7-day preview with filters locked, and area figures (564ms)
+  ✓  16 [desktop] › e2e/map.spec.ts:39:5 › Premium members filter by vehicle and conditions (739ms)
+  ✓  17 [mobile] › e2e/mobile.spec.ts:9:5 › phones get the sign-up bar, then the glass tab bar and + button once signed in (920ms)
+
+
+  1) [desktop] › e2e/chat.spec.ts:9:5 › Premium members ask about their own town and open the answer on the map 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3')
+    Expected: visible
+    Error: strict mode violation: getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3') resolved to 3 elements:
+        1) <span class="chat-bar-value">fewer than 3</span> aka getByText('fewer than 3', { exact: true })
+        2) <p class="small muted chat-card-note">1 row had fewer than 3 reports, so its figures ar…</p> aka getByText('1 row had fewer than 3')
+        3) <p class="chat-small small muted">Answers come from reports on Bad Jockeys. Figures…</p> aka getByText('Answers come from reports on')
+
+    Call log:
+      - Expect "toBeVisible" getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3') with timeout 10000ms
+      - waiting for getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3')
+
+
+      25 |     chat.getByText("The A57 Warrington Road had the most tailgating reports in the last year."),
+      26 |   ).toBeVisible();
+    > 27 |   await expect(chat.getByText("fewer than 3")).toBeVisible();
+         |                                                ^
+      28 |   await expect(chat.getByText("19 questions left today")).toBeVisible();
+      29 |
+      30 |   await chat.getByRole("link", { name: "Open on the map" }).click();
+        at /home/runner/work/bjk-modules/bjk-modules/core/src/web/e2e/chat.spec.ts:27:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3')
+    Expected: visible
+    Error: strict mode violation: getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3') resolved to 3 elements:
+        1) <span class="chat-bar-value">fewer than 3</span> aka getByText('fewer than 3', { exact: true })
+        2) <p class="small muted chat-card-note">1 row had fewer than 3 reports, so its figures ar…</p> aka getByText('1 row had fewer than 3')
+        3) <p class="chat-small small muted">Answers come from reports on Bad Jockeys. Figures…</p> aka getByText('Answers come from reports on')
+
+    Call log:
+      - Expect "toBeVisible" getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3') with timeout 10000ms
+      - waiting for getByRole('dialog', { name: 'Ask Bad Jockeys' }).getByText('fewer than 3')
+
+
+      25 |     chat.getByText("The A57 Warrington Road had the most tailgating reports in the last year."),
+      26 |   ).toBeVisible();
+    > 27 |   await expect(chat.getByText("fewer than 3")).toBeVisible();
+         |                                                ^
+      28 |   await expect(chat.getByText("19 questions left today")).toBeVisible();
+      29 |
+      30 |   await chat.getByRole("link", { name: "Open on the map" }).click();
+        at /home/runner/work/bjk-modules/bjk-modules/core/src/web/e2e/chat.spec.ts:27:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop-retry1/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop-retry1/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/chat-Premium-members-ask-a-eb01b--open-the-answer-on-the-map-desktop-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [desktop] › e2e/chat.spec.ts:9:5 › Premium members ask about their own town and open the answer on the map 
+  15 passed (14.1s)
+E2E FAILED

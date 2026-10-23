@@ -1,0 +1,403 @@
+diff --git a/src/web/e2e/chat.spec.ts b/src/web/e2e/chat.spec.ts
+index 250d677..726a462 100644
+--- a/src/web/e2e/chat.spec.ts
++++ b/src/web/e2e/chat.spec.ts
+@@ -16,10 +16,14 @@ test("Premium members ask about their own town and open the answer on the map",
+   await page.getByRole("button", { name: "Ask Bad Jockeys" }).click();
+   const chat = page.getByRole("dialog", { name: "Ask Bad Jockeys" });
+   await expect(chat.getByText("20 questions left today")).toBeVisible();
+-  await expect(chat.getByRole("button", { name: "How many incidents have there been in Prescot this month?" })).toBeVisible();
++  await expect(
++    chat.getByRole("button", { name: "How many incidents have there been in Prescot this month?" }),
++  ).toBeVisible();
+ 
+   await chat.getByRole("button", { name: "Worst roads for tailgating in Prescot" }).click();
+-  await expect(chat.getByText("The A57 Warrington Road had the most tailgating reports in the last year.")).toBeVisible();
++  await expect(
++    chat.getByText("The A57 Warrington Road had the most tailgating reports in the last year."),
++  ).toBeVisible();
+   await expect(chat.getByText("fewer than 3")).toBeVisible();
+   await expect(chat.getByText("19 questions left today")).toBeVisible();
+ 
+@@ -34,7 +38,9 @@ test("Free members without a home area see untailored examples and the locked pr
+   await page.getByRole("button", { name: "Ask Bad Jockeys" }).click();
+   const chat = page.getByRole("dialog", { name: "Ask Bad Jockeys" });
+   await expect(chat.getByText("Ask Bad Jockeys is part of Premium")).toBeVisible();
+-  await expect(chat.getByRole("button", { name: "Which towns have had the most incidents this month?" })).toBeDisabled();
++  await expect(
++    chat.getByRole("button", { name: "Which towns have had the most incidents this month?" }),
++  ).toBeDisabled();
+   await expect(chat.getByText(/Prescot|Warrington/)).toHaveCount(0);
+   await expect(chat.getByLabel("Your question")).toBeDisabled();
+ });
+diff --git a/src/web/e2e/mock-server.mjs b/src/web/e2e/mock-server.mjs
+index f0fbd9a..3bf8bc9 100644
+--- a/src/web/e2e/mock-server.mjs
++++ b/src/web/e2e/mock-server.mjs
+@@ -920,11 +920,16 @@ async function api(req, res, url) {
+       if (!premium) return problem(res, 403, "Ask Bad Jockeys is part of Premium.");
+       const used = db.chatUsed.get(me) ?? 0;
+       if (used >= limit) {
+-        return problem(res, 403, `That's your ${limit} questions for today. You can ask again from midnight.`, {
+-          code: "daily_limit",
+-          limit,
+-          resetsAt: "2026-10-24T00:00:00+01:00",
+-        });
++        return problem(
++          res,
++          403,
++          `That's your ${limit} questions for today. You can ask again from midnight.`,
++          {
++            code: "daily_limit",
++            limit,
++            resetsAt: "2026-10-24T00:00:00+01:00",
++          },
++        );
+       }
+       const body = await json();
+       db.chatUsed.set(me, used + 1);
+@@ -938,8 +943,20 @@ async function api(req, res, url) {
+               title: "Tailgating reports by road",
+               valueLabel: "reports",
+               points: [
+-                { label: "A57 Warrington Road, Prescot", value: 14, hidden: false, latitude: 53.43, longitude: -2.8 },
+-                { label: "High Street, Prescot", value: null, hidden: true, latitude: 53.43, longitude: -2.81 },
++                {
++                  label: "A57 Warrington Road, Prescot",
++                  value: 14,
++                  hidden: false,
++                  latitude: 53.43,
++                  longitude: -2.8,
++                },
++                {
++                  label: "High Street, Prescot",
++                  value: null,
++                  hidden: true,
++                  latitude: 53.43,
++                  longitude: -2.81,
++                },
+               ],
+               columns: null,
+               rows: null,
+@@ -2770,7 +2787,12 @@ const server = createServer(async (req, res) => {
+       const body = JSON.parse((await readBody(req)).toString());
+       const user = USERS[body.user];
+       if (!user) return send(res, 400, "Unknown user");
+-      db.areas.set(user.id, { placeName: body.placeName, latitude: body.latitude, longitude: body.longitude, radiusKm: 5 });
++      db.areas.set(user.id, {
++        placeName: body.placeName,
++        latitude: body.latitude,
++        longitude: body.longitude,
++        radiusKm: 5,
++      });
+       return send(res, 204);
+     }
+     if (url.pathname === "/health") return send(res, 200, "Healthy");
+diff --git a/src/web/src/actions/chat.ts b/src/web/src/actions/chat.ts
+index eb78159..b0157d8 100644
+--- a/src/web/src/actions/chat.ts
++++ b/src/web/src/actions/chat.ts
+@@ -39,9 +39,16 @@ export async function askChat(question: string, history: ChatTurn[]): Promise<As
+ 
+   // Only well-formed turns, and only as many as the API reads: anything else would be dropped there anyway.
+   const turns = (Array.isArray(history) ? history : [])
+-    .filter((t) => t && typeof t.question === "string" && typeof t.answer === "string" && typeof t.token === "string")
++    .filter(
++      (t) =>
++        t && typeof t.question === "string" && typeof t.answer === "string" && typeof t.token === "string",
++    )
+     .slice(-6)
+-    .map((t) => ({ question: t.question.slice(0, MAX_QUESTION), answer: t.answer.slice(0, 2000), token: t.token }));
++    .map((t) => ({
++      question: t.question.slice(0, MAX_QUESTION),
++      answer: t.answer.slice(0, 2000),
++      token: t.token,
++    }));
+ 
+   try {
+     return { ok: true, data: await api().chat.ask(token, text, turns) };
+@@ -67,7 +74,9 @@ export async function askChat(question: string, history: ChatTurn[]): Promise<As
+     if (error.status === 503 || error.status === 504 || error.status === 502) {
+       return {
+         ok: false,
+-        error: error.problem?.detail || "Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.",
++        error:
++          error.problem?.detail ||
++          "Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.",
+         problem: "busy",
+       };
+     }
+diff --git a/src/web/src/components/AskBadJockeys.tsx b/src/web/src/components/AskBadJockeys.tsx
+index fb2db77..f69e2a3 100644
+--- a/src/web/src/components/AskBadJockeys.tsx
++++ b/src/web/src/components/AskBadJockeys.tsx
+@@ -4,14 +4,7 @@ import Link from "next/link";
+ import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+ 
+ import { askChat, getChatUsage } from "@/actions/chat";
+-import {
+-  allowanceLabel,
+-  entryId,
+-  historyFor,
+-  mapHref,
+-  MAX_QUESTION,
+-  type ChatEntry,
+-} from "@/lib/chat";
++import { allowanceLabel, entryId, historyFor, mapHref, MAX_QUESTION, type ChatEntry } from "@/lib/chat";
+ import { signInPath } from "@/lib/paths";
+ import type { ChatUsageDto } from "@/lib/types";
+ import type { Viewer } from "@/lib/viewer";
+@@ -66,7 +59,10 @@ function load(userId: string | null): ChatEntry[] {
+ 
+ function save(userId: string | null, entries: ChatEntry[]) {
+   try {
+-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ userId, entries: entries.slice(-20) } satisfies Saved));
++    sessionStorage.setItem(
++      STORAGE_KEY,
++      JSON.stringify({ userId, entries: entries.slice(-20) } satisfies Saved),
++    );
+   } catch {
+     // Private browsing or storage full: the conversation just won't survive a page change.
+   }
+@@ -248,7 +244,9 @@ export function AskBadJockeys({ viewer }: { viewer: Viewer }) {
+               ) : null}
+               {examples.length > 0 ? (
+                 <div className="chat-examples">
+-                  <span className="small muted">{locked ? "Premium members can ask things like:" : "Try asking:"}</span>
++                  <span className="small muted">
++                    {locked ? "Premium members can ask things like:" : "Try asking:"}
++                  </span>
+                   {examples.map((example) => (
+                     <button
+                       key={example}
+@@ -327,8 +325,8 @@ export function AskBadJockeys({ viewer }: { viewer: Viewer }) {
+           </button>
+         </form>
+         <p className="chat-small small muted">
+-          Answers come from reports on Bad Jockeys. Figures from fewer than 3 reports are hidden, and it can&apos;t
+-          look up people or number plates.
++          Answers come from reports on Bad Jockeys. Figures from fewer than 3 reports are hidden, and it
++          can&apos;t look up people or number plates.
+           {question.length > MAX_QUESTION - 100 ? ` ${MAX_QUESTION - question.length} characters left.` : ""}
+         </p>
+       </div>
+@@ -363,8 +361,8 @@ function Locked({ viewer }: { viewer: Viewer }) {
+     <div className="chat-locked">
+       <strong>Ask Bad Jockeys is part of Premium</strong>
+       <span className="small muted">
+-        Premium members ask about their own area: the worst roads, the busiest times and whether it&apos;s getting
+-        better.
++        Premium members ask about their own area: the worst roads, the busiest times and whether it&apos;s
++        getting better.
+       </span>
+       <Link className="btn btn-primary btn-sm" href="/premium">
+         See Premium
+diff --git a/src/web/src/components/ChatCard.tsx b/src/web/src/components/ChatCard.tsx
+index 79774bd..304522e 100644
+--- a/src/web/src/components/ChatCard.tsx
++++ b/src/web/src/components/ChatCard.tsx
+@@ -11,7 +11,9 @@ export function ChatCard({ card }: { card: ChatCardDto }) {
+       {card.title ? <figcaption className="chat-card-title">{card.title}</figcaption> : null}
+       {card.type === "Number" ? <NumberCard card={card} /> : null}
+       {card.type === "Line" ? <LineCard card={card} /> : null}
+-      {card.type === "Bar" || card.type === "Places" ? <BarCard card={card} numbered={card.type === "Places"} /> : null}
++      {card.type === "Bar" || card.type === "Places" ? (
++        <BarCard card={card} numbered={card.type === "Places"} />
++      ) : null}
+       {card.type === "Table" ? <TableCard card={card} /> : null}
+       {card.hiddenRows > 0 ? (
+         <p className="small muted chat-card-note">
+@@ -65,13 +67,21 @@ function LineCard({ card }: { card: ChatCardDto }) {
+   const width = 300;
+   const height = 96;
+   const step = points.length > 1 ? width / (points.length - 1) : 0;
+-  const y = (p: ChatCardPointDto) => height - ((p.hidden || p.value === null ? 0 : p.value) / max) * (height - 8) - 4;
+-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${y(p).toFixed(1)}`).join(" ");
++  const y = (p: ChatCardPointDto) =>
++    height - ((p.hidden || p.value === null ? 0 : p.value) / max) * (height - 8) - 4;
++  const path = points
++    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${y(p).toFixed(1)}`)
++    .join(" ");
+   const first = points[0]!;
+   const last = points[points.length - 1]!;
+   return (
+     <div className="chat-line">
+-      <svg viewBox={`-4 0 ${width + 8} ${height}`} role="presentation" aria-hidden="true" preserveAspectRatio="none">
++      <svg
++        viewBox={`-4 0 ${width + 8} ${height}`}
++        role="presentation"
++        aria-hidden="true"
++        preserveAspectRatio="none"
++      >
+         <path d={path} fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinejoin="round" />
+         {points.map((p, i) => (
+           <circle
+diff --git a/src/web/src/components/icons.tsx b/src/web/src/components/icons.tsx
+index 7d542be..08cc54e 100644
+--- a/src/web/src/components/icons.tsx
++++ b/src/web/src/components/icons.tsx
+@@ -483,7 +483,13 @@ export function AskIcon({ filled, ...p }: IconProps & { filled?: boolean }) {
+ export function SendIcon({ color = "#FFFFFF", ...p }: IconProps) {
+   return (
+     <Svg {...p}>
+-      <path d="M4 12l16-8-6 16-2.5-6.5L4 12z" fill={color} stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
++      <path
++        d="M4 12l16-8-6 16-2.5-6.5L4 12z"
++        fill={color}
++        stroke={color}
++        strokeWidth="1.4"
++        strokeLinejoin="round"
++      />
+     </Svg>
+   );
+ }
+diff --git a/src/web/src/lib/chat.ts b/src/web/src/lib/chat.ts
+index 55188e5..b16d91e 100644
+--- a/src/web/src/lib/chat.ts
++++ b/src/web/src/lib/chat.ts
+@@ -65,7 +65,9 @@ export function pointValue(point: Pick<ChatCardPointDto, "value" | "hidden">): s
+   if (point.hidden || point.value === null) {
+     return "fewer than 3";
+   }
+-  return Number.isInteger(point.value) ? count(point.value) : point.value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
++  return Number.isInteger(point.value)
++    ? count(point.value)
++    : point.value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+ }
+ 
+ /** The largest shown figure on a card, for scaling its bars (at least 1, so empty cards don't divide by zero). */
+@@ -160,7 +162,9 @@ export function problemMessage(problem: ChatProblem, detail?: string): string {
+     case "premium":
+       return "Ask Bad Jockeys is part of Premium.";
+     case "busy":
+-      return detail || "Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.";
++      return (
++        detail || "Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count."
++      );
+     default:
+       return detail || "Something went wrong. Please try again.";
+   }
+diff --git a/src/web/tests/chat.test.tsx b/src/web/tests/chat.test.tsx
+index b8688c6..df5b56a 100644
+--- a/src/web/tests/chat.test.tsx
++++ b/src/web/tests/chat.test.tsx
+@@ -42,7 +42,15 @@ const usage = (over: Partial<ChatUsageDto> = {}): ChatUsageDto => ({
+ const answer = (over: Partial<ChatAnswerDto> = {}): ChatAnswerDto => ({
+   text: "There were 42 reports in Prescot this month.",
+   kind: "Answer",
+-  card: { type: "Number", title: null, valueLabel: "reports", points: [n("Reports", 42)], columns: null, rows: null, hiddenRows: 0 },
++  card: {
++    type: "Number",
++    title: null,
++    valueLabel: "reports",
++    points: [n("Reports", 42)],
++    columns: null,
++    rows: null,
++    hiddenRows: 0,
++  },
+   map: null,
+   suggestions: ["Which roads in Prescot are worst?"],
+   ...over,
+@@ -94,19 +102,30 @@ describe("chat helpers", () => {
+ 
+   it("links to the map with a UK centre and known types only", () => {
+     expect(
+-      mapHref({ latitude: 53.4312, longitude: -2.8011, zoom: 12, subcategories: ["Tailgating", "Nonsense", "PhoneInHand"] }),
++      mapHref({
++        latitude: 53.4312,
++        longitude: -2.8011,
++        zoom: 12,
++        subcategories: ["Tailgating", "Nonsense", "PhoneInHand"],
++      }),
+     ).toBe("/map?lat=53.431&lng=-2.801&zoom=12&types=Tailgating%2CPhoneInHand");
+     expect(mapHref({ latitude: 40.7, longitude: -74, zoom: 10, subcategories: [] })).toBe("/map");
+     expect(mapHref(null)).toBeNull();
+   });
+ 
+   it("reads the map's starting point back, ignoring anything odd", () => {
+-    expect(parseMapStart({ lat: "53.431", lng: "-2.801", zoom: "12", types: "Tailgating,Nonsense" })).toEqual({
+-      centre: [53.431, -2.801],
+-      zoom: 12,
+-      types: ["Tailgating"],
++    expect(parseMapStart({ lat: "53.431", lng: "-2.801", zoom: "12", types: "Tailgating,Nonsense" })).toEqual(
++      {
++        centre: [53.431, -2.801],
++        zoom: 12,
++        types: ["Tailgating"],
++      },
++    );
++    expect(parseMapStart({ lat: "999", lng: "0", zoom: "40" })).toEqual({
++      centre: null,
++      zoom: null,
++      types: [],
+     });
+-    expect(parseMapStart({ lat: "999", lng: "0", zoom: "40" })).toEqual({ centre: null, zoom: null, types: [] });
+     expect(parseMapStart({})).toEqual({ centre: null, zoom: null, types: [] });
+   });
+ });
+@@ -157,7 +176,13 @@ describe("ChatCard", () => {
+ });
+ 
+ describe("Ask Bad Jockeys", () => {
+-  const premium: Viewer = { ...ANONYMOUS, signedIn: true, userId: "u1", email: "me@example.com", hasProfile: true };
++  const premium: Viewer = {
++    ...ANONYMOUS,
++    signedIn: true,
++    userId: "u1",
++    email: "me@example.com",
++    hasProfile: true,
++  };
+ 
+   beforeEach(() => {
+     sessionStorage.clear();
+@@ -177,14 +202,23 @@ describe("Ask Bad Jockeys", () => {
+ 
+   it("shows the member's own example questions and answers one", async () => {
+     actions.getChatUsage.mockResolvedValue({ ok: true, data: usage() });
+-    const reply: ChatReplyDto = { answer: answer(), usage: usage({ used: 3, remaining: 17 }), turnToken: "tok" };
++    const reply: ChatReplyDto = {
++      answer: answer(),
++      usage: usage({ used: 3, remaining: 17 }),
++      turnToken: "tok",
++    };
+     actions.askChat.mockResolvedValue({ ok: true, data: reply });
+ 
+     await openWindow();
+-    const example = await screen.findByRole("button", { name: "How many incidents have there been in Prescot this month?" });
++    const example = await screen.findByRole("button", {
++      name: "How many incidents have there been in Prescot this month?",
++    });
+     await userEvent.click(example);
+ 
+-    expect(actions.askChat).toHaveBeenCalledWith("How many incidents have there been in Prescot this month?", []);
++    expect(actions.askChat).toHaveBeenCalledWith(
++      "How many incidents have there been in Prescot this month?",
++      [],
++    );
+     expect(await screen.findByText("There were 42 reports in Prescot this month.")).toBeInTheDocument();
+     expect(screen.getByText("17 questions left today")).toBeInTheDocument();
+     expect(screen.getByRole("button", { name: "Which roads in Prescot are worst?" })).toBeEnabled();
+@@ -192,7 +226,10 @@ describe("Ask Bad Jockeys", () => {
+ 
+   it("sends earlier answered turns with the next question", async () => {
+     actions.getChatUsage.mockResolvedValue({ ok: true, data: usage() });
+-    actions.askChat.mockResolvedValue({ ok: true, data: { answer: answer(), usage: usage(), turnToken: "tok" } });
++    actions.askChat.mockResolvedValue({
++      ok: true,
++      data: { answer: answer(), usage: usage(), turnToken: "tok" },
++    });
+ 
+     await openWindow();
+     await screen.findByText("18 questions left today");
+@@ -240,7 +277,10 @@ describe("Ask Bad Jockeys", () => {
+ 
+   it("keeps the conversation when the page changes, but not for another account", async () => {
+     actions.getChatUsage.mockResolvedValue({ ok: true, data: usage() });
+-    actions.askChat.mockResolvedValue({ ok: true, data: { answer: answer(), usage: usage(), turnToken: "tok" } });
++    actions.askChat.mockResolvedValue({
++      ok: true,
++      data: { answer: answer(), usage: usage(), turnToken: "tok" },
++    });
+ 
+     await openWindow();
+     await screen.findByText("18 questions left today");
