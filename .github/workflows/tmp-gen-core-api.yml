@@ -65,7 +65,7 @@ jobs:
         working-directory: core/src/web
         run: |
           npx playwright install --with-deps chromium > /dev/null 2>&1
-          npm run e2e -- e2e/chat.spec.ts e2e/map.spec.ts e2e/feed.spec.ts e2e/mobile.spec.ts > ../../../e2e.log 2>&1 || echo "E2E FAILED" >> ../../../e2e.log
+          npm run e2e > ../../../e2e.log 2>&1 || echo "E2E FAILED" >> ../../../e2e.log
           tail -150 ../../../e2e.log
       - name: Push the results
         run: |
