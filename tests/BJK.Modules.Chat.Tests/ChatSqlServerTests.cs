@@ -43,19 +43,19 @@ public sealed class ChatSqlServerTests : IAsyncLifetime
         _admin = new SqlConnectionStringBuilder(server) { InitialCatalog = _database }.ConnectionString;
         _chat = new SqlConnectionStringBuilder(server) { InitialCatalog = _database, UserID = _login, Password = _password }.ConnectionString;
 
+        await ExecuteAsync(_admin, "CREATE SCHEMA reporting", Ct);
         await ExecuteAsync(_admin, $"""
-            CREATE SCHEMA reporting;
-            EXEC('CREATE TABLE reporting.Subcategories (Position tinyint NOT NULL, Subcategory nvarchar(40) NOT NULL PRIMARY KEY,
-                SubcategoryLabel nvarchar(80) NOT NULL, [Group] nvarchar(30) NOT NULL, GroupLabel nvarchar(60) NOT NULL)');
-            EXEC('CREATE TABLE reporting.Incidents (IsMainType bit NOT NULL, Subcategory nvarchar(40) NOT NULL,
+            CREATE TABLE reporting.Subcategories (Position tinyint NOT NULL, Subcategory nvarchar(40) NOT NULL PRIMARY KEY,
+                SubcategoryLabel nvarchar(80) NOT NULL, [Group] nvarchar(30) NOT NULL, GroupLabel nvarchar(60) NOT NULL);
+            CREATE TABLE reporting.Incidents (IsMainType bit NOT NULL, Subcategory nvarchar(40) NOT NULL,
                 SubcategoryLabel nvarchar(80) NOT NULL, [Group] nvarchar(30) NOT NULL, GroupLabel nvarchar(60) NOT NULL,
                 IncidentDate date NOT NULL, IncidentYear smallint NOT NULL, IncidentMonth tinyint NOT NULL, Weekday tinyint NOT NULL,
                 WeekdayName nvarchar(30) NOT NULL, HourUk tinyint NOT NULL, AreaLatitude decimal(5,2) NOT NULL,
                 AreaLongitude decimal(5,2) NOT NULL, PlaceName nvarchar(200) NULL, VehicleType nvarchar(20) NULL,
                 VehicleMake nvarchar(100) NULL, VehicleModel nvarchar(100) NULL, VehicleColour nvarchar(20) NULL, IsDark bit NOT NULL,
                 ReportedToPolice bit NOT NULL, HasVideo bit NOT NULL, Reactions int NOT NULL, Comments int NOT NULL, Views int NOT NULL,
-                LocalViews int NOT NULL)');
-            EXEC('CREATE TABLE dbo.Secret (Id int NOT NULL)');
+                LocalViews int NOT NULL);
+            CREATE TABLE dbo.Secret (Id int NOT NULL);
             CREATE USER [{_login}] FOR LOGIN [{_login}];
             GRANT SELECT ON reporting.Incidents TO [{_login}];
             GRANT SELECT ON reporting.Subcategories TO [{_login}];

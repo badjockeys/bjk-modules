@@ -119,7 +119,8 @@ internal static class Cards
             && SmallCounts.AsNumber(row[y]) is { } yearValue && SmallCounts.AsNumber(row[m]) is { } monthValue
             && monthValue is >= 1 and <= 12)
         {
-            return new DateOnly((int)yearValue, (int)monthValue, 1).ToString("MMM yyyy", CultureInfo.GetCultureInfo("en-GB"));
+            // Invariant month names ("Sep"): British English on Linux says "Sept", which varies by platform.
+            return new DateOnly((int)yearValue, (int)monthValue, 1).ToString("MMM yyyy", CultureInfo.InvariantCulture);
         }
 
         if (label is not { } index)
@@ -139,8 +140,8 @@ internal static class Cards
     private static string? Format(object? value) => value switch
     {
         null => null,
-        DateOnly date => date.ToString("d MMM yyyy", CultureInfo.GetCultureInfo("en-GB")),
-        DateTime time => time.ToString("d MMM yyyy", CultureInfo.GetCultureInfo("en-GB")),
+        DateOnly date => date.ToString("d MMM yyyy", CultureInfo.InvariantCulture),
+        DateTime time => time.ToString("d MMM yyyy", CultureInfo.InvariantCulture),
         bool b => b ? "Yes" : "No",
         decimal d => d.ToString("0.##", CultureInfo.InvariantCulture),
         double d => d.ToString("0.##", CultureInfo.InvariantCulture),
