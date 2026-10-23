@@ -309,11 +309,6 @@ public sealed class AskQuestionTests
         Assert.False(validator.Validate(new AskQuestionCommand("q", null, new NearPlace(91, 0, null))).IsValid);
         Assert.True(validator.Validate(new AskQuestionCommand("q", [new ChatTurn("a", "b")], new NearPlace(53.4, -2.8, "Prescot"))).IsValid);
     }
-}
-
-internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
-{
-    public override DateTimeOffset GetUtcNow() => now;
 
     [Fact]
     public async Task Example_questions_name_the_members_home_town()
@@ -404,4 +399,9 @@ internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
         Assert.Contains("The member is near Leeds", model.Calls[0][0].Content);
         Assert.DoesNotContain("Prescot (", model.Calls[0][0].Content);
     }
+}
+
+internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => now;
 }
