@@ -1,0 +1,15 @@
+diff --git a/src/web/src/components/communities/ShareToCommunityDialog.tsx b/src/web/src/components/communities/ShareToCommunityDialog.tsx
+index 935847a..c485879 100644
+--- a/src/web/src/components/communities/ShareToCommunityDialog.tsx
++++ b/src/web/src/components/communities/ShareToCommunityDialog.tsx
+@@ -91,7 +91,9 @@ export function ShareToCommunityDialog({ postId, onClose }: { postId: string; on
+               </span>
+               <span className="col" style={{ gap: 0 }}>
+                 <strong className="small">{c.name}</strong>
+-                <span className={`small${c.recommended && !c.alreadyShared ? " community-share-why" : " muted"}`}>
++                <span
++                  className={`small${c.recommended && !c.alreadyShared ? " community-share-why" : " muted"}`}
++                >
+                   {c.alreadyShared
+                     ? "Already shared here"
+                     : c.recommended
