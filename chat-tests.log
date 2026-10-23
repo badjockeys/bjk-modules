@@ -1,0 +1,18 @@
+The following exception occurred when running the test module with RunCommand '/home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests' and RunArguments '':
+
+System.ComponentModel.Win32Exception (2): An error occurred trying to start process '/home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests' with working directory '/home/runner/work/bjk-modules/bjk-modules'. No such file or directory
+   at System.Diagnostics.Process.ForkAndExecProcess(ProcessStartInfo startInfo, String resolvedFilename, String[] argv, String[] envp, String cwd, Boolean setCredentials, UInt32 userId, UInt32 groupId, UInt32[] groups, Int32& stdinFd, Int32& stdoutFd, Int32& stderrFd, Boolean usesTerminal, Boolean throwOnNoExec)
+   at System.Diagnostics.Process.StartCore(ProcessStartInfo startInfo)
+   at System.Diagnostics.Process.Start(ProcessStartInfo startInfo)
+   at Microsoft.DotNet.Cli.Commands.Test.TestApplication.RunAsync()
+   at Microsoft.DotNet.Cli.Commands.Test.TestApplication.RunAsync()
+   at Microsoft.DotNet.Cli.Commands.Test.TestApplicationActionQueue.Read(BuildOptions buildOptions, TestOptions testOptions, TestResultsDirectoryResolver resultsDirectoryResolver, TerminalTestReporter output, Action`1 onHelpRequested)
+
+[31mTest run summary: Zero tests ran
+[m  total: 0
+  failed: 0
+  succeeded: 0
+  skipped: 0
+  duration: 14ms
+Test run completed with non-success exit code: 1 (see: https://aka.ms/testingplatform/exitcodes)
+No changes have been made to the model since the last migration.
