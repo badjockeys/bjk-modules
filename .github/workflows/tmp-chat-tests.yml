@@ -1,0 +1,38 @@
+name: tmp chat tests
+on:
+  push:
+    branches: ['tmp/chat-tests']
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Ci-Passw0rd-2026
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Ci-Passw0rd-2026 -C -Q 'SELECT 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Test Chat
+        env:
+          BJK_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Ci-Passw0rd-2026;TrustServerCertificate=True;Encrypt=False"
+        run: |
+          dotnet tool restore > /dev/null
+          dotnet build tests/BJK.Modules.Chat.Tests/BJK.Modules.Chat.Tests.csproj -c Release > build.log 2>&1 || true
+          dotnet test --project tests/BJK.Modules.Chat.Tests/BJK.Modules.Chat.Tests.csproj -c Release --no-build > chat-tests.log 2>&1 || true
+          dotnet build src/BJK.Modules.Chat -c Release > /dev/null 2>&1; dotnet ef migrations has-pending-model-changes --project src/BJK.Modules.Chat --context ChatDbContext --configuration Release --no-build >> chat-tests.log 2>&1 || true
+          grep -E "error|warn" build.log | sort -u | head -50 > build-errors.log || true
+          git config user.name ci; git config user.email ci@example.test
+          git add -f chat-tests.log build-errors.log
+          git commit -m "chat test output [skip ci]"
+          git push origin HEAD:tmp/chat-tests-output --force
