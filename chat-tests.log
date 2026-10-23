@@ -1,0 +1,500 @@
+Running tests from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Chat.Tests.Evaluation.EvaluationTests.Run_the_question_set_against_a_real_model
+  Set BJK_CHAT_EVAL_ENDPOINT and BJK_CHAT_EVAL_DATABASE to run the evaluation.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31mfailed[m BJK.Modules.Chat.Tests.ChatAgentTests.Runs_the_query_and_draws_the_card_from_the_rows_not_the_models_figures [90m(100ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Assert.Equal() Failure: Collections differ at index 1
+                ↓ (pos 3)
+  Expected: "Sep 2026"
+  Actual:   "Sept 2026"
+                ↑ (pos 3)
+[m[90m    at BJK.Modules.Chat.Tests.ChatAgentTests.Runs_the_query_and_draws_the_card_from_the_rows_not_the_models_figures() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatAgentTests.cs:40[90m
+    --- End of stack trace from previous location ---
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Small_groups_come_back_hidden [90m(758ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT IncidentYear AS [Year], IncidentMonth AS [M"···) [90m(196ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 5 GroupLabel AS [Group], COUNT(*) AS In"···) [90m(221ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT COUNT(*) AS Incidents FROM reporting.Incide"···) [90m(236ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT COUNT(*) AS Incidents FROM reporting.Incide"···) [90m(179ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT SubcategoryLabel AS Kind, COUNT(*) AS Incid"···) [90m(181ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT CASE WHEN IsDark = 1 THEN 'After dark' ELSE"···) [90m(177ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT IncidentYear AS [Year], IncidentMonth AS [M"···) [90m(200ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT VehicleType AS Vehicle, COUNT(*) AS Inciden"···) [90m(250ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 10 VehicleMake AS Make, COUNT(*) AS Inc"···) [90m(178ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 10 PlaceName AS Place, MIN(AreaLatitude"···) [90m(175ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 10 SubcategoryLabel AS Kind, COUNT(*) A"···) [90m(172ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT HourUk AS [Hour], COUNT(*) AS Incidents FRO"···) [90m(210ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT IncidentYear AS [Year], IncidentMonth AS [M"···) [90m(208ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT s.GroupLabel AS [Group], s.SubcategoryLabel"···) [90m(182ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT CASE WHEN Weekday >= 6 THEN 'Weekend' ELSE "···) [90m(246ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 10 AreaLatitude, AreaLongitude, MIN(Pla"···) [90m(223ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT VehicleColour AS Colour, COUNT(*) AS Incide"···) [90m(225ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT IncidentYear AS [Year], COUNT(*) AS Inciden"···) [90m(213ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT COUNT(*) AS Incidents, SUM(CASE WHEN Report"···) [90m(186ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT TOP 10 LTRIM(SUBSTRING(PlaceName, CHARINDEX"···) [90m(180ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT Weekday, WeekdayName AS [Day], COUNT(*) AS "···) [90m(192ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Every_worked_example_runs_through_the_chat_login(sql: "SELECT COUNT(*) AS Incidents FROM reporting.Incide"···) [90m(187ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.The_login_can_read_nothing_else [90m(203ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Daily_counts_never_go_over_the_limit_even_all_at_once [90m(193ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Stops_a_query_after_five_seconds [90m(210ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.The_plan_date_limit_applies [90m(172ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[31mfailed[m BJK.Modules.Chat.Tests.ChatSqlServerTests.Stops_at_a_thousand_rows [90m(213ms)[m
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64)
+[31m  Xunit.MicrosoftTestingPlatform.XunitException: Microsoft.Data.SqlClient.SqlException : Incorrect syntax near the keyword 'EXEC'.
+[m[90m    at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+    at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+    at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+    at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteNonQuery(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryInternal(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.EndExecuteNonQueryAsync(IAsyncResult asyncResult)
+    at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteNonQueryAsync>b__193_1(IAsyncResult asyncResult)
+    at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+    --- End of stack trace from previous location ---
+[90m    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.ExecuteAsync(String connectionString, String sql, CancellationToken cancellationToken) in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:311[90m
+    at BJK.Modules.Chat.Tests.ChatSqlServerTests.InitializeAsync() in /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/ChatSqlServerTests.cs:46[90m
+[m[m/home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Chat.Tests/bin/Release/net10.0/BJK.Modules.Chat.Tests.dll (net10.0|x64) [31mfailed with 29 error(s)[m [90m(7s 192ms)[m
+Exit code: 2
+
+[31mTest run summary: Failed!
+[m  total: 154
+[31m  failed: 29
+[m  succeeded: 124
+  skipped: 1
+  duration: 7s 555ms
+Test run completed with non-success exit code: 2 (see: https://aka.ms/testingplatform/exitcodes)
+No changes have been made to the model since the last migration.
