@@ -25,8 +25,8 @@ public sealed class PublicReadPolicyTests
     {
         var (controller, action) = Actions().Single(a => $"{a.Controller.Name}.{a.Action.Name}" == name);
 
-        Assert.Empty(Policies(controller).Where(p => p != PostsModule.ReadPolicy));
-        Assert.Empty(Policies(action).Where(p => p != PostsModule.ReadPolicy));
+        Assert.All(Policies(controller), policy => Assert.Equal(PostsModule.ReadPolicy, policy));
+        Assert.All(Policies(action), policy => Assert.Equal(PostsModule.ReadPolicy, policy));
     }
 
     [Fact]
