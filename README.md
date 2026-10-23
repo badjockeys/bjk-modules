@@ -178,7 +178,7 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
 | `Media:Redaction:FaceModelPath`, `PlateModelPath`, `PersonModelPath` | Set | Media worker |
-| `Chat:Model:Endpoint`, `Chat:HistoryKey`, `ConnectionStrings:BadJockeysChat` | Set: the model server (ending `/v1`), a 32+ character secret, and the bjk_chat login | Chat module |
+| `Chat:HistoryKey`, `ConnectionStrings:BadJockeysChat` | Set: a 32+ character secret, and the bjk_chat login (`Chat:Model:Endpoint` isn't required while no model is chosen: empty means the logged placeholder) | Chat module |
 
 The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
 
@@ -957,7 +957,9 @@ Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to chec
 builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJockeysDatabase", "BadJockeysChat"));
 ```
 
-**How it answers.** `ChatAgent` gives the model (Qwen3 8B locally through Ollama, Qwen3 32B live on a serverless GPU, both through an OpenAI-compatible `/v1/chat/completions`) the rules, both views with every column described, the 74 subcategories and 22 worked examples (`AgentPrompt`), plus three tools: `run_sql`, `describe_table` and `answer`. The model writes a SELECT, reads the results (at most 50 rows), fixes and retries if the parser or the database sends a problem back, then calls `answer` with its text and the chart that fits. The card's figures come from the query's rows, never from the model's text. It stops after 8 model calls ("Sorry, I couldn't work that one out"; the question is given back). Members never see SQL: answers that show SQL or view names are sent back to the model.
+**On hold (owner, 23 Oct 2026): no model is chosen yet.** With `Chat:Model:Endpoint` empty, in every environment, the chat is a placeholder: asking logs event **4905** `ChatNotSwitchedOn` (the plan only; no member id or question) and answers 503 "Ask Bad Jockeys isn't switched on yet. That question didn't count." Nothing is sent anywhere and nothing is counted. bjk-core's web app hides the chat for now. Everything below works as soon as the model settings are filled in.
+
+**How it answers.** `ChatAgent` gives the model (any model behind an OpenAI-compatible `/v1/chat/completions`, set by `Chat:Model`) the rules, both views with every column described, the 74 subcategories and 22 worked examples (`AgentPrompt`), plus three tools: `run_sql`, `describe_table` and `answer`. The model writes a SELECT, reads the results (at most 50 rows), fixes and retries if the parser or the database sends a problem back, then calls `answer` with its text and the chart that fits. The card's figures come from the query's rows, never from the model's text. It stops after 8 model calls ("Sorry, I couldn't work that one out"; the question is given back). Members never see SQL: answers that show SQL or view names are sent back to the model.
 
 **What keeps it safe** (the database and our code, not the prompt):
 
@@ -985,16 +987,16 @@ Blocked questions don't use the allowance but are **strikes** (an agent's own re
 
 **Example questions** (`usage.exampleQuestions`, and the suggestions on greetings and blocked questions) follow the member's home area (`ChatExamples`): a town is named ("How many incidents have there been in Prescot this month?", "Worst roads for tailgating in Prescot"), a postcode district such as `WA10` gets "near me" questions instead (incidents' place names end in a town, not a postcode), and members without a home area, or logged-out callers, get questions that don't depend on a place. Free members see their own town in the locked preview too. Without the Notifications module in the host, nobody has a home area.
 
-**The review log.** Every answer is logged as event **4901** `ChatQuestionAnswered` with the plan, the kind of reply, the question and each query the model tried (with any problem, rows, hidden rows and time), and no member id. Event **4902** `ChatModelUnavailable` (warning) when the model can't be reached. Use them in Kibana to improve the column descriptions and worked examples: the model doesn't learn by itself.
+**The review log.** Every answer is logged as event **4901** `ChatQuestionAnswered` with the plan, the kind of reply, the question and each query the model tried (with any problem, rows, hidden rows and time), and no member id. Event **4902** `ChatModelUnavailable` (warning) when the model can't be reached, and **4905** `ChatNotSwitchedOn` when no model is set. Use them in Kibana to improve the column descriptions and worked examples: the model doesn't learn by itself.
 
 **The question set.** `tests/BJK.Modules.Chat.Tests/Evaluation/questions.json` has 205 real-style questions with the kind of reply expected. The run is a test skipped unless pointed at a model and database; see its README.
 
 | Setting | Meaning |
 |---|---|
-| `Chat:Model:Endpoint` | The model server's base address, ending `/v1` (Ollama: `http://localhost:11434/v1`). Empty: the chat answers 503 (Development only) |
-| `Chat:Model:Name` | Default `qwen3:8b`; live the 32B model's name on the GPU server |
-| `Chat:Model:ApiKey` | Secret. Sent as a bearer token when set (Ollama needs none) |
-| `Chat:Model:TimeoutSeconds` | Default 120: the GPU switches off when idle and the first question waits for it |
+| `Chat:Model:Endpoint` | The model server's base address, ending `/v1`. Empty (for now, everywhere): the logged placeholder, which answers 503 and counts nothing |
+| `Chat:Model:Name` | The model or deployment name on that server. Required with `Endpoint` |
+| `Chat:Model:ApiKey` | Secret. Sent as a bearer token when set |
+| `Chat:Model:TimeoutSeconds` | Default 120: how long one model call may take |
 | `Chat:DailyQuestions:Premium`, `:PremiumPlus` | Default 20 and 100 |
 | `Chat:HistoryDays:Premium`, `:PremiumPlus` | Default 365 and 1826 |
 | `Chat:MisuseLimit` | Default 5: blocked questions a UK day before the chat pauses until midnight |

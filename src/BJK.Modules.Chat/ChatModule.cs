@@ -20,7 +20,7 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Chat;
 
 /// <summary>
-/// Registers Ask Bad Jockeys, the Premium AI chat. An open model (Qwen3 through an OpenAI-compatible server) writes
+/// Registers Ask Bad Jockeys, the Premium AI chat. A model behind an OpenAI-compatible server (chosen by settings) writes
 /// SQL over <c>reporting.Incidents</c> and <c>reporting.Subcategories</c>; every query is checked by a T-SQL parser,
 /// limited to the member's plan dates and run through the bjk_chat login, which can read nothing else. Counts under 3
 /// are hidden and single incidents can't be listed. Daily limits are kept in the <see cref="Schema"/> schema of the
@@ -61,9 +61,8 @@ public sealed class ChatModule(string connectionStringName, string chatConnectio
             .Bind(configuration.GetSection(ChatOptions.SectionName))
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<ChatOptions>, ChatOptionsValidator>());
-        services.RequireWhenDeployed(
-            "Chat:Model:Endpoint",
-            "the chat model server's address, ending /v1 (without it Ask Bad Jockeys answers 503)");
+        // No model is chosen yet (owner, 23 Oct 2026): without Chat:Model:Endpoint the chat logs each question it
+        // couldn't send (event 4905) and answers "not switched on yet", in every environment.
         services.RequireWhenDeployed(
             "Chat:HistoryKey",
             "a random secret of at least 32 characters that signs the chat history",

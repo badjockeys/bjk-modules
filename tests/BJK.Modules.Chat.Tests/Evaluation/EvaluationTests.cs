@@ -13,7 +13,7 @@ namespace BJK.Modules.Chat.Tests.Evaluation;
 
 /// <summary>
 /// The question set (<c>questions.json</c>) and the evaluation run. The run is skipped unless
-/// <c>BJK_CHAT_EVAL_ENDPOINT</c> and <c>BJK_CHAT_EVAL_DATABASE</c> are set; see Evaluation/README.md.
+/// <c>BJK_CHAT_EVAL_ENDPOINT</c>, <c>BJK_CHAT_EVAL_MODEL</c> and <c>BJK_CHAT_EVAL_DATABASE</c> are set; see Evaluation/README.md.
 /// </summary>
 public sealed class EvaluationTests
 {
@@ -61,12 +61,12 @@ public sealed class EvaluationTests
     {
         var endpoint = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_ENDPOINT");
         var database = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_DATABASE");
-        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(database))
+        var modelName = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_MODEL");
+        if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(modelName))
         {
-            Assert.Skip("Set BJK_CHAT_EVAL_ENDPOINT and BJK_CHAT_EVAL_DATABASE to run the evaluation.");
+            Assert.Skip("Set BJK_CHAT_EVAL_ENDPOINT, BJK_CHAT_EVAL_MODEL and BJK_CHAT_EVAL_DATABASE to run the evaluation.");
         }
 
-        var modelName = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_MODEL") ?? "qwen3:8b";
         var options = Options.Create(new ChatOptions
         {
             Model = new ChatModelOptions

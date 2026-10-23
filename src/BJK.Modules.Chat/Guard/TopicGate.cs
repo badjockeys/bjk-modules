@@ -43,9 +43,8 @@ internal sealed class ModelTopicGate(IChatModel model, ILogger<ModelTopicGate> l
             ? $"Question: {question}"
             : $"Previous question: {previousQuestion}\nQuestion: {question}";
 
-        // "/no_think" is Qwen3's switch for a quick answer without its thinking step.
         var reply = await model.CompleteAsync(
-            [ModelMessage.System(Instructions), ModelMessage.User($"{asked}\n\nyes or no? /no_think")],
+            [ModelMessage.System(Instructions), ModelMessage.User($"{asked}\n\nyes or no?")],
             [],
             cancellationToken);
 

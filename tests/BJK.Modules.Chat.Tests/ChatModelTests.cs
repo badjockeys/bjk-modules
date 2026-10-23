@@ -35,7 +35,7 @@ public sealed class ChatModelTests
     [InlineData("<think>hmm</think>\n\nSeven reports.", "Seven reports.")]
     [InlineData("<think>still thinking", "")]
     [InlineData("Plain.", "Plain.")]
-    public void Strips_qwen_thinking(string text, string expected) =>
+    public void Strips_thinking(string text, string expected) =>
         Assert.Equal(expected, OpenAiCompatibleChatModel.StripThinking(text));
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class ChatModelTests
     public async Task Posts_the_conversation_and_tools_to_chat_completions()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, """{"choices":[{"message":{"role":"assistant","content":"Hi."}}]}""");
-        var options = Options.Create(new ChatOptions { Model = new ChatModelOptions { Endpoint = "http://localhost:11434/v1/", Name = "qwen3:8b", ApiKey = "secret" } });
+        var options = Options.Create(new ChatOptions { Model = new ChatModelOptions { Endpoint = "https://models.example.test/v1/", Name = "chat-model", ApiKey = "secret" } });
         var model = new OpenAiCompatibleChatModel(new HttpClient(handler), options);
 
         var reply = await model.CompleteAsync(
@@ -55,10 +55,10 @@ public sealed class ChatModelTests
             Ct);
 
         Assert.Equal("Hi.", reply.Content);
-        Assert.Equal("http://localhost:11434/v1/chat/completions", handler.Uri!.ToString());
+        Assert.Equal("https://models.example.test/v1/chat/completions", handler.Uri!.ToString());
         Assert.Equal("Bearer secret", handler.Authorization);
         var body = JsonNode.Parse(handler.Body!)!;
-        Assert.Equal("qwen3:8b", body["model"]!.GetValue<string>());
+        Assert.Equal("chat-model", body["model"]!.GetValue<string>());
         Assert.Equal(3, body["tools"]!.AsArray().Count);
         Assert.Equal("run_sql", body["messages"]![2]!["tool_calls"]![0]!["function"]!["name"]!.GetValue<string>());
         Assert.Equal("c1", body["messages"]![3]!["tool_call_id"]!.GetValue<string>());
@@ -67,7 +67,7 @@ public sealed class ChatModelTests
     [Fact]
     public async Task Server_errors_and_timeouts_are_outages()
     {
-        var options = Options.Create(new ChatOptions { Model = new ChatModelOptions { Endpoint = "http://localhost:11434/v1", Name = "qwen3:8b" } });
+        var options = Options.Create(new ChatOptions { Model = new ChatModelOptions { Endpoint = "https://models.example.test/v1", Name = "chat-model" } });
 
         var error = new OpenAiCompatibleChatModel(new HttpClient(new RecordingHandler(HttpStatusCode.ServiceUnavailable, "starting")), options);
         await Assert.ThrowsAsync<ModelUnavailableException>(() => error.CompleteAsync([ModelMessage.User("q")], [], Ct));

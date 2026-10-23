@@ -20,11 +20,11 @@ public sealed class ChatSettingsAndPromptTests
     }
 
     [Theory]
-    [InlineData("localhost:11434", "qwen3:8b", 120, 20, 100, "Endpoint")]
-    [InlineData("http://localhost:11434/v1", "", 120, 20, 100, "Name")]
-    [InlineData("http://localhost:11434/v1", "qwen3:8b", 1, 20, 100, "TimeoutSeconds")]
-    [InlineData("http://localhost:11434/v1", "qwen3:8b", 120, 0, 100, "DailyQuestions")]
-    [InlineData("http://localhost:11434/v1", "qwen3:8b", 120, 50, 20, "DailyQuestions")]
+    [InlineData("models.example.test", "chat-model", 120, 20, 100, "Endpoint")]
+    [InlineData("https://models.example.test/v1", "", 120, 20, 100, "Name")]
+    [InlineData("https://models.example.test/v1", "chat-model", 1, 20, 100, "TimeoutSeconds")]
+    [InlineData("https://models.example.test/v1", "chat-model", 120, 0, 100, "DailyQuestions")]
+    [InlineData("https://models.example.test/v1", "chat-model", 120, 50, 20, "DailyQuestions")]
     public void Refuses_bad_settings(string endpoint, string name, int timeout, int premium, int premiumPlus, string mentions)
     {
         var options = new ChatOptions
