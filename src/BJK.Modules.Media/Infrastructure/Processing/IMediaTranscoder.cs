@@ -57,6 +57,20 @@ public interface IMediaTranscoder
     /// <param name="outputPath">Where to write the joined MP4.</param>
     /// <param name="cancellationToken">Stops the job.</param>
     Task ConcatenateVideoAsync(IReadOnlyList<string> segmentPaths, string? audioSourcePath, string outputPath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Writes the vertical copy of a video for sharing: 1080×1920 at 30 fps, the video fitted in the middle over a
+    /// blurred, darkened copy of itself, the watermark bottom right, then the end card for
+    /// <see cref="ShareVideoAssets.EndCardSeconds"/> seconds. No sound and no metadata. The input is the published
+    /// (already blurred, silent) file, never the original.
+    /// </summary>
+    /// <param name="playbackPath">The published video.</param>
+    /// <param name="watermarkPath">The watermark PNG (transparent).</param>
+    /// <param name="endCardPath">The 1080×1920 end card PNG.</param>
+    /// <param name="outputPath">Where to write the MP4.</param>
+    /// <param name="cancellationToken">Stops the job.</param>
+    Task CreateShareVideoAsync(string playbackPath, string watermarkPath, string endCardPath, string outputPath, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("This transcoder can't make share videos.");
 }
 
 /// <summary>The file can't be processed whatever we do: corrupt, or not a video or photo.</summary>

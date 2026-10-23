@@ -59,7 +59,8 @@ internal sealed partial class MediaProcessor(
     IMediaCachePurger? cachePurger = null,
     IOptions<SensitiveDetectionOptions>? detectionOptions = null,
     IKnownImageList? knownImages = null,
-    IKnownImageRepository? knownImageRepository = null)
+    IKnownImageRepository? knownImageRepository = null,
+    IShareCopyStore? shareCopies = null)
 {
     /// <summary>Logged once for every upload held for a moderator, with its id and the reasons.</summary>
     private static readonly EventId NeedsReviewEvent = new(4802, "MediaNeedsReview");
@@ -88,6 +89,7 @@ internal sealed partial class MediaProcessor(
             MediaJobStep.Segment => ProcessSegmentAsync(job, isLastAttempt, isRedelivery, cancellationToken),
             MediaJobStep.Assemble => AssembleAsync(job, isLastAttempt, cancellationToken),
             MediaJobStep.Visibility => ReconcileVisibilityAsync(job, cancellationToken),
+            MediaJobStep.ShareCopy => MakeShareCopyAsync(job, isLastAttempt, cancellationToken),
             _ => ProcessMediaAsync(job, isLastAttempt, cancellationToken),
         };
 
@@ -103,6 +105,13 @@ internal sealed partial class MediaProcessor(
         {
             // Moving files never fails the media: the job stays in the failed table to be replayed.
             logger.LogError("Gave up moving the files of media {MediaId} for its sensitive tag; replay it from the failed table.", job.MediaId);
+            return;
+        }
+
+        if (job.Step == MediaJobStep.ShareCopy)
+        {
+            // Only the copy fails; the media itself is fine.
+            await FailShareCopyAsync(job.MediaId, CancellationToken.None);
             return;
         }
 
