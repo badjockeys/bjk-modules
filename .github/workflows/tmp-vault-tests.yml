@@ -1,0 +1,28 @@
+# TEMPORARY (never merged): runs the Media tests and pushes the failures back here.
+name: tmp-vault-tests
+on:
+  push:
+    branches: [tmp/vault-migration]
+permissions:
+  contents: write
+  packages: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Test
+        run: |
+          dotnet test --project tests/BJK.Modules.Media.Tests --configuration Release > test.log 2>&1 || echo "TESTS FAILED" >> test.log
+          grep -E "failed|Failed|error|Error|Assert|Expected|Actual|at BJK" test.log | grep -v "warning" | head -150 > summary.log
+          tail -30 test.log
+      - name: Push
+        run: |
+          git config user.name "tmp-gen"
+          git config user.email "noreply@anthropic.com"
+          git rm -q .github/workflows/tmp-vault-tests.yml
+          mkdir -p tmp-out && cp summary.log tmp-out/ && tail -60 test.log > tmp-out/tail.log
+          git add tmp-out && git commit -m "tmp: test results" && git push -f origin HEAD:tmp/vault-migration
