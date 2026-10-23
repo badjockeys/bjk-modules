@@ -29,11 +29,12 @@ public sealed record CommunitySummaryDto(
     CommunityStanding Standing,
     CommunityRole? Role);
 
-/// <summary>One community, with what you may do in it.</summary>
-/// <param name="CanSeeInside">Public, or you're a member: its posts, discussions and members can be shown.</param>
-/// <param name="CanModerate">You're an admin or moderator: requests, removing members and content.</param>
-/// <param name="IsAdmin">You're an admin: settings, roles, deleting it.</param>
-/// <param name="CanJoin">You can join (public) or ask to (private: adults only).</param>
+/// <summary>
+/// One community, with what you may do in it. <c>CanSeeInside</c>: public, or you're a member, so its posts,
+/// discussions and members can be shown. <c>CanModerate</c>: you're an admin or moderator (requests, removing members
+/// and content). <c>IsAdmin</c>: settings, roles, deleting it. <c>CanJoin</c>: you can join (public) or ask to
+/// (private: adults only).
+/// </summary>
 public sealed record CommunityDto(
     Guid Id,
     string Slug,
@@ -75,9 +76,10 @@ public sealed record CommunityReplyDto(Guid Id, string Body, AuthorDto Author, D
 /// <summary>A discussion and a page of its replies (oldest first).</summary>
 public sealed record CommunityDiscussionDetailDto(CommunityDiscussionDto Discussion, PagedResult<CommunityReplyDto> Replies);
 
-/// <summary>One of your communities, offered when sharing a post.</summary>
-/// <param name="Recommended">Its area covers where the post's incident happened.</param>
-/// <param name="AlreadyShared">The post is in it already.</param>
+/// <summary>
+/// One of your communities, offered when sharing a post. <c>Recommended</c>: its area covers where the incident
+/// happened. <c>AlreadyShared</c>: the post is in it already.
+/// </summary>
 public sealed record CommunitySuggestionDto(
     Guid Id,
     string Slug,
