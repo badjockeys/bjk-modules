@@ -74,10 +74,18 @@ public sealed partial class ChatGuard(IContentScreener screener, ITopicGate topi
     internal const string GreetingMessage =
         "Hi! Ask me about bad driving or parking reported on Bad Jockeys: how many, where, when, and whether it's getting worse.";
 
-    /// <summary>Checks a question. <paramref name="previousQuestion"/> is the last verified turn's, for follow-ups.</summary>
-    public async Task<GuardVerdict> CheckQuestionAsync(string question, string? previousQuestion, CancellationToken cancellationToken)
+    /// <summary>
+    /// Checks a question. <paramref name="previousQuestion"/> is the last verified turn's, for follow-ups;
+    /// <paramref name="examples"/> are the member's example questions (<see cref="ChatExamples.For"/>), offered as
+    /// suggestions when a question stops here.
+    /// </summary>
+    public async Task<GuardVerdict> CheckQuestionAsync(
+        string question,
+        string? previousQuestion,
+        IReadOnlyList<string> examples,
+        CancellationToken cancellationToken)
     {
-        if (Fixed(question) is { } stopped)
+        if (Fixed(question, examples) is { } stopped)
         {
             return stopped;
         }
@@ -85,12 +93,12 @@ public sealed partial class ChatGuard(IContentScreener screener, ITopicGate topi
         var screening = await screener.ScreenAsync(question, cancellationToken);
         if (screening.Verdict == ScreeningVerdict.Hold)
         {
-            return Stop(GuardReason.Abuse, AbuseMessage, ChatAnswerKind.Refused);
+            return Stop(GuardReason.Abuse, AbuseMessage, ChatAnswerKind.Refused, examples);
         }
 
         if (!await topics.IsOnTopicAsync(question, previousQuestion, cancellationToken))
         {
-            return Stop(GuardReason.OffTopic, OffTopicMessage, ChatAnswerKind.OutOfScope);
+            return Stop(GuardReason.OffTopic, OffTopicMessage, ChatAnswerKind.OutOfScope, examples);
         }
 
         return GuardVerdict.Allowed;
@@ -111,39 +119,40 @@ public sealed partial class ChatGuard(IContentScreener screener, ITopicGate topi
     }
 
     /// <summary>The checks that need no model or service: greetings, personal details, links, people, tricks.</summary>
-    internal static GuardVerdict? Fixed(string question)
+    internal static GuardVerdict? Fixed(string question, IReadOnlyList<string>? examples = null)
     {
+        examples ??= ChatExamples.Untailored;
         if (Greeting().IsMatch(question))
         {
-            return new GuardVerdict(GuardReason.Greeting, new ChatAnswerDto(GreetingMessage, ChatAnswerKind.Clarify, null, null, [.. ChatExamples.Questions.Take(3)]));
+            return new GuardVerdict(GuardReason.Greeting, new ChatAnswerDto(GreetingMessage, ChatAnswerKind.Clarify, null, null, [.. examples.Take(3)]));
         }
 
         // Personal details first: an email address also contains a web domain.
         if (TextSafety.Check(question) is not null)
         {
-            return Stop(GuardReason.PersonalDetails, PeopleMessage, ChatAnswerKind.Refused);
+            return Stop(GuardReason.PersonalDetails, PeopleMessage, ChatAnswerKind.Refused, examples);
         }
 
         if (TextSafety.ContainsWebAddress(question))
         {
-            return Stop(GuardReason.WebAddress, WebAddressMessage, ChatAnswerKind.Refused);
+            return Stop(GuardReason.WebAddress, WebAddressMessage, ChatAnswerKind.Refused, examples);
         }
 
         if (AboutPeople().IsMatch(question))
         {
-            return Stop(GuardReason.People, PeopleMessage, ChatAnswerKind.Refused);
+            return Stop(GuardReason.People, PeopleMessage, ChatAnswerKind.Refused, examples);
         }
 
         if (InstructionTrick().IsMatch(question) || SqlTrick().IsMatch(question) || InternalsTrick().IsMatch(question))
         {
-            return Stop(GuardReason.PromptTrick, TrickMessage, ChatAnswerKind.Refused);
+            return Stop(GuardReason.PromptTrick, TrickMessage, ChatAnswerKind.Refused, examples);
         }
 
         return null;
     }
 
-    private static GuardVerdict Stop(GuardReason reason, string message, ChatAnswerKind kind) =>
-        new(reason, new ChatAnswerDto(message, kind, null, null, [.. ChatExamples.Questions.Take(2)]));
+    private static GuardVerdict Stop(GuardReason reason, string message, ChatAnswerKind kind, IReadOnlyList<string> examples) =>
+        new(reason, new ChatAnswerDto(message, kind, null, null, [.. examples.Take(2)]));
 
     [GeneratedRegex(@"^\s*(hi|hello|hey|hiya|yo|thanks|thank you|thank u|ta|cheers|ok|okay|good (morning|afternoon|evening))\b[\s,!.]*(there|again|mate|so much|a lot)?[\s,!.:)]*$", RegexOptions.IgnoreCase)]
     private static partial Regex Greeting();
