@@ -28,7 +28,7 @@ public sealed class AskQuestionTests
     private readonly IContentScreener _screener = Substitute.For<IContentScreener>();
     private readonly ITopicGate _topics = Substitute.For<ITopicGate>();
     private readonly IHomeAreas _homeAreas = Substitute.For<IHomeAreas>();
-    private readonly ChatOptions _options = new() { Model = new ChatModelOptions { Endpoint = "http://localhost:11434/v1" } };
+    private readonly ChatOptions _options = new() { Model = new ChatModelOptions { Endpoint = "https://models.example.test/v1", Name = "chat-model" } };
 
     public AskQuestionTests()
     {
@@ -99,11 +99,14 @@ public sealed class AskQuestionTests
     }
 
     [Fact]
-    public async Task Without_a_model_the_chat_is_unavailable()
+    public async Task Without_a_model_the_placeholder_says_it_is_not_switched_on_and_counts_nothing()
     {
         _options.Model.Endpoint = null;
 
-        await Assert.ThrowsAsync<ServiceUnavailableException>(() => Handler(Answers()).Handle(new AskQuestionCommand("q"), Ct));
+        var error = await Assert.ThrowsAsync<ServiceUnavailableException>(() => Handler(Answers()).Handle(new AskQuestionCommand("q"), Ct));
+
+        Assert.Contains("isn't switched on yet", error.Message, StringComparison.Ordinal);
+        await _usage.DidNotReceiveWithAnyArgs().TryTakeAsync(default, default, default, Ct);
     }
 
     [Fact]

@@ -57,6 +57,19 @@ internal static class ChatLog
             new EventId(AnsweredEventId, "ChatQuestionAnswered"),
             "Ask Bad Jockeys ({Plan}) answered {Kind} to {Question} after {ModelCalls} model calls in {Milliseconds} ms. Steps: {Steps}");
 
+    /// <summary>Event id of <see cref="NotSwitchedOn"/>: a question asked while no model is set (the placeholder).</summary>
+    public const int NotSwitchedOnEventId = 4905;
+
+    private static readonly Action<ILogger, string, Exception?> NotSwitchedOnMessage =
+        LoggerMessage.Define<string>(
+            LogLevel.Information,
+            new EventId(NotSwitchedOnEventId, "ChatNotSwitchedOn"),
+            "Ask Bad Jockeys ({Plan}) was asked a question, but no model is set (Chat:Model:Endpoint is empty), so it wasn't sent anywhere.");
+
+    /// <summary>The placeholder's log line: the plan only, no member id or question.</summary>
+    public static void NotSwitchedOn(ILogger logger, SubscriptionPlan plan) =>
+        NotSwitchedOnMessage(logger, SubscriptionPlanClaims.ToClaimValue(plan), null);
+
     /// <summary>Event id of <see cref="Blocked"/>: a question stopped by the guard rails (a strike).</summary>
     public const int BlockedEventId = 4903;
 

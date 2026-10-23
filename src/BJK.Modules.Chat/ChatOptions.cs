@@ -55,18 +55,18 @@ public sealed class ChatOptions
 }
 
 /// <summary>
-/// Section <c>Chat:Model</c>: an OpenAI-compatible chat completions server. Locally Ollama
-/// (<c>http://localhost:11434/v1</c>, model <c>qwen3:8b</c>); live a serverless GPU running Qwen3 32B.
+/// Section <c>Chat:Model</c>: an OpenAI-compatible chat completions server (a hosted model service, or one of our own).
+/// No model is chosen yet: left empty, the chat is a logged placeholder (see <see cref="ChatOptions.UsesModel"/>).
 /// </summary>
 public sealed class ChatModelOptions
 {
     /// <summary>The server's base address, ending <c>/v1</c>; <c>/chat/completions</c> is added to it.</summary>
     public string? Endpoint { get; set; }
 
-    /// <summary>The model's name on that server, e.g. <c>qwen3:8b</c> (Ollama) or <c>Qwen/Qwen3-32B</c>.</summary>
-    public string Name { get; set; } = "qwen3:8b";
+    /// <summary>The model's name (or deployment name) on that server. Required with <see cref="Endpoint"/>.</summary>
+    public string Name { get; set; } = string.Empty;
 
-    /// <summary>Secret. Sent as a bearer token when set (Ollama needs none).</summary>
+    /// <summary>Secret. Sent as a bearer token when set (a local server may need none).</summary>
     public string? ApiKey { get; set; }
 
     /// <summary>
@@ -103,12 +103,12 @@ internal sealed class ChatOptionsValidator : IValidateOptions<ChatOptions>
             if (!Uri.TryCreate(options.Model.Endpoint, UriKind.Absolute, out var endpoint)
                 || (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps))
             {
-                failures.Add("Chat:Model:Endpoint must be an http or https address, e.g. http://localhost:11434/v1.");
+                failures.Add("Chat:Model:Endpoint must be an http or https address ending /v1, e.g. https://<service>/v1.");
             }
 
             if (string.IsNullOrWhiteSpace(options.Model.Name))
             {
-                failures.Add("Chat:Model:Name is required with Chat:Model:Endpoint, e.g. qwen3:8b.");
+                failures.Add("Chat:Model:Name is required with Chat:Model:Endpoint.");
             }
         }
 

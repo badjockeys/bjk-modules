@@ -40,8 +40,8 @@ public interface IChatModel
 }
 
 /// <summary>
-/// Calls an OpenAI-compatible <c>/chat/completions</c> endpoint (Ollama locally; vLLM or similar on the serverless
-/// GPU live). Qwen3's thinking (<c>&lt;think&gt;...&lt;/think&gt;</c>) is removed from the text.
+/// Calls an OpenAI-compatible <c>/chat/completions</c> endpoint (a hosted model service, or a server of our own).
+/// A reasoning model's thinking (<c>&lt;think&gt;...&lt;/think&gt;</c>) is removed from the text.
 /// </summary>
 internal sealed partial class OpenAiCompatibleChatModel(HttpClient http, IOptions<ChatOptions> options) : IChatModel
 {
@@ -140,7 +140,7 @@ internal sealed partial class OpenAiCompatibleChatModel(HttpClient http, IOption
         return new ModelMessage("assistant", string.IsNullOrWhiteSpace(content) ? null : content, calls.Count > 0 ? calls : null);
     }
 
-    /// <summary>Removes Qwen3's <c>&lt;think&gt;</c> blocks (and an unclosed one at the start).</summary>
+    /// <summary>Removes reasoning models' <c>&lt;think&gt;</c> blocks (and an unclosed one at the start).</summary>
     internal static string StripThinking(string text) => ThinkBlock().Replace(text, string.Empty).Trim();
 
     private static JsonObject ToJson(ModelMessage message)

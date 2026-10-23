@@ -91,9 +91,11 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
             throw new ForbiddenException("Ask Bad Jockeys is part of Premium.");
         }
 
+        // The placeholder while no model is chosen: log it (no member id, no question text) and don't count it.
         if (!_options.UsesModel)
         {
-            throw new ServiceUnavailableException("Ask Bad Jockeys isn't set up here: Chat:Model:Endpoint is missing.");
+            ChatLog.NotSwitchedOn(_logger, plan.Value);
+            throw new ServiceUnavailableException("Ask Bad Jockeys isn't switched on yet. That question didn't count.");
         }
 
         var now = _clock.GetUtcNow();
