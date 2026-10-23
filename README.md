@@ -815,6 +815,18 @@ UI overhaul step 5 (decided 20 Oct 2026).
 - **Trending** compares each tag's public posts in the last 24 hours with its daily average over the 7 days before (from the hourly counts): score = posts today ÷ (usual per day + 1), highest first. A tag needs at least 3 posts from at least 3 different people, so one person can't make a trend. Hidden, held and deleted posts and deactivated authors never count: the last 48 hours of hourly counts are rebuilt every 5 minutes from public posts (`HashtagMaintenance`, in the API), and counts are kept 90 days. **Places** trend the same way, by town: the part of posts' place names after the last comma.
 - **Safety:** number plates can't be tags (the same `TextSafety` check as post text); tags that are, start or end with a threat, slur or flagged insult from the screening list are never recorded (`ScreeningKeywords.IsOffensiveTag`; words of four letters or fewer only as the whole tag, so Scunthorpe and Pakistan are fine); `Hashtags:Blocklist` adds more; and moderators can hide any tag from Trending and suggestions. Posts keep their tags.
 
+### Communities
+
+Owner's decision, 23 Oct 2026: forums branded "Communities", in the Posts module (`/api/communities`, `CommunitiesController`).
+
+- **Starting one:** Premium and Premium + members who are adults (`ProfileSummary.IsAdult`), with a profile and a confirmed email; up to 5 each. Its creator is its admin. The address (`/communities/{slug}` in the web app) comes from the name and never changes; a few words the web app uses for its own pages (`new`) get `-community` added. Name, description and rules are screened like comments; text that would be held is refused.
+- **Public or private:** public communities are open to everyone signed in (join at once; anyone sees inside). Private ones are listed by name and description, people ask to join and an admin or moderator approves; only members see inside. **Under-18s** join public communities only, and are never admins or moderators.
+- **Area** (optional): a place and a radius (5, 10, 15, 25 or 50 km). "Near you" lists communities covering your home area; when posting, `GET /api/communities/suggestions` puts your communities covering where the incident happened first (`Recommended`). Communities without an area are "topics".
+- **Inside:** posts shared by their authors (`POST /api/posts/{id}/communities`; the post stays public everywhere) and text discussions with replies (members; screened like comments, with the new-account limits). People blocked either way are left out.
+- **Running it:** admins change the details, set roles and delete it; admins and moderators approve or decline requests, remove or ban members, and take out shared posts, discussions and replies. Moderators can't remove admins; there's always at least one admin.
+- **Reports:** communities, discussions and replies can be reported to Bad Jockeys' moderators (`ReportTargetType.Community`, `CommunityDiscussion`, `CommunityReply`); hiding one removes it.
+- **Data:** `posts.Communities`, `CommunityMembers`, `CommunityPosts`, `CommunityDiscussions`, `CommunityReplies` (migration `Communities`). Deleting an account removes the communities it made and its memberships, discussions, replies and shares; the data export has a `communities` section.
+
 ### Online safety
 
 Built for the Online Safety Act design (architecture decisions, 18 Oct 2026).

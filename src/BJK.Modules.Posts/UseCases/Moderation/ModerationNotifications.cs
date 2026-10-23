@@ -34,6 +34,9 @@ public sealed class ModerationNotifications(
         {
             ReportTargetType.Comment => "a comment",
             ReportTargetType.Profile => profileHandle is null ? "an account" : $"the account @{profileHandle}",
+            ReportTargetType.Community => "a community",
+            ReportTargetType.CommunityDiscussion => "a discussion in a community",
+            ReportTargetType.CommunityReply => "a reply in a community discussion",
             _ => "a post",
         };
         var path = report.TargetType switch
@@ -65,6 +68,9 @@ public sealed class ModerationNotifications(
         {
             ReportTargetType.Comment => "a comment",
             ReportTargetType.Profile => "a profile",
+            ReportTargetType.Community => "a community",
+            ReportTargetType.CommunityDiscussion => "a discussion",
+            ReportTargetType.CommunityReply => "a reply",
             _ => "a post",
         };
         var urgent = report.Priority == ReportPriority.Urgent;

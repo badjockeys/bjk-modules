@@ -150,6 +150,9 @@ public sealed class PostsModule(string connectionStringName) : IModule
 
         // Home timelines: For you (ranked, boosted near the home area), Following and custom timelines.
         services.AddScoped<ITimelineRepository, TimelineRepository>();
+
+        // Communities (owner, 23 Oct 2026).
+        services.AddScoped<ICommunityRepository, CommunityRepository>();
         services.AddHomeAreasFallback();
 
         // Who's posting where, for Who to follow in the Profiles module.
@@ -159,6 +162,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<PostMediaPublisher>();
         services.AddMediaEventHandler<PostsMediaEventHandler>(configuration, connectionStringName);
         services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
+        services.AddScoped<IPersonalDataExporter, CommunitiesPersonalDataExporter>();
         services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()
