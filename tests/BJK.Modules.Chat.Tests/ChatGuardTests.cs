@@ -108,8 +108,8 @@ public sealed class ChatGuardTests
     [InlineData("I'm not sure", true)]
     public async Task The_topic_gate_reads_a_one_word_reply(string reply, bool onTopic)
     {
-        var model = new ScriptedModel().Then(OpenAiCompatibleChatModel.Parse(System.Text.Json.Nodes.JsonNode.Parse(
-            $$"""{"choices":[{"message":{"role":"assistant","content":{{System.Text.Json.JsonSerializer.Serialize(reply)}}}}]}""")));
+        var json = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":" + System.Text.Json.JsonSerializer.Serialize(reply) + "}}]}";
+        var model = new ScriptedModel().Then(OpenAiCompatibleChatModel.Parse(System.Text.Json.Nodes.JsonNode.Parse(json)));
         var gate = new ModelTopicGate(model, NullLogger<ModelTopicGate>.Instance);
 
         Assert.Equal(onTopic, await gate.IsOnTopicAsync("How many in Leeds?", null, Ct));
