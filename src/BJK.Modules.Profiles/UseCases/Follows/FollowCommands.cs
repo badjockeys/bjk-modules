@@ -6,6 +6,7 @@ using BJK.Modules.Shared;
 using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
+using BJK.Modules.Shared.Users;
 using FluentValidation;
 using MediatR;
 
@@ -137,9 +138,12 @@ public sealed class ListFollowsQueryHandler(IProfileRepository profiles, IMediaD
 }
 
 /// <summary>
-/// Who to follow: people whose home area is near yours, nearest first, leaving out people you follow or have blocked
-/// (either way). Only adults (known to be 18 or over) are ever suggested, and under-18s don't get suggestions.
-/// <c>HasHomeArea</c> is false when you haven't chosen a home area yet (then there are no suggestions).
+/// Who to follow (owner, 22 Oct 2026): the people who posted most in the last 90 days within 25 km of your home area
+/// (or your area's radius, if larger), or of where you usually post if you haven't chosen one; boosted by the
+/// reactions and comments those posts got, and by how many of the people you follow follow them. When there aren't
+/// enough nearby (or you've no area and haven't posted), the most active posters UK-wide fill the list. Never you,
+/// people you follow, people blocked either way, or anyone not known to be 18 or over; under-18s get no suggestions.
+/// <c>HasHomeArea</c> is false when you haven't chosen a home area (the app can ask for one; suggestions still come).
 /// </summary>
 public sealed record WhoToFollowQuery(int Limit = 3) : IRequest<WhoToFollowDto>;
 
@@ -154,37 +158,91 @@ public sealed class WhoToFollowQueryHandler(
     IProfileRepository profiles,
     IMediaDirectory media,
     IHomeAreas homeAreas,
-    ICurrentUser caller)
+    IActivePosters posters,
+    ICurrentUser caller,
+    TimeProvider clock)
     : IRequestHandler<WhoToFollowQuery, WhoToFollowDto>
 {
-    /// <summary>How far around your home area people are looked for.</summary>
+    /// <summary>How far around your area posters are looked for.</summary>
     public const int SearchKm = 25;
 
-    /// <summary>How many nearby people are considered before filtering.</summary>
+    /// <summary>How far back posting counts.</summary>
+    public static readonly TimeSpan Period = TimeSpan.FromDays(90);
+
+    /// <summary>How many active posters are considered before filtering.</summary>
     public const int Candidates = 200;
 
     public async Task<WhoToFollowDto> Handle(WhoToFollowQuery request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
         var area = await homeAreas.GetAsync(userId, cancellationToken);
-        if (area is null)
-        {
-            return new WhoToFollowDto([], false);
-        }
-
         if (caller.IsMinor)
         {
-            return new WhoToFollowDto([], true);
+            return new WhoToFollowDto([], area is not null);
         }
 
-        var near = await homeAreas.UsersNearAsync(area.Latitude, area.Longitude, Math.Max(area.RadiusKm, SearchKm), Candidates, cancellationToken);
+        var since = clock.GetUtcNow() - Period;
+        (decimal Latitude, decimal Longitude)? centre = area is not null
+            ? (area.Latitude, area.Longitude)
+            : await posters.UsualPlaceAsync(userId, since, cancellationToken);
+        var km = Math.Max(area?.RadiusKm ?? 0, SearchKm);
+
         var following = (await profiles.GetFollowingIdsAsync(userId, cancellationToken)).ToHashSet();
         var blocked = (await profiles.GetBlockedEitherWayAsync(userId, cancellationToken)).ToHashSet();
-        var ids = near.Where(id => id != userId && !following.Contains(id) && !blocked.Contains(id)).ToList();
-        var found = (await profiles.GetSuggestableAsync(ids, cancellationToken)).ToDictionary(p => p.Id);
-        var people = ids.Where(found.ContainsKey).Select(id => found[id]).Take(request.Limit).ToList();
+        bool Allowed(ActivePoster p) => p.UserId != userId && !following.Contains(p.UserId) && !blocked.Contains(p.UserId);
 
-        return new WhoToFollowDto(await FollowViews.BuildAsync(profiles, media, userId, people, cancellationToken), true);
+        var nearby = centre is { } c
+            ? (await posters.MostActiveAsync(c.Latitude, c.Longitude, km, since, Candidates, cancellationToken)).Where(Allowed).ToList()
+            : new List<ActivePoster>();
+        var ranked = await RankAsync(nearby, following, cancellationToken);
+        var people = await AdultsAsync(ranked, request.Limit, cancellationToken);
+
+        if (people.Count < request.Limit)
+        {
+            // Not enough nearby: the most active posters anywhere fill the rest.
+            var taken = people.Select(p => p.Id).ToHashSet();
+            var anywhere = (await posters.MostActiveAsync(null, null, km, since, Candidates, cancellationToken))
+                .Where(p => Allowed(p) && !taken.Contains(p.UserId))
+                .ToList();
+            people.AddRange(await AdultsAsync(await RankAsync(anywhere, following, cancellationToken), request.Limit - people.Count, cancellationToken));
+        }
+
+        return new WhoToFollowDto(await FollowViews.BuildAsync(profiles, media, userId, people, cancellationToken), area is not null);
+    }
+
+    /// <summary>
+    /// Each poster's score: 10 a post, plus 1 for every 4 reactions and comments (up to 50), plus 15 for each person
+    /// you follow who follows them (up to 3). Highest first.
+    /// </summary>
+    internal async Task<List<Guid>> RankAsync(IReadOnlyList<ActivePoster> candidates, IReadOnlyCollection<Guid> following, CancellationToken cancellationToken)
+    {
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+
+        var friends = await profiles.CountFollowedByAsync(following, candidates.Select(c => c.UserId).ToList(), cancellationToken);
+        return candidates
+            .Select(c => (c.UserId, Score: Score(c, friends.GetValueOrDefault(c.UserId))))
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.UserId)
+            .Select(x => x.UserId)
+            .ToList();
+    }
+
+    internal static double Score(ActivePoster poster, int followedByYourFollows) =>
+        (poster.Posts * 10) + Math.Min(poster.Engagement / 4.0, 50) + (Math.Min(followedByYourFollows, 3) * 15);
+
+    /// <summary>The first <paramref name="take"/> of <paramref name="ranked"/> who are active adults, in order.</summary>
+    private async Task<List<Profile>> AdultsAsync(List<Guid> ranked, int take, CancellationToken cancellationToken)
+    {
+        if (ranked.Count == 0 || take <= 0)
+        {
+            return [];
+        }
+
+        var found = (await profiles.GetSuggestableAsync(ranked, cancellationToken)).ToDictionary(p => p.Id);
+        return ranked.Where(found.ContainsKey).Select(id => found[id]).Take(take).ToList();
     }
 }
 

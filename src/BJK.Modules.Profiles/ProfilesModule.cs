@@ -67,6 +67,7 @@ public sealed class ProfilesModule(string connectionStringName) : IModule
         services.AddScoped<IProfileBadges, ProfileBadges>();
         services.AddNotificationSenderFallback();
         services.AddHomeAreasFallback();
+        services.AddActivePostersFallback();
         services.AddScoped<IProfileModeration, ProfileModeration>();
         services.AddScoped<IPersonalDataExporter, ProfilePersonalDataExporter>();
         services.AddUserLifecycleHandler<ProfilesUserLifecycleHandler>(configuration, connectionStringName);

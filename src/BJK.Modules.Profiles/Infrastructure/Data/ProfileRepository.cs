@@ -85,6 +85,15 @@ public interface IProfileRepository
     /// </summary>
     Task<IReadOnlyList<Profile>> SearchAdultsAsync(string text, IReadOnlyCollection<Guid> exclude, int take, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// For each of <paramref name="candidateIds"/>, how many of <paramref name="followerIds"/> follow them (only
+    /// those followed by at least one).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountFollowedByAsync(
+        IReadOnlyCollection<Guid> followerIds,
+        IReadOnlyCollection<Guid> candidateIds,
+        CancellationToken cancellationToken);
+
     /// <summary>The badges a user holds.</summary>
     Task<IReadOnlyList<Badge>> ListBadgesAsync(Guid userId, CancellationToken cancellationToken);
 
@@ -265,6 +274,18 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
             .ThenBy(p => p.Handle)
             .Take(take)
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountFollowedByAsync(
+        IReadOnlyCollection<Guid> followerIds,
+        IReadOnlyCollection<Guid> candidateIds,
+        CancellationToken cancellationToken) =>
+        followerIds.Count == 0 || candidateIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await db.Follows.AsNoTracking()
+                .Where(f => followerIds.Contains(f.FollowerId) && candidateIds.Contains(f.FolloweeId))
+                .GroupBy(f => f.FolloweeId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }
