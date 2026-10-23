@@ -73,8 +73,9 @@ public sealed class VaultPlans(IVaultStore store, IOptions<VaultOptions> options
 
 /// <summary>
 /// Keeps the originals of a published post's media in their owner's vault (owner, 23 Oct 2026) before the originals
-/// are deleted: a copy inside the storage service, so even large videos take moments. Skipped when the vault is full
-/// (the original is then deleted as before), or the media was itself posted from the vault.
+/// are deleted: a copy inside the storage service, so even large videos take moments. Skipped when the owner has
+/// turned automatic saving off (<see cref="VaultAccount.AutoSave"/>) or the vault is full (the original is then deleted
+/// as before), or the media was itself posted from the vault.
 /// </summary>
 public sealed class VaultKeeper(
     IVaultStore store,
@@ -100,9 +101,22 @@ public sealed class VaultKeeper(
 
         var already = await store.MediaInVaultAsync(candidates.Select(i => i.Id).ToList(), cancellationToken);
         var used = new Dictionary<Guid, long>();
+        var autoSave = new Dictionary<Guid, bool>();
         var added = 0;
         foreach (var item in candidates.Where(i => !already.Contains(i.Id)))
         {
+            if (!autoSave.TryGetValue(item.UserId, out var on))
+            {
+                on = (await store.GetAccountAsync(item.UserId, cancellationToken))?.AutoSave ?? true;
+                autoSave[item.UserId] = on;
+            }
+
+            if (!on)
+            {
+                logger.LogInformation("Not keeping media {MediaId}'s original: its owner turned automatic saving off.", item.Id);
+                continue;
+            }
+
             var plan = await plans.PlanOfAsync(item.UserId, cancellationToken);
             if (!used.TryGetValue(item.UserId, out var bytes))
             {

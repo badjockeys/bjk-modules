@@ -45,13 +45,24 @@ public sealed record VaultClipDto(
 /// <param name="RetentionDays">How long your plan keeps clips.</param>
 /// <param name="MaxFileBytes">The largest file you can upload straight to the vault.</param>
 /// <param name="Clips">The clips.</param>
+/// <param name="AutoSave">Whether the originals of your published posts go into your vault automatically (on by default).</param>
 public sealed record VaultDto(
     SubscriptionPlan Plan,
     long UsedBytes,
     long LimitBytes,
     int RetentionDays,
     long MaxFileBytes,
-    PagedResult<VaultClipDto> Clips);
+    PagedResult<VaultClipDto> Clips,
+    bool AutoSave = true);
+
+/// <summary>Your vault's settings.</summary>
+/// <param name="AutoSave">Whether the originals of your published posts go into your vault automatically.</param>
+public sealed record VaultSettingsDto(bool AutoSave);
+
+/// <summary>A short-lived link that shows one of your clips in the page (not as a download).</summary>
+/// <param name="ClipId">The clip.</param>
+/// <param name="Url">Shows the original, for a thumbnail or preview.</param>
+public sealed record VaultPreviewDto(Guid ClipId, Uri Url);
 
 /// <param name="ClipId">The new clip.</param>
 /// <param name="Upload">PUT the file here, then call <c>POST /api/vault/{id}/complete</c>.</param>
@@ -78,6 +89,26 @@ public sealed record GetVaultDownloadQuery(Guid ClipId) : IRequest<VaultDownload
 
 /// <summary>Deletes one of your clips now.</summary>
 public sealed record DeleteVaultClipCommand(Guid ClipId) : IRequest;
+
+/// <summary>
+/// Turns keeping your posts' originals automatically on or off. Off: from now on, a post's originals are deleted once
+/// it's published, as before the vault. Clips already in your vault stay until they expire or you delete them.
+/// </summary>
+public sealed record SetVaultSettingsCommand(bool AutoSave) : IRequest<VaultSettingsDto>;
+
+/// <summary>Links that show your clips in the page (15 minutes), for the vault's grid. Clips that aren't yours are left out.</summary>
+public sealed record GetVaultPreviewsQuery(IReadOnlyList<Guid> ClipIds) : IRequest<IReadOnlyList<VaultPreviewDto>>;
+
+public sealed class GetVaultPreviewsQueryValidator : AbstractValidator<GetVaultPreviewsQuery>
+{
+    public const int MaxClips = 50;
+
+    public GetVaultPreviewsQueryValidator()
+    {
+        RuleFor(q => q.ClipIds).NotNull().Must(ids => ids.Count is > 0 and <= MaxClips)
+            .WithMessage($"Ask for between 1 and {MaxClips} clips.");
+    }
+}
 
 public sealed class GetVaultQueryValidator : AbstractValidator<GetVaultQuery>
 {
@@ -159,7 +190,49 @@ public sealed class GetVaultQueryHandler(
             limits.QuotaFor(plan),
             (int)limits.RetentionFor(plan).TotalDays,
             limits.MaxFileBytes,
-            new PagedResult<VaultClipDto>(items.Select(VaultClipDto.From).ToList(), request.Page, request.PageSize, total));
+            new PagedResult<VaultClipDto>(items.Select(VaultClipDto.From).ToList(), request.Page, request.PageSize, total),
+            (await store.GetAccountAsync(userId, cancellationToken))?.AutoSave ?? true);
+    }
+}
+
+public sealed class SetVaultSettingsCommandHandler(IVaultStore store, VaultPlans plans, IPlanResolver resolver, ICurrentUser caller)
+    : IRequestHandler<SetVaultSettingsCommand, VaultSettingsDto>
+{
+    public async Task<VaultSettingsDto> Handle(SetVaultSettingsCommand request, CancellationToken cancellationToken)
+    {
+        var userId = MediaAccess.RequireUserId(caller);
+
+        // Makes sure the account is recorded (with the plan), then changes the setting.
+        await VaultAccess.SeePlanAsync(plans, resolver, userId, cancellationToken);
+        var account = await store.GetAccountAsync(userId, cancellationToken)
+            ?? throw new InvalidOperationException("The vault account should have been recorded.");
+        account.SetAutoSave(request.AutoSave);
+        await store.SaveChangesAsync(cancellationToken);
+        return new VaultSettingsDto(account.AutoSave);
+    }
+}
+
+public sealed class GetVaultPreviewsQueryHandler(IVaultStore store, IMediaStorage storage, ICurrentUser caller)
+    : IRequestHandler<GetVaultPreviewsQuery, IReadOnlyList<VaultPreviewDto>>
+{
+    public async Task<IReadOnlyList<VaultPreviewDto>> Handle(GetVaultPreviewsQuery request, CancellationToken cancellationToken)
+    {
+        var userId = MediaAccess.RequireUserId(caller);
+        var previews = new List<VaultPreviewDto>();
+        foreach (var id in request.ClipIds.Distinct())
+        {
+            var clip = await store.GetAsync(id, cancellationToken);
+            if (clip is null || !clip.IsOwnedBy(userId) || clip.Status != VaultClipStatus.Stored)
+            {
+                continue;
+            }
+
+            // No file name: the link shows the clip in the page rather than downloading it.
+            var url = await storage.CreateDownloadUrlAsync(MediaBucket.Vault, clip.Key, GetVaultDownloadQueryHandler.LinkLifetime, cancellationToken);
+            previews.Add(new VaultPreviewDto(clip.Id, url));
+        }
+
+        return previews;
     }
 }
 

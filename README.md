@@ -409,7 +409,7 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 | `GET /api/media/{id}` | Anyone with `bjk.media` once Ready; the owner or an admin before that |
 | `GET /api/media/mine` | The signed-in user's own uploads, any state |
 | `DELETE /api/media/{id}` | Owner |
-| `GET /api/vault`, `POST /api/vault/uploads`, `POST /api/vault/{id}/complete`, `GET /api/vault/{id}/download`, `DELETE /api/vault/{id}` | The signed-in user's own vault (see "Vault") |
+| `GET /api/vault`, `PUT /api/vault/settings`, `GET /api/vault/previews`, `POST /api/vault/uploads`, `POST /api/vault/{id}/complete`, `GET /api/vault/{id}/download`, `DELETE /api/vault/{id}` | The signed-in user's own vault (see "Vault") |
 | `GET`, `POST /api/media/{id}/share-copy` | Owner only (404 for anyone else): the video's vertical copy for sharing (see "Share copies") |
 | `DELETE /api/admin/media/{id}?reason=` | Moderator (`bjk.media.manage`); the reason is required and the action is audited |
 
@@ -450,6 +450,8 @@ Owner's decision, 19 Oct 2026, replacing 90-day retention: an uploaded original 
 Owner's decision, 23 Oct 2026: each person has a vault of their original clips, unblurred with their sound and GPS, kept privately as evidence (for the police or an insurer). It reverses the "delete originals at once" rule above only for what goes in a vault.
 
 - **What goes in:** the originals of their published posts' photos and videos (copied inside the storage service, `IMediaStorage.CopyInsideAsync`, so large files take moments), while there's room; and clips uploaded straight to the vault (`POST /api/vault/uploads`, then PUT the file, then `POST /api/vault/{id}/complete`, which checks the real size). A clip posted from the vault (the web app re-uploads it trimmed, with `vaultClipId` on `POST /api/media/uploads`) isn't copied in again.
+- **Automatic saving** is on for everyone by default, and each person can turn it off (`PUT /api/vault/settings` with `autoSave`; `GET /api/vault` reports it). Off: their posts' originals are deleted once published, as before the vault. Clips already in it stay. Stored as `media.VaultAccounts.AutoSaveOff`, so people who've never opened their vault keep the default.
+- **Previews:** `GET /api/vault/previews?ids=` gives 15-minute links (up to 50) that show the owner's stored clips in the page instead of downloading them, for the vault's grid.
 - **By plan** (`Media:Vault`): Free keeps clips 30 days in 2 GB, Premium 12 months in 25 GB, Premium + 3 years in 100 GB. Files up to 2 GB each. A full vault refuses uploads (400), and new posts' originals are then deleted as before.
 - **Plans without a request:** plans come with each request (the token or `Plans:Overrides`). The plan seen when someone opens their vault or uploads anything is recorded in `media.VaultAccounts`, so a post published in the background, and the cleanup, know it (`VaultPlans`; an override wins, then the plan last seen, then Free).
 - **Plan changes:** every clip's expiry follows the plan (`VaultClip.FollowPlan`): an upgrade keeps clips longer at once; after a downgrade, clips the new plan would already have deleted are kept 7 more days (`DowngradeNoticeDays`), so nobody loses a clip without notice. The vault page shows each clip's expiry.

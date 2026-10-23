@@ -54,6 +54,25 @@ public sealed class VaultController(ISender sender) : ControllerBase
     public async Task<VaultDownloadDto> Download(Guid id, CancellationToken cancellationToken) =>
         await sender.Send(new GetVaultDownloadQuery(id), cancellationToken);
 
+    /// <summary>
+    /// Turn keeping your posts' originals automatically on or off. Off: a post's originals are deleted once it's
+    /// published. Clips already in your vault stay.
+    /// </summary>
+    [HttpPut("settings")]
+    [ProducesResponseType<VaultSettingsDto>(StatusCodes.Status200OK)]
+    public async Task<VaultSettingsDto> UpdateSettings(VaultSettingsRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new SetVaultSettingsCommand(request.AutoSave), cancellationToken);
+
+    /// <summary>
+    /// Links, valid for 15 minutes, that show your clips in the page (for thumbnails). Up to 50 at a time; ids that
+    /// aren't your stored clips are left out.
+    /// </summary>
+    [HttpGet("previews")]
+    [ProducesResponseType<IReadOnlyList<VaultPreviewDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IReadOnlyList<VaultPreviewDto>> Previews([FromQuery] Guid[] ids, CancellationToken cancellationToken) =>
+        await sender.Send(new GetVaultPreviewsQuery(ids), cancellationToken);
+
     /// <summary>Delete one of your clips now.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -66,3 +85,5 @@ public sealed class VaultController(ISender sender) : ControllerBase
 }
 
 public sealed record VaultUploadRequest(string FileName, string ContentType, long SizeBytes);
+
+public sealed record VaultSettingsRequest(bool AutoSave);
