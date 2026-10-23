@@ -141,7 +141,7 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
     public async Task DeleteAllForUserAsync(Guid userId, CancellationToken cancellationToken)
     {
         var prefix = MediaKeys.UserFolder(userId);
-        foreach (var bucket in new[] { _options.OriginalsBucket!, _options.PublicBucket!, _options.EffectiveSensitiveBucket }.Distinct(StringComparer.Ordinal))
+        foreach (var bucket in new[] { _options.OriginalsBucket!, _options.PublicBucket!, _options.EffectiveSensitiveBucket, _options.EffectiveVaultBucket }.Distinct(StringComparer.Ordinal))
         {
             string? continuation = null;
             do
@@ -277,10 +277,67 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
         return new Uri(url);
     }
 
+    public async Task<Uri> CreateDownloadUrlAsync(MediaBucket bucket, string key, TimeSpan lifetime, string fileName, CancellationToken cancellationToken)
+    {
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = BucketName(bucket),
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = (clock.GetUtcNow() + lifetime).UtcDateTime,
+            Protocol = _protocol,
+        };
+        request.ResponseHeaderOverrides.ContentDisposition = $"attachment; filename=\"{fileName}\"";
+        return new Uri(await s3.GetPreSignedURLAsync(request));
+    }
+
+    public async Task<SignedUpload> CreateUploadAsync(MediaBucket bucket, string key, string contentType, TimeSpan lifetime, CancellationToken cancellationToken)
+    {
+        var expiresAt = clock.GetUtcNow() + lifetime;
+        var url = await s3.GetPreSignedURLAsync(new GetPreSignedUrlRequest
+        {
+            BucketName = BucketName(bucket),
+            Key = key,
+            Verb = HttpVerb.PUT,
+            ContentType = contentType,
+            Expires = expiresAt.UtcDateTime,
+            Protocol = _protocol,
+        });
+
+        return new SignedUpload(new Uri(url), "PUT", new Dictionary<string, string> { ["Content-Type"] = contentType }, expiresAt);
+    }
+
+    public async Task<StoredFile?> FindAsync(MediaBucket bucket, string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var metadata = await s3.GetObjectMetadataAsync(
+                new GetObjectMetadataRequest { BucketName = BucketName(bucket), Key = key },
+                cancellationToken);
+            return new StoredFile((long?)metadata.ContentLength ?? 0, metadata.Headers.ContentType);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public Task CopyInsideAsync(MediaBucket from, string fromKey, MediaBucket to, string toKey, CancellationToken cancellationToken) =>
+        s3.CopyObjectAsync(
+            new CopyObjectRequest
+            {
+                SourceBucket = BucketName(from),
+                SourceKey = fromKey,
+                DestinationBucket = BucketName(to),
+                DestinationKey = toKey,
+            },
+            cancellationToken);
+
     private string BucketName(MediaBucket bucket) => bucket switch
     {
         MediaBucket.Public => _options.PublicBucket!,
         MediaBucket.Sensitive => _options.EffectiveSensitiveBucket,
+        MediaBucket.Vault => _options.EffectiveVaultBucket,
         _ => _options.OriginalsBucket!,
     };
 

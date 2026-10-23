@@ -156,6 +156,12 @@ public sealed class MediaItem
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Set when this upload is a clip from the person's vault being posted (<see cref="VaultClip"/>): its original is
+    /// then not copied into the vault again when the post is published.
+    /// </summary>
+    public Guid? VaultClipId { get; private set; }
+
     public DateTimeOffset? UploadedAt { get; private set; }
 
     public DateTimeOffset? ProcessedAt { get; private set; }
@@ -199,6 +205,10 @@ public sealed class MediaItem
     }
 
     public bool IsOwnedBy(Guid userId) => UserId == userId;
+
+    /// <summary>Records that this upload is a clip from the person's vault being posted.</summary>
+    /// <param name="clipId">The vault clip.</param>
+    public void MarkFromVault(Guid clipId) => VaultClipId = clipId;
 
     /// <summary>The file has arrived in storage; processing can start.</summary>
     /// <param name="sizeBytes">The original's size.</param>
