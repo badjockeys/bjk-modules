@@ -153,7 +153,6 @@ public sealed class PostsModule(string connectionStringName) : IModule
 
         // Communities (owner, 23 Oct 2026).
         services.AddScoped<ICommunityRepository, CommunityRepository>();
-        services.AddScoped<IHouseholdCarRepository, HouseholdCarRepository>();
         services.AddHomeAreasFallback();
 
         // Who's posting where, for Who to follow in the Profiles module.

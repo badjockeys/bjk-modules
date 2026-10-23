@@ -29,8 +29,7 @@ namespace BJK.Modules.Posts.UseCases.Create;
 /// types of bad driving (at least one; the first is the main one); older clients can send one <c>Category</c> instead.
 /// <c>Passengers</c> are @handles of people in the author's vehicle (driving incidents only, up to 4, adults only):
 /// each is asked to accept before their name shows on the post. <c>DraftId</c> publishes one of the author's drafts:
-/// the draft is deleted once the post is saved (its photos and videos stay, in the post). <c>FilmedFromCarId</c> is one
-/// of the author's household cars (<c>GET /api/vehicles/mine</c>): the post shows "Filmed from: its nickname".
+/// the draft is deleted once the post is saved (its photos and videos stay, in the post).
 /// </summary>
 public sealed record CreatePostCommand(
     string Title,
@@ -49,8 +48,7 @@ public sealed record CreatePostCommand(
     string? VehicleModel = null,
     VehicleColour? VehicleColour = null,
     bool? ReportedToPolice = null,
-    Guid? DraftId = null,
-    Guid? FilmedFromCarId = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    Guid? DraftId = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class CreatePostCommandValidator : PostDetailsValidator<CreatePostCommand>
 {
@@ -84,8 +82,7 @@ public sealed class CreatePostCommandHandler(
     IAreaAlerts? areaAlerts = null,
     IDraftRepository? drafts = null,
     Hashtags.HashtagSync? hashtags = null,
-    IEngagementRepository? engagement = null,
-    IHouseholdCarRepository? cars = null)
+    IEngagementRepository? engagement = null)
     : IRequestHandler<CreatePostCommand, PostDto>
 {
     /// <summary>The message when a post mixes a video with anything else.</summary>
@@ -144,7 +141,6 @@ public sealed class CreatePostCommandHandler(
             throw PostAccess.Invalid(nameof(request.MediaIds), "A photo or video is already in another post.");
         }
 
-        var car = await Cars.CarViews.FilmedFromAsync(cars, userId, request.FilmedFromCarId, cancellationToken);
         var details = request.ToDetails();
         var passengerIds = passengers is null || request.Passengers is not { Count: > 0 }
             ? []
@@ -160,7 +156,6 @@ public sealed class CreatePostCommandHandler(
             mediaPending: pending,
             notifyEmail: pending ? caller.Email : null,
             hasVideo: request.MediaIds.Any(id => found[id].MediaType == MediaType.Video));
-        post.SetFilmedFrom(car, post.CreatedAt);
         post.ApplyScreening(await screener.ScreenAsync(PostAccess.TextOf(request), cancellationToken));
         var autoTagged = publisher.TagIfDetected(post, request.MediaIds.Select(id => found[id]));
 

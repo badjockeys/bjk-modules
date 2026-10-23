@@ -595,46 +595,6 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("HashtagHourlyCounts", "posts");
                 });
 
-            modelBuilder.Entity("BJK.Modules.Posts.Domain.HouseholdCar", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Colour")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Make")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Model")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Nickname")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "CreatedAt");
-
-                    b.ToTable("HouseholdCars", "posts");
-                });
-
             modelBuilder.Entity("BJK.Modules.Posts.Domain.ModerationAuditRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -726,13 +686,6 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(5000)
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("FilmedFrom")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<Guid?>("FilmedFromCarId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Group")
                         .IsRequired()
@@ -881,9 +834,6 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("FilmedFromCarId")
-                        .HasFilter("[FilmedFromCarId] IS NOT NULL");
 
                     b.HasIndex("IncidentAt")
                         .HasDatabaseName("IX_Posts_Heatmap")
