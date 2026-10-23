@@ -55,6 +55,17 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<AuthorPreferences> AuthorPreferences => Set<AuthorPreferences>();
 
+    /// <summary>Communities (owner, 23 Oct 2026) and what's in them.</summary>
+    public DbSet<Community> Communities => Set<Community>();
+
+    public DbSet<CommunityMember> CommunityMembers => Set<CommunityMember>();
+
+    public DbSet<CommunityPost> CommunityPosts => Set<CommunityPost>();
+
+    public DbSet<CommunityDiscussion> CommunityDiscussions => Set<CommunityDiscussion>();
+
+    public DbSet<CommunityReply> CommunityReplies => Set<CommunityReply>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -195,6 +206,85 @@ internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
         builder.Property(t => t.Longitude).HasPrecision(9, 6);
         builder.Ignore(t => t.Types);
         builder.HasIndex(t => new { t.UserId, t.Position });
+    }
+}
+
+internal sealed class CommunityConfiguration : IEntityTypeConfiguration<Community>
+{
+    public void Configure(EntityTypeBuilder<Community> builder)
+    {
+        builder.ToTable("Communities");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Id).ValueGeneratedNever();
+        builder.Property(c => c.Slug).HasMaxLength(Community.SlugMaxLength).IsRequired();
+        builder.Property(c => c.Name).HasMaxLength(Community.NameMaxLength).IsRequired();
+        builder.Property(c => c.Description).HasMaxLength(Community.DescriptionMaxLength).IsRequired();
+        builder.Property(c => c.Rules).HasMaxLength(Community.RulesMaxLength);
+        builder.Property(c => c.Visibility).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.PlaceName).HasMaxLength(Community.PlaceNameMaxLength);
+        builder.Property(c => c.Latitude).HasPrecision(9, 6);
+        builder.Property(c => c.Longitude).HasPrecision(9, 6);
+        builder.Property(c => c.RemovedReason).HasMaxLength(Community.RemovedReasonMaxLength);
+        builder.HasIndex(c => c.Slug).IsUnique();
+        builder.HasIndex(c => c.OwnerId);
+        builder.HasIndex(c => new { c.RemovedAt, c.MemberCount });
+    }
+}
+
+internal sealed class CommunityMemberConfiguration : IEntityTypeConfiguration<CommunityMember>
+{
+    public void Configure(EntityTypeBuilder<CommunityMember> builder)
+    {
+        builder.ToTable("CommunityMembers");
+        builder.HasKey(m => new { m.CommunityId, m.UserId });
+        builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
+        builder.HasIndex(m => new { m.UserId, m.Status });
+        builder.HasIndex(m => new { m.CommunityId, m.Status, m.JoinedAt });
+        builder.HasOne<Community>().WithMany().HasForeignKey(m => m.CommunityId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class CommunityPostConfiguration : IEntityTypeConfiguration<CommunityPost>
+{
+    public void Configure(EntityTypeBuilder<CommunityPost> builder)
+    {
+        builder.ToTable("CommunityPosts");
+        builder.HasKey(p => new { p.CommunityId, p.PostId });
+        builder.HasIndex(p => new { p.CommunityId, p.SharedAt });
+        builder.HasIndex(p => p.PostId);
+        builder.HasOne<Community>().WithMany().HasForeignKey(p => p.CommunityId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class CommunityDiscussionConfiguration : IEntityTypeConfiguration<CommunityDiscussion>
+{
+    public void Configure(EntityTypeBuilder<CommunityDiscussion> builder)
+    {
+        builder.ToTable("CommunityDiscussions");
+        builder.HasKey(d => d.Id);
+        builder.Property(d => d.Id).ValueGeneratedNever();
+        builder.Property(d => d.Title).HasMaxLength(CommunityDiscussion.TitleMaxLength).IsRequired();
+        builder.Property(d => d.Body).HasMaxLength(CommunityDiscussion.BodyMaxLength).IsRequired();
+        builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+        builder.HasIndex(d => new { d.CommunityId, d.Status, d.LastActivityAt });
+        builder.HasIndex(d => d.AuthorId);
+        builder.HasOne<Community>().WithMany().HasForeignKey(d => d.CommunityId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class CommunityReplyConfiguration : IEntityTypeConfiguration<CommunityReply>
+{
+    public void Configure(EntityTypeBuilder<CommunityReply> builder)
+    {
+        builder.ToTable("CommunityReplies");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Id).ValueGeneratedNever();
+        builder.Property(r => r.Body).HasMaxLength(CommunityReply.BodyMaxLength).IsRequired();
+        builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+        builder.HasIndex(r => new { r.DiscussionId, r.Status, r.CreatedAt });
+        builder.HasIndex(r => r.AuthorId);
+        builder.HasOne<CommunityDiscussion>().WithMany().HasForeignKey(r => r.DiscussionId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

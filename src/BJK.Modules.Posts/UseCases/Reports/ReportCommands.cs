@@ -24,6 +24,102 @@ public sealed record ReportCommentCommand(Guid PostId, Guid CommentId, ReportRea
 /// <summary>Reports a user's profile (handle, name, bio, avatar) for a moderator to review. One report per user per profile.</summary>
 public sealed record ReportProfileCommand(string Handle, ReportReason Reason, string? Details) : IRequest, IRequiresAgeVerification;
 
+/// <summary>Reports a community (its name, description or rules). One report per user per community.</summary>
+public sealed record ReportCommunityCommand(string Slug, ReportReason Reason, string? Details) : IRequest, IRequiresAgeVerification;
+
+/// <summary>Reports a discussion in a community you can see. One report per user per discussion.</summary>
+public sealed record ReportCommunityDiscussionCommand(Guid DiscussionId, ReportReason Reason, string? Details) : IRequest, IRequiresAgeVerification;
+
+/// <summary>Reports a reply in a community discussion you can see. One report per user per reply.</summary>
+public sealed record ReportCommunityReplyCommand(Guid ReplyId, ReportReason Reason, string? Details) : IRequest, IRequiresAgeVerification;
+
+public sealed class ReportCommunityCommandValidator : AbstractValidator<ReportCommunityCommand>
+{
+    public ReportCommunityCommandValidator()
+    {
+        RuleFor(c => c.Reason).IsInEnum();
+        RuleFor(c => c.Details).ReportDetails();
+    }
+}
+
+public sealed class ReportCommunityDiscussionCommandValidator : AbstractValidator<ReportCommunityDiscussionCommand>
+{
+    public ReportCommunityDiscussionCommandValidator()
+    {
+        RuleFor(c => c.Reason).IsInEnum();
+        RuleFor(c => c.Details).ReportDetails();
+    }
+}
+
+public sealed class ReportCommunityReplyCommandValidator : AbstractValidator<ReportCommunityReplyCommand>
+{
+    public ReportCommunityReplyCommandValidator()
+    {
+        RuleFor(c => c.Reason).IsInEnum();
+        RuleFor(c => c.Details).ReportDetails();
+    }
+}
+
+public sealed class ReportCommunityContentHandlers(
+    ICommunityRepository communities,
+    IReportRepository reports,
+    ModerationNotifications notifications,
+    ICurrentUser caller,
+    TimeProvider clock)
+    : IRequestHandler<ReportCommunityCommand>,
+      IRequestHandler<ReportCommunityDiscussionCommand>,
+      IRequestHandler<ReportCommunityReplyCommand>
+{
+    public async Task Handle(ReportCommunityCommand request, CancellationToken cancellationToken)
+    {
+        var community = await communities.GetBySlugAsync(request.Slug.Trim().ToLowerInvariant(), cancellationToken)
+            ?? throw new NotFoundException("Community", request.Slug);
+        await ReportAsync(ReportTargetType.Community, community.Id, request.Reason, request.Details, cancellationToken);
+    }
+
+    public async Task Handle(ReportCommunityDiscussionCommand request, CancellationToken cancellationToken)
+    {
+        var discussion = await communities.FindDiscussionAsync(request.DiscussionId, cancellationToken);
+        if (discussion is not { Status: CommunityContentStatus.Visible } || !await CanSeeAsync(discussion.CommunityId, cancellationToken))
+        {
+            throw new NotFoundException("Discussion", request.DiscussionId);
+        }
+
+        await ReportAsync(ReportTargetType.CommunityDiscussion, discussion.Id, request.Reason, request.Details, cancellationToken);
+    }
+
+    public async Task Handle(ReportCommunityReplyCommand request, CancellationToken cancellationToken)
+    {
+        var reply = await communities.FindReplyAsync(request.ReplyId, cancellationToken);
+        if (reply is not { Status: CommunityContentStatus.Visible } || !await CanSeeAsync(reply.CommunityId, cancellationToken))
+        {
+            throw new NotFoundException("Reply", request.ReplyId);
+        }
+
+        await ReportAsync(ReportTargetType.CommunityReply, reply.Id, request.Reason, request.Details, cancellationToken);
+    }
+
+    private async Task<bool> CanSeeAsync(Guid communityId, CancellationToken cancellationToken)
+    {
+        var community = await communities.GetAsync(communityId, cancellationToken);
+        if (community is null || community.IsRemoved)
+        {
+            return false;
+        }
+
+        var member = await communities.GetMemberAsync(community.Id, caller.RequireUserId(), cancellationToken);
+        return Communities.CommunityAccess.CanSeeInside(community, member);
+    }
+
+    private async Task ReportAsync(ReportTargetType type, Guid targetId, ReportReason reason, string? details, CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        await ReportRules.EnsureFirstReportAsync(reports, userId, type, targetId, cancellationToken);
+        var report = Report.Create(userId, type, targetId, null, reason, details, clock.GetUtcNow(), caller.Email);
+        await ReportRules.SaveAndAcknowledgeAsync(reports, notifications, report, cancellationToken);
+    }
+}
+
 public sealed class ReportPostCommandValidator : AbstractValidator<ReportPostCommand>
 {
     public ReportPostCommandValidator()
@@ -300,7 +396,8 @@ public sealed class ResolveReportCommandHandler(
     IModerationAuditLog audit,
     ModerationNotifications notifications,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    ICommunityRepository? communities = null)
     : IRequestHandler<ResolveReportCommand, ReportDto>
 {
     public async Task<ReportDto> Handle(ResolveReportCommand request, CancellationToken cancellationToken)
@@ -341,6 +438,29 @@ public sealed class ResolveReportCommandHandler(
                     var reset = await profiles.ResetPublicDetailsAsync(report.TargetId, cancellationToken);
                     before = "Profile details=as written";
                     after = reset ? "Profile details=reset" : "Profile not found";
+                    break;
+                case ReportTargetType.Community when communities is not null:
+                    var community = await communities.GetAsync(report.TargetId, cancellationToken);
+                    before = $"Community removed={community?.IsRemoved}";
+                    community?.Remove(reason, now);
+                    after = $"Community removed={community?.IsRemoved}";
+                    break;
+                case ReportTargetType.CommunityDiscussion when communities is not null:
+                    var discussion = await communities.FindDiscussionAsync(report.TargetId, cancellationToken);
+                    before = $"Discussion Status={discussion?.Status}";
+                    discussion?.Remove(now);
+                    after = $"Discussion Status={discussion?.Status}";
+                    break;
+                case ReportTargetType.CommunityReply when communities is not null:
+                    var reply = await communities.FindReplyAsync(report.TargetId, cancellationToken);
+                    before = $"Reply Status={reply?.Status}";
+                    if (reply is { Status: CommunityContentStatus.Visible })
+                    {
+                        reply.Remove(now);
+                        (await communities.FindDiscussionAsync(reply.DiscussionId, cancellationToken))?.ReplyRemoved();
+                    }
+
+                    after = $"Reply Status={reply?.Status}";
                     break;
             }
 
