@@ -178,7 +178,7 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
 | `Media:Redaction:FaceModelPath`, `PlateModelPath`, `PersonModelPath` | Set | Media worker |
-| `Chat:Model:Endpoint`, `ConnectionStrings:BadJockeysChat` | Set: the model server (ending `/v1`) and the bjk_chat login | Chat module |
+| `Chat:Model:Endpoint`, `Chat:HistoryKey`, `ConnectionStrings:BadJockeysChat` | Set: the model server (ending `/v1`), a 32+ character secret, and the bjk_chat login | Chat module |
 
 The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
 
@@ -967,6 +967,16 @@ builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJo
 - **5 seconds and 1,000 rows** per query.
 - **Counts under 3 hidden.** On any row whose incident count is 1 or 2, the count and every other aggregate column are blanked before the model sees them (it gets `"<3"`), and the card shows the row as hidden.
 
+**Guard rails: only questions it's built for.** Ask Bad Jockeys only answers questions about bad driving and parking reported on Bad Jockeys (counts, trends, times, places, kinds of incident, vehicles). `ChatGuard` enforces that in code before the agent sees a question:
+
+1. **Fixed checks, no model call:** personal details (the Safety module's text checks: number plates, phone numbers, emails, street addresses, handles), web addresses, questions about specific people ("who owns…", "which member…", "names of the drivers…"), and prompt or SQL tricks ("ignore your instructions", "system prompt", "show me the SQL", `SELECT *`, `DROP TABLE`, view and schema names). "Hi" and "thanks" get a friendly reply.
+2. **The content screener** (shared with posts and comments) holds abuse, threats and slurs.
+3. **The topic gate** (`ModelTopicGate`): a short, separate model call with no tools and no data that only answers yes or no to "is this about reported bad driving or parking?" (follow-ups count when the previous verified question did). General knowledge, driving law, writing, coding, chit-chat, the app's prices, people and plates are no. An unclear reply lets the question through (event 4904); the agent and the SQL checks still apply.
+
+Then **signed history**: every answer comes with a `turnToken` (HMAC with `Chat:HistoryKey` over the member, question and answer), and earlier turns sent back without a valid token are dropped, so a forged "previous answer" can't steer the model. **The reply is checked** for personal details, links, SQL and abuse before it's shown.
+
+Blocked questions don't use the allowance but are **strikes** (an agent's own refusal counts too). At `Chat:MisuseLimit` (5) strikes in a UK day the chat pauses until midnight: asking returns 429 `chat_paused`, and `usage.paused` is true. Blocked questions are logged as event **4903** `ChatQuestionBlocked` with the reason (no member id; questions with personal details aren't logged).
+
 **Limits.** Premium 20 questions a UK day, Premium + 100 (`Chat:DailyQuestions`), counted atomically in `chat.DailyUsage` (only today's row is kept; rows go with the account). Over the limit: 403 `daily_limit` with `resetsAt`. A question doesn't count when the model is down (503) or it couldn't work it out. Free members and logged-out callers get 403 on asking; `GET /api/chat/usage` gives them `canAsk: false` and example questions for the locked preview.
 
 **History** lives only in the chat window: the app sends the earlier turns (`history`, the last 6 are used) with each question. `near` (the member's location or home area, optional) makes "near me" a box of about 10 km; without it the model asks which town.
@@ -983,4 +993,6 @@ builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJo
 | `Chat:Model:TimeoutSeconds` | Default 120: the GPU switches off when idle and the first question waits for it |
 | `Chat:DailyQuestions:Premium`, `:PremiumPlus` | Default 20 and 100 |
 | `Chat:HistoryDays:Premium`, `:PremiumPlus` | Default 365 and 1826 |
+| `Chat:MisuseLimit` | Default 5: blocked questions a UK day before the chat pauses until midnight |
+| `Chat:HistoryKey` | Secret, at least 32 characters: signs the chat history. Empty: a random key per run (Development only) |
 | `ConnectionStrings:BadJockeysChat` | The bjk_chat login. Empty: the chat answers 503 (Development only) |
