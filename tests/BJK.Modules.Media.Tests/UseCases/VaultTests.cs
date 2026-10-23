@@ -233,6 +233,95 @@ public sealed class VaultTests
         _store.DidNotReceive().Add(Arg.Any<VaultClip>());
     }
 
+    [Fact]
+    public async Task With_automatic_saving_off_originals_are_not_kept()
+    {
+        var media = ReadyMedia(size: 10);
+        var account = VaultAccount.Create(UserId, SubscriptionPlan.Premium, Now);
+        account.SetAutoSave(false);
+        _store.GetAccountAsync(UserId, Arg.Any<CancellationToken>()).Returns(account);
+        _store.MediaInVaultAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(new HashSet<Guid>());
+
+        var failed = await Keeper().KeepAsync([media], Guid.NewGuid(), Ct);
+
+        Assert.Empty(failed);
+        _store.DidNotReceive().Add(Arg.Any<VaultClip>());
+        await _storage.DidNotReceiveWithAnyArgs().CopyInsideAsync(default, default!, default, default!, Ct);
+    }
+
+    // --- Settings and previews ---
+
+    [Fact]
+    public void Automatic_saving_is_on_unless_turned_off()
+    {
+        var account = VaultAccount.Create(UserId, SubscriptionPlan.Free, Now);
+        Assert.True(account.AutoSave);
+
+        account.SetAutoSave(false);
+        Assert.False(account.AutoSave);
+
+        account.SetAutoSave(true);
+        Assert.True(account.AutoSave);
+    }
+
+    [Fact]
+    public async Task Turning_automatic_saving_off_is_saved_and_reported_with_the_vault()
+    {
+        var account = VaultAccount.Create(UserId, SubscriptionPlan.Free, Now);
+        _store.GetAccountAsync(UserId, Arg.Any<CancellationToken>()).Returns(account);
+        _store.ListAsync(UserId, 1, 20, null, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[], 0));
+
+        var settings = await new SetVaultSettingsCommandHandler(_store, Plans(), _resolver, _caller)
+            .Handle(new SetVaultSettingsCommand(false), Ct);
+        var vault = await new GetVaultQueryHandler(_store, Plans(), _resolver, _caller, _options).Handle(new GetVaultQuery(), Ct);
+
+        Assert.False(settings.AutoSave);
+        Assert.False(vault.AutoSave);
+        await _store.Received().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task The_vault_can_list_only_clips_from_posts_or_only_uploads()
+    {
+        var upload = Stored(UserId);
+        _store.ListAsync(UserId, 1, 4, VaultClipSource.Upload, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[upload], 1));
+
+        var vault = await new GetVaultQueryHandler(_store, Plans(), _resolver, _caller, _options)
+            .Handle(new GetVaultQuery(1, 4, VaultClipSource.Upload), Ct);
+
+        Assert.Equal(1, vault.Clips.TotalCount);
+        Assert.Single(vault.Clips.Items);
+    }
+
+    [Fact]
+    public async Task Previews_show_only_your_stored_clips_in_the_page()
+    {
+        _storage.CreateDownloadUrlAsync(Arg.Any<MediaBucket>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new Uri($"https://vault.example.com/{ci.ArgAt<string>(1)}"));
+        var mine = Stored(UserId);
+        var uploading = Uploading(declared: 10);
+        var theirs = Stored(OtherUserId);
+
+        var previews = await new GetVaultPreviewsQueryHandler(_store, _storage, _caller)
+            .Handle(new GetVaultPreviewsQuery([mine.Id, uploading.Id, theirs.Id, Guid.NewGuid()]), Ct);
+
+        var preview = Assert.Single(previews);
+        Assert.Equal(mine.Id, preview.ClipId);
+        Assert.DoesNotContain("name=", preview.Url.ToString(), StringComparison.Ordinal);
+        await _storage.DidNotReceive().CreateDownloadUrlAsync(
+            Arg.Any<MediaBucket>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Previews_are_asked_for_up_to_fifty_at_a_time()
+    {
+        var validator = new GetVaultPreviewsQueryValidator();
+
+        Assert.False(validator.Validate(new GetVaultPreviewsQuery([])).IsValid);
+        Assert.False(validator.Validate(new GetVaultPreviewsQuery([.. Enumerable.Range(0, 51).Select(_ => Guid.NewGuid())])).IsValid);
+        Assert.True(validator.Validate(new GetVaultPreviewsQuery([Guid.NewGuid()])).IsValid);
+    }
+
     // --- The hourly cleanup ---
 
     [Fact]

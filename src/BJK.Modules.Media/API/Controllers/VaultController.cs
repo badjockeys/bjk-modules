@@ -1,3 +1,4 @@
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.UseCases.Vault;
 using BJK.Modules.Shared.Security;
 using MediatR;
@@ -17,14 +18,18 @@ namespace BJK.Modules.Media.API.Controllers;
 [Authorize(AuthenticationSchemes = ModuleAuthentication.Scheme, Policy = MediaModule.UsePolicy)]
 public sealed class VaultController(ISender sender) : ControllerBase
 {
-    /// <summary>Your vault: your plan's limits, the space used, and a page of your clips, newest first.</summary>
+    /// <summary>
+    /// Your vault: your plan's limits, the space used, whether your posts' originals are kept automatically, and a page
+    /// of your clips, newest first. <c>source</c> lists only clips from your posts (<c>Post</c>) or only uploads.
+    /// </summary>
     [HttpGet]
     [ProducesResponseType<VaultDto>(StatusCodes.Status200OK)]
     public async Task<VaultDto> Get(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] VaultClipSource? source = null,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new GetVaultQuery(page, pageSize), cancellationToken);
+        await sender.Send(new GetVaultQuery(page, pageSize, source), cancellationToken);
 
     /// <summary>
     /// Start an upload straight to your vault. Returns a link valid for a few minutes: PUT the file to it with the
@@ -54,6 +59,25 @@ public sealed class VaultController(ISender sender) : ControllerBase
     public async Task<VaultDownloadDto> Download(Guid id, CancellationToken cancellationToken) =>
         await sender.Send(new GetVaultDownloadQuery(id), cancellationToken);
 
+    /// <summary>
+    /// Turn keeping your posts' originals automatically on or off. Off: a post's originals are deleted once it's
+    /// published. Clips already in your vault stay.
+    /// </summary>
+    [HttpPut("settings")]
+    [ProducesResponseType<VaultSettingsDto>(StatusCodes.Status200OK)]
+    public async Task<VaultSettingsDto> UpdateSettings(VaultSettingsRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new SetVaultSettingsCommand(request.AutoSave), cancellationToken);
+
+    /// <summary>
+    /// Links, valid for 15 minutes, that show your clips in the page (for thumbnails). Up to 50 at a time; ids that
+    /// aren't your stored clips are left out.
+    /// </summary>
+    [HttpGet("previews")]
+    [ProducesResponseType<IReadOnlyList<VaultPreviewDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IReadOnlyList<VaultPreviewDto>> Previews([FromQuery] Guid[] ids, CancellationToken cancellationToken) =>
+        await sender.Send(new GetVaultPreviewsQuery(ids), cancellationToken);
+
     /// <summary>Delete one of your clips now.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -66,3 +90,5 @@ public sealed class VaultController(ISender sender) : ControllerBase
 }
 
 public sealed record VaultUploadRequest(string FileName, string ContentType, long SizeBytes);
+
+public sealed record VaultSettingsRequest(bool AutoSave);

@@ -208,8 +208,20 @@ public sealed class VaultAccount
 
     public DateTimeOffset PlanSeenAt { get; private set; }
 
+    /// <summary>
+    /// True when the person has turned off keeping their posts' originals automatically. Stored this way round so
+    /// everyone, including people who've never opened their vault, keeps them by default.
+    /// </summary>
+    public bool AutoSaveOff { get; private set; }
+
+    /// <summary>Whether the originals of this person's published posts go into their vault (on by default).</summary>
+    public bool AutoSave => !AutoSaveOff;
+
     public static VaultAccount Create(Guid userId, SubscriptionPlan plan, DateTimeOffset now) =>
         new() { UserId = userId, Plan = plan, PlanSeenAt = now };
+
+    /// <summary>Turns keeping their posts' originals automatically on or off. Clips already in the vault stay.</summary>
+    public void SetAutoSave(bool on) => AutoSaveOff = !on;
 
     /// <summary>Records the plan seen now.</summary>
     /// <returns>True if it's a different plan from before.</returns>

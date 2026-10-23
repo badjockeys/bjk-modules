@@ -10,7 +10,7 @@ public interface IVaultStore
     Task<VaultClip?> GetAsync(Guid clipId, CancellationToken cancellationToken);
 
     /// <summary>A person's clips, newest first (stored ones only).</summary>
-    Task<(IReadOnlyList<VaultClip> Items, int TotalCount)> ListAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<VaultClip> Items, int TotalCount)> ListAsync(Guid userId, int page, int pageSize, VaultClipSource? source, CancellationToken cancellationToken);
 
     /// <summary>Space a person's vault uses, uploads in progress included.</summary>
     Task<long> UsedBytesAsync(Guid userId, CancellationToken cancellationToken);
@@ -43,9 +43,14 @@ internal sealed class VaultStore(MediaDbContext db) : IVaultStore
     public Task<VaultClip?> GetAsync(Guid clipId, CancellationToken cancellationToken) =>
         db.VaultClips.SingleOrDefaultAsync(c => c.Id == clipId, cancellationToken);
 
-    public async Task<(IReadOnlyList<VaultClip> Items, int TotalCount)> ListAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<VaultClip> Items, int TotalCount)> ListAsync(Guid userId, int page, int pageSize, VaultClipSource? source, CancellationToken cancellationToken)
     {
         var query = db.VaultClips.AsNoTracking().Where(c => c.UserId == userId && c.Status == VaultClipStatus.Stored);
+        if (source is { } only)
+        {
+            query = query.Where(c => c.Source == only);
+        }
+
         var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderByDescending(c => c.CreatedAt)
