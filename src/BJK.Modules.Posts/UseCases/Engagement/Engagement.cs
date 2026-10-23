@@ -341,6 +341,130 @@ public sealed class GetPostReachQueryHandler(IPostRepository posts, IEngagementR
     }
 }
 
+/// <summary>How long each point of a post's analytics covers.</summary>
+public enum AnalyticsInterval
+{
+    Hour,
+    Day,
+    Week,
+}
+
+/// <summary>One point of a post's analytics: what happened from <c>Start</c> until the next point.</summary>
+public sealed record AnalyticsPointDto(DateTimeOffset Start, int Views, int LocalViews, int Reactions, int Comments, int Shares);
+
+/// <summary>
+/// A post's analytics (owner, 22 Oct 2026), for its author: views, local views, reactions, comments and shares over
+/// time since it was posted, hourly for its first 48 hours, then daily, then weekly once it's over 90 days old.
+/// Premium and Premium + only: on Free, <c>Locked</c> is true and there are no points (the app shows the graphs
+/// blurred, with an upgrade prompt); <c>Totals</c> are always there, as on the reach panel. Moderators see everything.
+/// </summary>
+public sealed record PostAnalyticsDto(
+    Guid PostId,
+    bool Locked,
+    AnalyticsInterval Interval,
+    DateTimeOffset Since,
+    IReadOnlyList<AnalyticsPointDto> Points,
+    PostReachDto Totals);
+
+/// <summary>A post's analytics, for its author or a moderator.</summary>
+public sealed record GetPostAnalyticsQuery(Guid PostId) : IRequest<PostAnalyticsDto>;
+
+public sealed class GetPostAnalyticsQueryHandler(
+    IPostRepository posts,
+    IEngagementRepository engagement,
+    IPlanResolver plans,
+    ICurrentUser caller,
+    TimeProvider clock)
+    : IRequestHandler<GetPostAnalyticsQuery, PostAnalyticsDto>
+{
+    /// <summary>Points are hourly while the post is this young.</summary>
+    public static readonly TimeSpan HourlyFor = TimeSpan.FromHours(48);
+
+    /// <summary>Then daily until it's this old, then weekly.</summary>
+    public static readonly TimeSpan DailyFor = TimeSpan.FromDays(90);
+
+    public async Task<PostAnalyticsDto> Handle(GetPostAnalyticsQuery request, CancellationToken cancellationToken)
+    {
+        caller.RequireUserId();
+        var post = await PostAccess.GetVisibleAsync(posts, caller, request.PostId, cancellationToken);
+        var moderator = PostAccess.IsModerator(caller);
+        if (!PostAccess.IsAuthor(post, caller) && !moderator)
+        {
+            throw new ForbiddenException("Only the post's author can see its analytics.");
+        }
+
+        var reach = await engagement.GetReachAsync(post.Id, cancellationToken);
+        var stats = (await posts.GetStatsAsync([post.Id], null, cancellationToken)).GetValueOrDefault(post.Id) ?? PostStats.Empty;
+        var totals = new PostReachDto(post.Id, reach.Views, reach.LocalViews, stats.Reactions.Values.Sum(), stats.CommentCount, reach.Shares);
+
+        var now = clock.GetUtcNow();
+        var interval = IntervalFor(now - post.CreatedAt);
+        var locked = !moderator && plans.CurrentPlan() is not (SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus);
+        if (locked)
+        {
+            return new PostAnalyticsDto(post.Id, true, interval, post.CreatedAt, [], totals);
+        }
+
+        var activity = await engagement.GetActivityAsync(post.Id, cancellationToken);
+        return new PostAnalyticsDto(post.Id, false, interval, post.CreatedAt, Points(post.CreatedAt, now, interval, activity), totals);
+    }
+
+    public static AnalyticsInterval IntervalFor(TimeSpan age) =>
+        age <= HourlyFor ? AnalyticsInterval.Hour : age <= DailyFor ? AnalyticsInterval.Day : AnalyticsInterval.Week;
+
+    public static TimeSpan Length(AnalyticsInterval interval) => interval switch
+    {
+        AnalyticsInterval.Hour => TimeSpan.FromHours(1),
+        AnalyticsInterval.Day => TimeSpan.FromDays(1),
+        _ => TimeSpan.FromDays(7),
+    };
+
+    /// <summary>
+    /// One point per interval from when it was posted up to now (the last one still filling up). Anything recorded
+    /// before the post's own time (clock differences) counts in the first point.
+    /// </summary>
+    public static IReadOnlyList<AnalyticsPointDto> Points(DateTimeOffset since, DateTimeOffset now, AnalyticsInterval interval, PostActivity activity)
+    {
+        var length = Length(interval);
+        var count = Math.Max(1, (int)Math.Ceiling((now - since) / length));
+        var views = new int[count];
+        var local = new int[count];
+        var reactions = new int[count];
+        var comments = new int[count];
+        var shares = new int[count];
+        int Index(DateTimeOffset at) => Math.Clamp((int)Math.Floor((at - since) / length), 0, count - 1);
+
+        foreach (var (at, isLocal) in activity.Views)
+        {
+            var i = Index(at);
+            views[i]++;
+            if (isLocal)
+            {
+                local[i]++;
+            }
+        }
+
+        foreach (var at in activity.Reactions)
+        {
+            reactions[Index(at)]++;
+        }
+
+        foreach (var at in activity.Comments)
+        {
+            comments[Index(at)]++;
+        }
+
+        foreach (var at in activity.Shares)
+        {
+            shares[Index(at)]++;
+        }
+
+        return Enumerable.Range(0, count)
+            .Select(i => new AnalyticsPointDto(since + (length * i), views[i], local[i], reactions[i], comments[i], shares[i]))
+            .ToList();
+    }
+}
+
 /// <summary>The caller's settings for their own posts. <c>VoteDuration</c>: when votes on new posts close.</summary>
 public sealed record AuthorPreferencesDto(VoteDuration VoteDuration);
 
