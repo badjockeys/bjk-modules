@@ -28,7 +28,7 @@ public interface IMediaStorage
 
     /// <summary>
     /// Stores a processed file in the private originals bucket, e.g. blurred files waiting for a moderator. Read them
-    /// with <see cref="CreateOriginalDownloadUrlAsync"/> and remove them with <see cref="DeleteOriginalAsync"/>.
+    /// with <see cref="CreateOriginalDownloadUrlAsync(string, TimeSpan, CancellationToken)"/> and remove them with <see cref="DeleteOriginalAsync"/>.
     /// </summary>
     Task UploadPrivateAsync(string key, string filePath, string contentType, CancellationToken cancellationToken);
 
