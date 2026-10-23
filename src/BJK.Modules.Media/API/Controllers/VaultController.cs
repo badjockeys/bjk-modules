@@ -1,3 +1,4 @@
+using BJK.Modules.Media.Domain;
 using BJK.Modules.Media.UseCases.Vault;
 using BJK.Modules.Shared.Security;
 using MediatR;
@@ -17,14 +18,18 @@ namespace BJK.Modules.Media.API.Controllers;
 [Authorize(AuthenticationSchemes = ModuleAuthentication.Scheme, Policy = MediaModule.UsePolicy)]
 public sealed class VaultController(ISender sender) : ControllerBase
 {
-    /// <summary>Your vault: your plan's limits, the space used, and a page of your clips, newest first.</summary>
+    /// <summary>
+    /// Your vault: your plan's limits, the space used, whether your posts' originals are kept automatically, and a page
+    /// of your clips, newest first. <c>source</c> lists only clips from your posts (<c>Post</c>) or only uploads.
+    /// </summary>
     [HttpGet]
     [ProducesResponseType<VaultDto>(StatusCodes.Status200OK)]
     public async Task<VaultDto> Get(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] VaultClipSource? source = null,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new GetVaultQuery(page, pageSize), cancellationToken);
+        await sender.Send(new GetVaultQuery(page, pageSize, source), cancellationToken);
 
     /// <summary>
     /// Start an upload straight to your vault. Returns a link valid for a few minutes: PUT the file to it with the

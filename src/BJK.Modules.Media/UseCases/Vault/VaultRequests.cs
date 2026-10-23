@@ -72,8 +72,11 @@ public sealed record VaultUploadResult(Guid ClipId, SignedUpload Upload);
 /// <param name="ExpiresAt">When the link stops working.</param>
 public sealed record VaultDownloadDto(Uri Url, DateTimeOffset ExpiresAt);
 
-/// <summary>Your vault (owner, 23 Oct 2026). Also records your plan, so your clips follow it.</summary>
-public sealed record GetVaultQuery(int Page = 1, int PageSize = 20) : IRequest<VaultDto>;
+/// <summary>
+/// Your vault (owner, 23 Oct 2026). Also records your plan, so your clips follow it. <paramref name="Source"/> lists only
+/// clips from your posts or only ones you uploaded (the space used is always the whole vault's).
+/// </summary>
+public sealed record GetVaultQuery(int Page = 1, int PageSize = 20, VaultClipSource? Source = null) : IRequest<VaultDto>;
 
 /// <summary>Starts an upload straight to your vault, if it has room. PUT the file to the link, then complete it.</summary>
 /// <param name="FileName">The name on your device.</param>
@@ -116,6 +119,7 @@ public sealed class GetVaultQueryValidator : AbstractValidator<GetVaultQuery>
     {
         RuleFor(q => q.Page).GreaterThanOrEqualTo(1);
         RuleFor(q => q.PageSize).InclusiveBetween(1, 100);
+        RuleFor(q => q.Source).IsInEnum().When(q => q.Source is not null);
     }
 }
 
@@ -182,7 +186,7 @@ public sealed class GetVaultQueryHandler(
     {
         var userId = MediaAccess.RequireUserId(caller);
         var plan = await VaultAccess.SeePlanAsync(plans, resolver, userId, cancellationToken);
-        var (items, total) = await store.ListAsync(userId, request.Page, request.PageSize, cancellationToken);
+        var (items, total) = await store.ListAsync(userId, request.Page, request.PageSize, request.Source, cancellationToken);
         var limits = options.Value;
         return new VaultDto(
             plan,

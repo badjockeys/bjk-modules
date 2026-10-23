@@ -269,7 +269,7 @@ public sealed class VaultTests
     {
         var account = VaultAccount.Create(UserId, SubscriptionPlan.Free, Now);
         _store.GetAccountAsync(UserId, Arg.Any<CancellationToken>()).Returns(account);
-        _store.ListAsync(UserId, 1, 20, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[], 0));
+        _store.ListAsync(UserId, 1, 20, null, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[], 0));
 
         var settings = await new SetVaultSettingsCommandHandler(_store, Plans(), _resolver, _caller)
             .Handle(new SetVaultSettingsCommand(false), Ct);
@@ -278,6 +278,18 @@ public sealed class VaultTests
         Assert.False(settings.AutoSave);
         Assert.False(vault.AutoSave);
         await _store.Received().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task The_vault_can_list_only_clips_from_posts_or_only_uploads()
+    {
+        _store.ListAsync(UserId, 1, 4, VaultClipSource.Upload, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[Stored(UserId)], 1));
+
+        var vault = await new GetVaultQueryHandler(_store, Plans(), _resolver, _caller, _options)
+            .Handle(new GetVaultQuery(1, 4, VaultClipSource.Upload), Ct);
+
+        Assert.Equal(1, vault.Clips.TotalCount);
+        Assert.Single(vault.Clips.Items);
     }
 
     [Fact]
