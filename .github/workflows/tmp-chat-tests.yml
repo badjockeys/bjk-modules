@@ -35,4 +35,4 @@ jobs:
           git config user.name ci; git config user.email ci@example.test
           git add -f chat-tests.log build-errors.log
           git commit -m "chat test output [skip ci]"
-          git push origin HEAD:tmp/chat-tests-output-2 --force
+          git push origin HEAD:tmp/chat-tests-output-3 --force
