@@ -110,7 +110,7 @@ public sealed class PostMediaPublisher(
 
     /// <summary>
     /// The post's media are all ready and it's published: the uploaded originals aren't needed any more, so the Media
-    /// module deletes them. A failure is only logged: the Media module's 24-hour sweep deletes them anyway.
+    /// module keeps them in the author's vault (while it has room) and deletes them. A failure is only logged: the Media module's 24-hour sweep deletes them anyway.
     /// </summary>
     /// <param name="post">The post.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
@@ -118,7 +118,7 @@ public sealed class PostMediaPublisher(
     {
         try
         {
-            await media.ReleaseOriginalsAsync(post.Media.Select(m => m.MediaId).ToList(), cancellationToken);
+            await media.ReleaseOriginalsAsync(post.Media.Select(m => m.MediaId).ToList(), cancellationToken, post.Id);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

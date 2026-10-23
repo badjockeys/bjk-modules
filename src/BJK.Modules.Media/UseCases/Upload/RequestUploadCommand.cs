@@ -1,6 +1,8 @@
 using BJK.Modules.Media.Domain;
+using BJK.Modules.Media.Infrastructure;
 using BJK.Modules.Media.Infrastructure.Data;
 using BJK.Modules.Media.Infrastructure.Storage;
+using BJK.Modules.Shared.Exceptions;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
@@ -15,7 +17,11 @@ namespace BJK.Modules.Media.UseCases.Upload;
 /// <param name="FileName">The name on the user's device. Stored for display only.</param>
 /// <param name="ContentType">e.g. video/mp4, video/quicktime, image/jpeg, image/heic.</param>
 /// <param name="SizeBytes">Size the app is about to upload. Checked again once the file arrives.</param>
-public sealed record RequestUploadCommand(string FileName, string ContentType, long SizeBytes)
+/// <param name="VaultClipId">
+/// When the app is posting a clip from the person's vault (trimmed in the browser like any upload): the clip, so its
+/// original isn't put in the vault a second time when the post is published.
+/// </param>
+public sealed record RequestUploadCommand(string FileName, string ContentType, long SizeBytes, Guid? VaultClipId = null)
     : IRequest<RequestUploadResult>;
 
 public sealed record RequestUploadResult(Guid MediaId, MediaType MediaType, SignedUpload Upload);
@@ -48,13 +54,32 @@ public sealed class RequestUploadCommandHandler(
     IMediaStorage storage,
     ICurrentUser caller,
     IOptions<MediaOptions> options,
-    TimeProvider clock)
+    TimeProvider clock,
+    IVaultStore? vault = null,
+    VaultPlans? vaultPlans = null,
+    IPlanResolver? plans = null)
     : IRequestHandler<RequestUploadCommand, RequestUploadResult>
 {
     public async Task<RequestUploadResult> Handle(RequestUploadCommand request, CancellationToken cancellationToken)
     {
         var userId = MediaAccess.RequireUserId(caller);
         var item = MediaItem.Create(userId, request.FileName, request.ContentType, clock.GetUtcNow());
+        if (request.VaultClipId is { } clipId && vault is not null)
+        {
+            var clip = await vault.GetAsync(clipId, cancellationToken);
+            if (clip is null || !clip.IsOwnedBy(userId))
+            {
+                throw new NotFoundException("Vault clip", clipId);
+            }
+
+            item.MarkFromVault(clipId);
+        }
+
+        // The vault follows the plan seen here too, for when this media's post is published in the background.
+        if (vaultPlans is not null && plans?.CurrentPlan() is { } plan)
+        {
+            await vaultPlans.SeeAsync(userId, plan, cancellationToken);
+        }
 
         var upload = await storage.CreateOriginalUploadAsync(
             item.OriginalKey,

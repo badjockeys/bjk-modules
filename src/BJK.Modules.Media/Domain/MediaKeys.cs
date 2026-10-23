@@ -125,6 +125,19 @@ public static class MediaKeys
     /// <param name="mediaId">The media.</param>
     public static string ShareVideo(Guid userId, Guid mediaId) => $"{Folder(userId, mediaId)}/{ShareFolder}/vertical.mp4";
 
+    /// <summary>Sub-folder of the user's folder, in the vault bucket, for their vault.</summary>
+    public const string VaultFolder = "vault";
+
+    /// <summary>
+    /// A clip in someone's vault, in the vault bucket: <c>{userId}/vault/{clipId}/original.{extension}</c>. Under the
+    /// user's folder, so deleting an account deletes it.
+    /// </summary>
+    /// <param name="userId">Whose vault.</param>
+    /// <param name="clipId">The clip.</param>
+    /// <param name="extension">From its type, e.g. <c>mp4</c>.</param>
+    public static string VaultClip(Guid userId, Guid clipId, string extension) =>
+        $"{UserFolder(userId)}{VaultFolder}/{clipId:D}/original.{extension}";
+
     /// <summary><c>720p.mp4</c> for revision 0, <c>720p-r2.mp4</c> for revision 2.</summary>
     private static string Revised(string fileName, int revision) =>
         revision <= 0 ? fileName : $"{Path.GetFileNameWithoutExtension(fileName)}-r{revision}{Path.GetExtension(fileName)}";

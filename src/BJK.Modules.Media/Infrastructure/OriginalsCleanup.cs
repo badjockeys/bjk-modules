@@ -11,7 +11,9 @@ namespace BJK.Modules.Media.Infrastructure;
 
 /// <summary>
 /// Deletes uploaded originals once they're no longer needed (owner's decision, 19 Oct 2026, replacing 90-day
-/// retention): straight away when the post using the media is published (<see cref="ReleaseAsync"/>, called by the
+/// retention). Since 23 Oct 2026 the originals of published posts are first copied into their owner's vault
+/// (<see cref="VaultKeeper"/>), while it has room. Deleted straight away when the post using the media is published
+/// (<see cref="ReleaseAsync"/>, called by the
 /// Posts module through <c>IMediaDirectory.ReleaseOriginalsAsync</c>), and otherwise by the hourly sweep
 /// (<see cref="SweepAsync"/>) at most <c>Media:UnusedOriginalRetention</c> (24 hours) after upload: failed media,
 /// media never posted, abandoned uploads. Media still processing or waiting for a moderator keeps its original.
@@ -22,15 +24,20 @@ internal sealed class OriginalsCleanup(
     IMediaStorage storage,
     IOptions<MediaOptions> options,
     TimeProvider clock,
-    ILogger<OriginalsCleanup> logger)
+    ILogger<OriginalsCleanup> logger,
+    VaultKeeper? vault = null)
 {
     /// <summary>How many originals one sweep deletes at most.</summary>
     public const int SweepBatchSize = 200;
 
-    /// <summary>Deletes the originals of these media if they're Ready (processed, or approved by a moderator).</summary>
+    /// <summary>
+    /// Keeps the originals of these media in their owner's vault, then deletes them, if they're Ready (processed, or
+    /// approved by a moderator). An original whose copy into the vault failed is left for the sweep.
+    /// </summary>
     /// <param name="mediaIds">The media of a post that has just been published.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
-    public async Task ReleaseAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken)
+    /// <param name="postId">The post, for the vault's link back.</param>
+    public async Task ReleaseAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken, Guid? postId = null)
     {
         if (mediaIds.Count == 0)
         {
@@ -40,6 +47,12 @@ internal sealed class OriginalsCleanup(
         var items = (await media.GetManyAsync(mediaIds, cancellationToken))
             .Where(m => m.Status == MediaStatus.Ready && m.OriginalDeletedAt is null)
             .ToList();
+        if (vault is not null)
+        {
+            var notCopied = await vault.KeepAsync(items, postId, cancellationToken);
+            items = items.Where(m => !notCopied.Contains(m.Id)).ToList();
+        }
+
         await DeleteAsync(items, cancellationToken);
     }
 
@@ -101,6 +114,17 @@ internal sealed class OriginalsSweeper(IServiceScopeFactory scopes, IOptions<Med
                     await using var scope = scopes.CreateAsyncScope();
                     var cleanup = scope.ServiceProvider.GetRequiredService<OriginalsCleanup>();
                     if (await cleanup.SweepAsync(stoppingToken) < OriginalsCleanup.SweepBatchSize)
+                    {
+                        break;
+                    }
+                }
+
+                // Then vault clips past their time, and vault uploads never finished.
+                for (var batch = 0; batch < 10; batch++)
+                {
+                    await using var scope = scopes.CreateAsyncScope();
+                    var vault = scope.ServiceProvider.GetRequiredService<VaultCleanup>();
+                    if (await vault.SweepAsync(stoppingToken) < VaultCleanup.SweepBatchSize)
                     {
                         break;
                     }

@@ -193,17 +193,17 @@ public sealed class PostPublishingTests
     {
         var ready = Media(MediaType.Image, MediaStatus.Ready);
         await CreateHandler().Handle(Command(ready), Ct);
-        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == ready), Arg.Any<CancellationToken>());
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == ready), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
 
         _media.ClearReceivedCalls();
         var video = Media(MediaType.Video, MediaStatus.NeedsReview);
         await CreateHandler().Handle(Command(video), Ct);
-        await _media.DidNotReceiveWithAnyArgs().ReleaseOriginalsAsync(default!, Ct);
+        await _media.DidNotReceiveWithAnyArgs().ReleaseOriginalsAsync(default!, Ct, default);
 
         // A moderator approves the video: it becomes Ready, the post is published and its original released.
         Set(video, MediaType.Video, MediaStatus.Ready);
         await EventHandler().HandleAsync(Event(video, MediaEventType.Ready), Ct);
-        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == video), Arg.Any<CancellationToken>());
+        await _media.Received(1).ReleaseOriginalsAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == video), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
     [Fact]

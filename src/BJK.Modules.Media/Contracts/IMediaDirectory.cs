@@ -37,10 +37,14 @@ public interface IMediaDirectory
     Task SetSensitiveAsync(IReadOnlyCollection<Guid> mediaIds, bool isSensitive, CancellationToken cancellationToken, bool clearAutomatic = false);
 
     /// <summary>
-    /// The post using these media has been published: their uploaded originals aren't needed any more and are deleted
-    /// now (Ready media only; anything else keeps its original until it's ready, or the 24-hour sweep). Safe to repeat.
+    /// The post using these media has been published: their uploaded originals are copied into their owner's vault
+    /// (while it has room) and then deleted (Ready media only; anything else keeps its original until it's ready, or
+    /// the 24-hour sweep). Safe to repeat.
     /// </summary>
-    Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);
+    /// <param name="mediaIds">The post's media.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    /// <param name="postId">The post, so the vault can link back to it.</param>
+    Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken, Guid? postId = null);
 
     /// <summary>Deletes the files and marks the media Deleted. Ids that don't exist are ignored.</summary>
     Task DeleteAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken);

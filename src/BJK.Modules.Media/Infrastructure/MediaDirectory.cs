@@ -17,8 +17,8 @@ internal sealed class MediaDirectory(
     ILogger<MediaDirectory> logger,
     OriginalsCleanup originals) : IMediaDirectory
 {
-    public Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken) =>
-        originals.ReleaseAsync(mediaIds, cancellationToken);
+    public Task ReleaseOriginalsAsync(IReadOnlyCollection<Guid> mediaIds, CancellationToken cancellationToken, Guid? postId = null) =>
+        originals.ReleaseAsync(mediaIds, cancellationToken, postId);
 
     public async Task<IReadOnlyList<MediaSummary>> GetAsync(
         IReadOnlyCollection<Guid> mediaIds,

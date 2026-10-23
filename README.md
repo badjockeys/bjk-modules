@@ -397,6 +397,7 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 | `GET /api/media/{id}` | Anyone with `bjk.media` once Ready; the owner or an admin before that |
 | `GET /api/media/mine` | The signed-in user's own uploads, any state |
 | `DELETE /api/media/{id}` | Owner |
+| `GET /api/vault`, `POST /api/vault/uploads`, `POST /api/vault/{id}/complete`, `GET /api/vault/{id}/download`, `DELETE /api/vault/{id}` | The signed-in user's own vault (see "Vault") |
 | `GET`, `POST /api/media/{id}/share-copy` | Owner only (404 for anyone else): the video's vertical copy for sharing (see "Share copies") |
 | `DELETE /api/admin/media/{id}?reason=` | Moderator (`bjk.media.manage`); the reason is required and the action is audited |
 
@@ -412,6 +413,8 @@ Configuration (user secrets locally, container settings and secrets when deploye
 | `Media:Storage:OriginalsBucket`, `Media:Storage:PublicBucket` | Private and public buckets |
 | `Media:Storage:PublicBaseUrl` | Where the public bucket is served through Cloudflare |
 | `Media:Storage:SensitiveBucket` | Optional private bucket for the real files of sensitive media (default: the originals bucket, under `sensitive/`). Set it if the originals bucket has any deletion (lifecycle) rule |
+| `Media:Storage:VaultBucket` | Optional private bucket for the vault (default: the sensitive bucket, under `{userId}/vault/`). Needs a CORS rule allowing `PUT` and `GET` from the web app, and no lifecycle rule |
+| `Media:Vault:*` | The vault by plan: `FreeRetentionDays` 30, `PremiumRetentionDays` 365, `PremiumPlusRetentionDays` 1095; `FreeQuotaBytes` 2 GB, `PremiumQuotaBytes` 25 GB, `PremiumPlusQuotaBytes` 100 GB; `MaxFileBytes` 2 GB; `DowngradeNoticeDays` 7 |
 | `Media:SensitiveLinkLifetime` | How long signed links to sensitive media work (default 10 minutes, 1 minute to 1 hour) |
 | `Media:Processing:SensitivePreviewSourceSize`, `SensitivePreviewSize` | Blurred preview: shrink to 64 px, then enlarge to 480 px (worker) |
 | `Media:SensitiveDetection:*` | Automatic graphic content and nudity checks (worker; required when deployed; see below) |
@@ -425,10 +428,21 @@ Configuration (user secrets locally, container settings and secrets when deploye
 
 Owner's decision, 19 Oct 2026, replacing 90-day retention: an uploaded original (which still has faces, plates, sound and GPS) is deleted as soon as nothing needs it.
 
-- **Post published:** when a post's media are all `Ready` and it's published (straight away if they were ready when posting, or when the last one becomes ready, including after a moderator approves media from the review queue or automatic detection tags it sensitive), the Posts module calls `IMediaDirectory.ReleaseOriginalsAsync` and the originals are deleted (`media.Media.OriginalDeletedAt` is set).
+- **Post published:** when a post's media are all `Ready` and it's published (straight away if they were ready when posting, or when the last one becomes ready, including after a moderator approves media from the review queue or automatic detection tags it sensitive), the Posts module calls `IMediaDirectory.ReleaseOriginalsAsync` with the post's id. Since 23 Oct 2026 each original is first copied into its owner's **vault** (see "Vault"), then the originals are deleted (`media.Media.OriginalDeletedAt` is set). An original whose copy failed is left for the sweep.
 - **Post deleted or discarded before publishing:** its media are deleted, originals included, at once (as before).
 - **Processing failed, media never posted, upload abandoned:** the API host's sweeper (`OriginalsSweeper`, every `Media:OriginalSweepInterval`, 1 hour) deletes the original once `Media:UnusedOriginalRetention` (24 hours) has passed since upload (`OriginalDeletesAt`), or since an upload was started and never completed. Media still processing or waiting for a moderator keeps its original until it's ready (then the post's publication, or the sweep, deletes it).
 - **Consequences:** re-processing after a moderator adds blur regions works from the processed file (see "Moderation of media"); the admin link to the unblurred original and data-export original links only work while the original exists. The R2 lifecycle rule on the originals bucket is no longer needed (the review copies and rework copies live there too, so don't add a short one).
+
+### Vault (people's originals, kept for them)
+
+Owner's decision, 23 Oct 2026: each person has a vault of their original clips, unblurred with their sound and GPS, kept privately as evidence (for the police or an insurer). It reverses the "delete originals at once" rule above only for what goes in a vault.
+
+- **What goes in:** the originals of their published posts' photos and videos (copied inside the storage service, `IMediaStorage.CopyInsideAsync`, so large files take moments), while there's room; and clips uploaded straight to the vault (`POST /api/vault/uploads`, then PUT the file, then `POST /api/vault/{id}/complete`, which checks the real size). A clip posted from the vault (the web app re-uploads it trimmed, with `vaultClipId` on `POST /api/media/uploads`) isn't copied in again.
+- **By plan** (`Media:Vault`): Free keeps clips 30 days in 2 GB, Premium 12 months in 25 GB, Premium + 3 years in 100 GB. Files up to 2 GB each. A full vault refuses uploads (400), and new posts' originals are then deleted as before.
+- **Plans without a request:** plans come with each request (the token or `Plans:Overrides`). The plan seen when someone opens their vault or uploads anything is recorded in `media.VaultAccounts`, so a post published in the background, and the cleanup, know it (`VaultPlans`; an override wins, then the plan last seen, then Free).
+- **Plan changes:** every clip's expiry follows the plan (`VaultClip.FollowPlan`): an upgrade keeps clips longer at once; after a downgrade, clips the new plan would already have deleted are kept 7 more days (`DowngradeNoticeDays`), so nobody loses a clip without notice. The vault page shows each clip's expiry.
+- **Private:** only the owner sees their vault (404 for anyone else); downloads are 15-minute signed links named `bad-jockeys-original-{date}.{ext}`, never the uploaded name. Files are in `Media:Storage:VaultBucket` (or the sensitive bucket), under `{userId}/vault/{clipId}/`. Never the originals bucket, whose lifecycle rule would cut them short.
+- **Deleted** by the hourly sweep once past `ExpiresAt` (and vault uploads never finished within 24 hours), by the owner at any time, or with the account (the files go with the user's storage folder; `media.VaultClips` and `media.VaultAccounts` rows too). The data export includes the vault, with 24-hour links (section `vault`).
 
 ### Videos in segments (parallel processing)
 

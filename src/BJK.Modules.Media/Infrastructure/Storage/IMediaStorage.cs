@@ -106,6 +106,32 @@ public interface IMediaStorage
     /// <param name="lifetime">How long the link works.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
     Task<Uri> CreateDownloadUrlAsync(MediaBucket bucket, string key, TimeSpan lifetime, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A short-lived signed link to download a file from a private bucket, saved as <paramref name="fileName"/> (one of
+    /// ours, never anything a user typed).
+    /// </summary>
+    Task<Uri> CreateDownloadUrlAsync(MediaBucket bucket, string key, TimeSpan lifetime, string fileName, CancellationToken cancellationToken) =>
+        CreateDownloadUrlAsync(bucket, key, lifetime, cancellationToken);
+
+    /// <summary>A short-lived link the app uses to PUT one file straight into a private bucket.</summary>
+    Task<SignedUpload> CreateUploadAsync(MediaBucket bucket, string key, string contentType, TimeSpan lifetime, CancellationToken cancellationToken) =>
+        bucket == MediaBucket.Originals
+            ? CreateOriginalUploadAsync(key, contentType, lifetime, cancellationToken)
+            : throw new NotSupportedException($"Uploads to the {bucket} bucket aren't supported by this storage.");
+
+    /// <summary>Details of a stored file, or null if there's nothing at the key.</summary>
+    Task<StoredFile?> FindAsync(MediaBucket bucket, string key, CancellationToken cancellationToken) =>
+        bucket == MediaBucket.Originals
+            ? FindOriginalAsync(key, cancellationToken)
+            : throw new NotSupportedException($"Finding files in the {bucket} bucket isn't supported by this storage.");
+
+    /// <summary>
+    /// Copies a private file inside the storage service, without downloading it (large originals into and out of the
+    /// vault). Replaces anything at the destination; safe to repeat.
+    /// </summary>
+    Task CopyInsideAsync(MediaBucket from, string fromKey, MediaBucket to, string toKey, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Copying inside the storage isn't supported by this storage.");
 }
 
 /// <summary>The buckets media files live in.</summary>
@@ -122,6 +148,12 @@ public enum MediaBucket
     /// <c>Media:Storage:SensitiveBucket</c>, or the originals bucket if that isn't set.
     /// </summary>
     Sensitive,
+
+    /// <summary>
+    /// Private: the vault, people's original clips kept for them (<c>Media:Storage:VaultBucket</c>, or the sensitive
+    /// bucket). Read only through short-lived signed links.
+    /// </summary>
+    Vault,
 }
 
 /// <param name="Url">Where to send the file.</param>
