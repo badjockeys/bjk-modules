@@ -118,6 +118,20 @@ public sealed class ProfilesController(ISender sender) : ControllerBase
     public async Task<WhoToFollowDto> Suggestions([FromQuery] int limit = 3, CancellationToken cancellationToken = default) =>
         await sender.Send(new WhoToFollowQuery(limit), cancellationToken);
 
+    /// <summary>
+    /// People to tag as you type (passengers): handle or name starting with <paramref name="q"/>, the people you're
+    /// connected to first (following each other, your followers, people you follow), then other adults. Never anyone
+    /// blocked either way.
+    /// </summary>
+    [HttpGet("me/tag-suggestions")]
+    [Authorize(Policy = ProfilesModule.UsePolicy)]
+    [ProducesResponseType<IReadOnlyList<TagSuggestionDto>>(StatusCodes.Status200OK)]
+    public async Task<IReadOnlyList<TagSuggestionDto>> TagSuggestions(
+        [FromQuery] string? q,
+        [FromQuery] int limit = 8,
+        CancellationToken cancellationToken = default) =>
+        await sender.Send(new TagSuggestionsQuery(q ?? string.Empty, limit), cancellationToken);
+
     /// <summary>Someone's followers, most recent first. Anyone can call this.</summary>
     [HttpGet("{handle}/followers")]
     [Authorize(Policy = ProfilesModule.ReadPolicy)]
