@@ -1,0 +1,50 @@
+  Determining projects to restore...
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Observability/BJK.Modules.Observability.csproj (in 1.73 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Media/BJK.Modules.Media.csproj (in 2.42 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Profiles/BJK.Modules.Profiles.csproj (in 4.19 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Posts/BJK.Modules.Posts.csproj (in 4.19 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Notifications/BJK.Modules.Notifications.csproj (in 4.19 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Email/BJK.Modules.Email.csproj (in 12 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Shared.Tests/BJK.Modules.Shared.Tests.csproj (in 827 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Safety.Tests/BJK.Modules.Safety.Tests.csproj (in 820 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.SMS.Tests/BJK.Modules.SMS.Tests.csproj (in 814 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.User.Tests/BJK.Modules.User.Tests.csproj (in 831 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Shared/BJK.Modules.Shared.csproj (in 5 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Safety/BJK.Modules.Safety.csproj (in 6 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Profiles.Tests/BJK.Modules.Profiles.Tests.csproj (in 19 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.SMS/BJK.Modules.SMS.csproj (in 5 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Posts.Tests/BJK.Modules.Posts.Tests.csproj (in 25 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Queues.Tests/BJK.Modules.Queues.Tests.csproj (in 63 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/BJK.Modules.Media.Tests.csproj (in 25 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Notifications.Tests/BJK.Modules.Notifications.Tests.csproj (in 41 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Email.Tests/BJK.Modules.Email.Tests.csproj (in 31 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.User/BJK.Modules.User.csproj (in 53 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Observability.Tests/BJK.Modules.Observability.Tests.csproj (in 277 ms).
+  Restored /home/runner/work/bjk-modules/bjk-modules/src/BJK.Modules.Queues/BJK.Modules.Queues.csproj (in 382 ms).
+Tool 'dotnet-ef' (version '10.0.13') was restored. Available commands: dotnet-ef
+
+Restore was successful.
+== build
+Build succeeded.
+== pending Media
+No changes have been made to the model since the last migration.
+== pending Posts
+No changes have been made to the model since the last migration.
+== pending Notifications
+No changes have been made to the model since the last migration.
+== Media tests
+[m  total: 299
+[32m  succeeded: 250
+[m  skipped: 49
+== Posts tests
+[m  total: 397
+[32m  succeeded: 397
+[m  skipped: 0
+== Notifications tests
+[m  total: 63
+[32m  succeeded: 63
+[m  skipped: 0
+== Profiles tests
+[m  total: 66
+[32m  succeeded: 66
+[m  skipped: 0
