@@ -3,6 +3,7 @@ using BJK.Modules.Posts.Infrastructure.Data;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Safety;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
@@ -72,6 +73,20 @@ public sealed record RemoveCommunityMemberCommand(string Slug, Guid UserId, bool
 
 /// <summary>Let a banned person join or ask again (admins and moderators).</summary>
 public sealed record UnbanCommunityMemberCommand(string Slug, Guid UserId) : IRequest;
+
+/// <summary>
+/// Invite someone, by their handle, to join (admins and moderators). They join when they accept; for a private
+/// community that skips asking. Someone who'd asked to join is let in instead.
+/// </summary>
+public sealed record InviteToCommunityCommand(string Slug, string Handle) : IRequest<CommunityMemberDto>;
+
+public sealed class InviteToCommunityCommandValidator : AbstractValidator<InviteToCommunityCommand>
+{
+    public InviteToCommunityCommandValidator()
+    {
+        RuleFor(c => c.Handle).NotEmpty().WithMessage("Enter their @handle.").MaximumLength(40);
+    }
+}
 
 public abstract class CommunityRequestValidator<T> : AbstractValidator<T>
     where T : ICommunityRequest
@@ -218,7 +233,12 @@ public sealed class DeleteCommunityCommandHandler(ICommunityRepository communiti
     }
 }
 
-public sealed class JoinCommunityCommandHandler(ICommunityRepository communities, IProfileDirectory profiles, ICurrentUser caller, TimeProvider clock)
+public sealed class JoinCommunityCommandHandler(
+    ICommunityRepository communities,
+    IProfileDirectory profiles,
+    ICurrentUser caller,
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<JoinCommunityCommand, CommunityDto>
 {
     public async Task<CommunityDto> Handle(JoinCommunityCommand request, CancellationToken cancellationToken)
@@ -237,7 +257,18 @@ public sealed class JoinCommunityCommandHandler(ICommunityRepository communities
             throw new ForbiddenException("You can't join this community.");
         }
 
-        if (member is null)
+        if (member?.Status == CommunityMembershipStatus.Invited)
+        {
+            if (community.Visibility == CommunityVisibility.Private && !me.IsAdult)
+            {
+                throw new ForbiddenException("Private communities are for adults. You can join public ones.");
+            }
+
+            member.Approve(clock.GetUtcNow());
+            community.CountMembers(1);
+            await communities.SaveChangesAsync(cancellationToken);
+        }
+        else if (member is null)
         {
             var now = clock.GetUtcNow();
             if (community.Visibility == CommunityVisibility.Public)
@@ -257,6 +288,16 @@ public sealed class JoinCommunityCommandHandler(ICommunityRepository communities
 
             communities.Add(member);
             await communities.SaveChangesAsync(cancellationToken);
+            if (member.Status == CommunityMembershipStatus.Requested && notifications is not null)
+            {
+                foreach (var moderator in await communities.ListModeratorIdsAsync(community.Id, cancellationToken))
+                {
+                    await notifications.NotifyAsync(
+                        new NotificationRequest(moderator, NotificationType.CommunityJoinRequest, userId, PostTitle: community.Name,
+                            Link: $"/communities/{community.Slug}/manage?tab=requests"),
+                        cancellationToken);
+                }
+            }
         }
 
         return CommunityAccess.Detail(community, member, people, me.IsAdult);
@@ -291,7 +332,11 @@ public sealed class LeaveCommunityCommandHandler(ICommunityRepository communitie
     }
 }
 
-public sealed class DecideCommunityRequestCommandHandler(ICommunityRepository communities, ICurrentUser caller, TimeProvider clock)
+public sealed class DecideCommunityRequestCommandHandler(
+    ICommunityRepository communities,
+    ICurrentUser caller,
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<DecideCommunityRequestCommand>
 {
     public async Task Handle(DecideCommunityRequestCommand request, CancellationToken cancellationToken)
@@ -316,6 +361,14 @@ public sealed class DecideCommunityRequestCommandHandler(ICommunityRepository co
         }
 
         await communities.SaveChangesAsync(cancellationToken);
+        if (request.Approve && notifications is not null)
+        {
+            // Declined requests aren't announced: they can simply ask again.
+            await notifications.NotifyAsync(
+                new NotificationRequest(asking.UserId, NotificationType.CommunityRequestApproved, userId, PostTitle: community.Name,
+                    Link: $"/communities/{community.Slug}"),
+                cancellationToken);
+        }
     }
 }
 
@@ -405,6 +458,82 @@ public sealed class UnbanCommunityMemberCommandHandler(ICommunityRepository comm
         {
             communities.Remove(member);
             await communities.SaveChangesAsync(cancellationToken);
+        }
+    }
+}
+
+public sealed class InviteToCommunityCommandHandler(
+    ICommunityRepository communities,
+    IProfileDirectory profiles,
+    IBlockDirectory blocks,
+    ICurrentUser caller,
+    TimeProvider clock,
+    INotificationSender? notifications = null)
+    : IRequestHandler<InviteToCommunityCommand, CommunityMemberDto>
+{
+    /// <summary>Open invitations a community can have at once.</summary>
+    public const int MaxOpenInvites = 100;
+
+    public async Task<CommunityMemberDto> Handle(InviteToCommunityCommand request, CancellationToken cancellationToken)
+    {
+        var userId = caller.RequireUserId();
+        var community = await CommunityAccess.RequireAsync(communities, request.Slug, cancellationToken);
+        await CommunityAccess.RequireModeratorAsync(communities, community, userId, cancellationToken);
+        var handle = request.Handle.Trim().TrimStart('@');
+        var invitee = await profiles.FindByHandleAsync(handle, cancellationToken);
+        if (invitee is null || invitee.UserId == userId || await blocks.IsBlockedAsync(invitee.UserId, userId, cancellationToken)
+            || await blocks.IsBlockedAsync(userId, invitee.UserId, cancellationToken))
+        {
+            // Someone who blocked you looks the same as nobody.
+            throw PostAccess.Invalid(nameof(request.Handle), $"There's nobody called @{handle} you can invite.");
+        }
+
+        if (community.Visibility == CommunityVisibility.Private && !invitee.IsAdult)
+        {
+            throw PostAccess.Invalid(nameof(request.Handle), "Private communities are for adults.");
+        }
+
+        var now = clock.GetUtcNow();
+        var member = await communities.GetMemberAsync(community.Id, invitee.UserId, cancellationToken);
+        switch (member?.Status)
+        {
+            case CommunityMembershipStatus.Member:
+                throw PostAccess.Invalid(nameof(request.Handle), $"@{invitee.Handle} is already a member.");
+            case CommunityMembershipStatus.Banned:
+                throw PostAccess.Invalid(nameof(request.Handle), $"@{invitee.Handle} is banned. Unban them first.");
+            case CommunityMembershipStatus.Invited:
+                break;
+            case CommunityMembershipStatus.Requested:
+                // They'd asked already: inviting them lets them in.
+                member.Approve(now);
+                community.CountMembers(1);
+                await communities.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(invitee.UserId, NotificationType.CommunityRequestApproved, userId, community, cancellationToken);
+                break;
+            default:
+                if (await communities.CountInvitesAsync(community.Id, cancellationToken) >= MaxOpenInvites)
+                {
+                    throw PostAccess.Invalid(nameof(request.Handle), $"A community can have {MaxOpenInvites} open invitations. Cancel some first.");
+                }
+
+                member = CommunityMember.Invite(community.Id, invitee.UserId, userId, now);
+                communities.Add(member);
+                await communities.SaveChangesAsync(cancellationToken);
+                await NotifyAsync(invitee.UserId, NotificationType.CommunityInvite, userId, community, cancellationToken);
+                break;
+        }
+
+        var people = await profiles.GetSummariesAsync([invitee.UserId], cancellationToken);
+        return new CommunityMemberDto(AuthorDto.From(invitee.UserId, people), member.Role, member.Status, member.JoinedAt ?? member.InvitedAt);
+    }
+
+    private async Task NotifyAsync(Guid to, NotificationType type, Guid actor, Community community, CancellationToken cancellationToken)
+    {
+        if (notifications is not null)
+        {
+            await notifications.NotifyAsync(
+                new NotificationRequest(to, type, actor, PostTitle: community.Name, Link: $"/communities/{community.Slug}"),
+                cancellationToken);
         }
     }
 }

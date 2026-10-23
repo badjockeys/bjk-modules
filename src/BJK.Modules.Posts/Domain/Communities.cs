@@ -29,6 +29,9 @@ public enum CommunityMembershipStatus
 
     /// <summary>Removed and kept out: can't join or ask again.</summary>
     Banned,
+
+    /// <summary>Invited by an admin or moderator; joins when they accept (private communities too).</summary>
+    Invited,
 }
 
 /// <summary>Discussions and their replies: shown, or taken down (by the author, the community or a moderator).</summary>
@@ -192,7 +195,8 @@ public sealed record CommunityDetails(
     CommunityArea? Area = null);
 
 /// <summary>
-/// Someone's place in a community (<c>posts.CommunityMembers</c>): asking to join, a member (with a role), or banned.
+/// Someone's place in a community (<c>posts.CommunityMembers</c>): asking to join, invited, a member (with a role), or
+/// banned.
 /// </summary>
 public sealed class CommunityMember
 {
@@ -212,6 +216,11 @@ public sealed class CommunityMember
     public DateTimeOffset? RequestedAt { get; private set; }
 
     public DateTimeOffset? JoinedAt { get; private set; }
+
+    /// <summary>The admin or moderator who invited them, while the invitation is open.</summary>
+    public Guid? InvitedBy { get; private set; }
+
+    public DateTimeOffset? InvitedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -244,10 +253,24 @@ public sealed class CommunityMember
             UpdatedAt = now,
         };
 
+    public static CommunityMember Invite(Guid communityId, Guid userId, Guid invitedBy, DateTimeOffset now) =>
+        new()
+        {
+            CommunityId = communityId,
+            UserId = userId,
+            Status = CommunityMembershipStatus.Invited,
+            Role = CommunityRole.Member,
+            InvitedBy = invitedBy,
+            InvitedAt = now,
+            UpdatedAt = now,
+        };
+
+    /// <summary>A request approved, or an invitation accepted: they're a member now.</summary>
     public void Approve(DateTimeOffset now)
     {
         Status = CommunityMembershipStatus.Member;
         JoinedAt = now;
+        InvitedBy = null;
         UpdatedAt = now;
     }
 

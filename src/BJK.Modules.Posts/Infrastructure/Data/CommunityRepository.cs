@@ -53,8 +53,14 @@ public interface ICommunityRepository
     /// <summary>People in a community with this status, newest first (members: admins and moderators first).</summary>
     Task<(IReadOnlyList<CommunityMember> Items, int TotalCount)> ListMembersAsync(Guid communityId, CommunityMembershipStatus status, int page, int pageSize, CancellationToken cancellationToken);
 
-    /// <summary>Members with a role (admins and moderators).</summary>
+    /// <summary>How many admins it has.</summary>
     Task<int> CountAdminsAsync(Guid communityId, CancellationToken cancellationToken);
+
+    /// <summary>Its admins and moderators (told about requests to join).</summary>
+    Task<IReadOnlyList<Guid>> ListModeratorIdsAsync(Guid communityId, CancellationToken cancellationToken);
+
+    /// <summary>Open invitations, for the cap on them.</summary>
+    Task<int> CountInvitesAsync(Guid communityId, CancellationToken cancellationToken);
 
     void Add(Community community);
 
@@ -195,6 +201,17 @@ internal sealed class CommunityRepository(PostsDbContext db) : ICommunityReposit
             m => m.CommunityId == communityId && m.Status == CommunityMembershipStatus.Member && m.Role == CommunityRole.Admin,
             cancellationToken);
 
+    public async Task<IReadOnlyList<Guid>> ListModeratorIdsAsync(Guid communityId, CancellationToken cancellationToken) =>
+        await db.CommunityMembers
+            .Where(m => m.CommunityId == communityId && m.Status == CommunityMembershipStatus.Member
+                && (m.Role == CommunityRole.Admin || m.Role == CommunityRole.Moderator))
+            .Select(m => m.UserId)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+    public Task<int> CountInvitesAsync(Guid communityId, CancellationToken cancellationToken) =>
+        db.CommunityMembers.CountAsync(m => m.CommunityId == communityId && m.Status == CommunityMembershipStatus.Invited, cancellationToken);
+
     public void Add(Community community) => db.Communities.Add(community);
 
     public void Add(CommunityMember member) => db.CommunityMembers.Add(member);
@@ -281,6 +298,8 @@ internal sealed class CommunityRepository(PostsDbContext db) : ICommunityReposit
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        // Invitations they sent and nobody has accepted go with them.
+        await db.CommunityMembers.Where(m => m.InvitedBy == userId && m.Status == CommunityMembershipStatus.Invited).ExecuteDeleteAsync(cancellationToken);
         await db.CommunityReplies.Where(r => r.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.CommunityDiscussions.Where(d => d.AuthorId == userId).ExecuteDeleteAsync(cancellationToken);
         await db.CommunityPosts.Where(s => s.SharedBy == userId).ExecuteDeleteAsync(cancellationToken);

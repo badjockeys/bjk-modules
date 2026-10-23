@@ -103,7 +103,7 @@ public sealed class CommunitiesController(ISender sender) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Members (anyone who can see inside), or requests and bans (admins and moderators).</summary>
+    /// <summary>Members (anyone who can see inside), or requests, invitations and bans (admins and moderators).</summary>
     [HttpGet("{slug}/members")]
     [ProducesResponseType<PagedResult<CommunityMemberDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
@@ -114,6 +114,17 @@ public sealed class CommunitiesController(ISender sender) : ControllerBase
         [FromQuery] int pageSize = 30,
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListCommunityMembersQuery(slug, status, page, pageSize), cancellationToken);
+
+    /// <summary>
+    /// Invite someone by their @handle (admins and moderators). They're notified and join when they accept (Join);
+    /// decline with Leave, and cancel an invitation by removing them. Inviting someone who asked to join lets them in.
+    /// </summary>
+    [HttpPost("{slug}/invites")]
+    [ProducesResponseType<CommunityMemberDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    public async Task<CommunityMemberDto> Invite(string slug, CommunityInviteRequest request, CancellationToken cancellationToken) =>
+        await sender.Send(new InviteToCommunityCommand(slug, request.Handle), cancellationToken);
 
     /// <summary>Approve or decline someone's request to join (admins and moderators).</summary>
     [HttpPost("{slug}/requests/{userId:guid}")]
@@ -277,6 +288,8 @@ public sealed record CommunityRequest(
     int? RadiusKm = null);
 
 public sealed record CommunityRequestDecision(bool Approve);
+
+public sealed record CommunityInviteRequest(string Handle);
 
 public sealed record CommunityRoleRequest(CommunityRole Role);
 

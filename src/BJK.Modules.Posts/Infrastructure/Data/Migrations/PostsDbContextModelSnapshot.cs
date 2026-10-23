@@ -421,6 +421,12 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("InvitedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("InvitedBy")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("JoinedAt")
                         .HasColumnType("datetimeoffset");
 
