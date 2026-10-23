@@ -1,15 +1,314 @@
-diff --git a/src/web/src/components/communities/ShareToCommunityDialog.tsx b/src/web/src/components/communities/ShareToCommunityDialog.tsx
-index 935847a..c485879 100644
---- a/src/web/src/components/communities/ShareToCommunityDialog.tsx
-+++ b/src/web/src/components/communities/ShareToCommunityDialog.tsx
-@@ -91,7 +91,9 @@ export function ShareToCommunityDialog({ postId, onClose }: { postId: string; on
-               </span>
-               <span className="col" style={{ gap: 0 }}>
-                 <strong className="small">{c.name}</strong>
--                <span className={`small${c.recommended && !c.alreadyShared ? " community-share-why" : " muted"}`}>
-+                <span
-+                  className={`small${c.recommended && !c.alreadyShared ? " community-share-why" : " muted"}`}
-+                >
-                   {c.alreadyShared
-                     ? "Already shared here"
-                     : c.recommended
+diff --git a/src/web/src/actions/vault.ts b/src/web/src/actions/vault.ts
+index 3e84c19..4fe2dbe 100644
+--- a/src/web/src/actions/vault.ts
++++ b/src/web/src/actions/vault.ts
+@@ -19,7 +19,10 @@ import { asUser } from "./run";
+ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ 
+ /** Your vault: limits, space used and a page of one collection's clips. */
+-export async function getVault(page = 1, collection: VaultCollection = "all"): Promise<ActionResult<VaultDto>> {
++export async function getVault(
++  page = 1,
++  collection: VaultCollection = "all",
++): Promise<ActionResult<VaultDto>> {
+   const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+   return asUser((t) => api().vault.get(t, safePage, 30, sourceOf(collection)));
+ }
+diff --git a/src/web/src/app/account/page.tsx b/src/web/src/app/account/page.tsx
+index ae70f53..f0fe36f 100644
+--- a/src/web/src/app/account/page.tsx
++++ b/src/web/src/app/account/page.tsx
+@@ -93,7 +93,9 @@ export default async function AccountPage() {
+         <Link href="/account/vault" className="list-item">
+           <span className="col" style={{ gap: 0 }}>
+             <span>Vault</span>
+-            <span className="small muted">Your original clips, kept privately as evidence, and automatic saving</span>
++            <span className="small muted">
++              Your original clips, kept privately as evidence, and automatic saving
++            </span>
+           </span>
+           <ChevronIcon />
+         </Link>
+diff --git a/src/web/src/app/account/vault/page.tsx b/src/web/src/app/account/vault/page.tsx
+index 63c24b6..c257a29 100644
+--- a/src/web/src/app/account/vault/page.tsx
++++ b/src/web/src/app/account/vault/page.tsx
+@@ -39,10 +39,15 @@ export default async function VaultPage({
+       vault = await api().vault.get(token, 1, 30, sourceOf(collection));
+     } else {
+       // Each collection's first four clips, for its tile, and its count.
+-      const pages = await Promise.all(VAULT_COLLECTIONS.map((c) => api().vault.get(token, 1, 4, sourceOf(c.id))));
++      const pages = await Promise.all(
++        VAULT_COLLECTIONS.map((c) => api().vault.get(token, 1, 4, sourceOf(c.id))),
++      );
+       vault = pages[0]!;
+       covers = Object.fromEntries(
+-        VAULT_COLLECTIONS.map((c, i) => [c.id, { clips: pages[i]!.clips.items, total: pages[i]!.clips.totalCount }]),
++        VAULT_COLLECTIONS.map((c, i) => [
++          c.id,
++          { clips: pages[i]!.clips.items, total: pages[i]!.clips.totalCount },
++        ]),
+       );
+     }
+   } catch {
+@@ -52,7 +57,12 @@ export default async function VaultPage({
+   return (
+     <AppShell viewer={viewer} section="account" returnTo={here} bottomNav>
+       {vault ? (
+-        <VaultScreen key={collection ?? "collections"} vault={vault} collection={collection} covers={covers} />
++        <VaultScreen
++          key={collection ?? "collections"}
++          vault={vault}
++          collection={collection}
++          covers={covers}
++        />
+       ) : (
+         <p className="error pad" role="alert">
+           We couldn&apos;t load your vault. Please try again.
+diff --git a/src/web/src/app/u/[handle]/page.tsx b/src/web/src/app/u/[handle]/page.tsx
+index 83acd78..fba122a 100644
+--- a/src/web/src/app/u/[handle]/page.tsx
++++ b/src/web/src/app/u/[handle]/page.tsx
+@@ -201,10 +201,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
+           Replies
+         </Link>
+         {isMe ? (
+-          <Link
+-            href="/account/vault"
+-            className="tab"
+-          >
++          <Link href="/account/vault" className="tab">
+             Vault
+           </Link>
+         ) : null}
+diff --git a/src/web/src/components/VaultScreen.tsx b/src/web/src/components/VaultScreen.tsx
+index f9d73e3..0a2ef18 100644
+--- a/src/web/src/components/VaultScreen.tsx
++++ b/src/web/src/components/VaultScreen.tsx
+@@ -59,7 +59,10 @@ function usePreviews(clips: readonly VaultClipDto[]): Record<string, string> {
+     // Results are always kept, even if the clips shown have changed since: they're asked for once.
+     void getVaultPreviews(ids).then((result) => {
+       if (result.ok) {
+-        setUrls((current) => ({ ...current, ...Object.fromEntries(result.data.map((p) => [p.clipId, p.url])) }));
++        setUrls((current) => ({
++          ...current,
++          ...Object.fromEntries(result.data.map((p) => [p.clipId, p.url])),
++        }));
+       }
+     });
+   }, [wanted]);
+@@ -333,7 +336,12 @@ export function VaultScreen({
+           </ul>
+           {hasMore ? (
+             <div className="centre pad">
+-              <button type="button" className="btn btn-sm" disabled={more.loading} onClick={() => void loadMore()}>
++              <button
++                type="button"
++                className="btn btn-sm"
++                disabled={more.loading}
++                onClick={() => void loadMore()}
++              >
+                 {more.loading ? "Loading…" : "Show more"}
+               </button>
+             </div>
+@@ -363,7 +371,7 @@ function Thumb({ clip, url }: { clip: VaultClipDto; url: string | undefined }) {
+   const kind = previewable(clip.contentType);
+   if (url && kind === "image" && !failed) {
+     // A signed link to the owner's own original: next/image can't optimise it.
+-    // eslint-disable-next-line @next/next/no-img-element
++     
+     return <img src={url} alt="" className="vault-thumb" loading="lazy" onError={() => setFailed(true)} />;
+   }
+   if (url && kind === "video" && !failed) {
+@@ -433,11 +441,15 @@ function ClipViewer({
+         {url && kind === "video" ? (
+           <video src={url} controls playsInline className="vault-view-media" />
+         ) : url && kind === "image" ? (
+-          // eslint-disable-next-line @next/next/no-img-element
++           
+           <img src={url} alt={clip.fileName} className="vault-view-media" />
+         ) : (
+           <span className="vault-view-media vault-thumb-icon">
+-            {clip.mediaType === "Video" ? <VideoIcon color="#00607F" /> : <PhotoIcon size={28} color="#00607F" />}
++            {clip.mediaType === "Video" ? (
++              <VideoIcon color="#00607F" />
++            ) : (
++              <PhotoIcon size={28} color="#00607F" />
++            )}
+           </span>
+         )}
+       </div>
+@@ -468,7 +480,11 @@ function ClipViewer({
+           Download
+         </button>
+         {clip.source === "Upload" ? (
+-          <Link className="btn btn-sm" href={`/post/new?vault=${clip.id}`} aria-label={`Post ${clip.fileName}`}>
++          <Link
++            className="btn btn-sm"
++            href={`/post/new?vault=${clip.id}`}
++            aria-label={`Post ${clip.fileName}`}
++          >
+             Post it
+           </Link>
+         ) : null}
+diff --git a/src/web/src/lib/generated/api.ts b/src/web/src/lib/generated/api.ts
+index f2043c0..e6721dd 100644
+--- a/src/web/src/lib/generated/api.ts
++++ b/src/web/src/lib/generated/api.ts
+@@ -1110,11 +1110,13 @@ export class VaultClient {
+     }
+ 
+     /**
+-     * Your vault: your plan's limits, the space used, and a page of your clips, newest first.
++     * Your vault: your plan's limits, the space used, whether your posts' originals are kept automatically, and a page
++    of your clips, newest first. source lists only clips from your posts (Post) or only uploads.
+      * @param page (optional) 
+      * @param pageSize (optional) 
++     * @param source (optional) 
+      */
+-    vault_Get(page?: number | undefined, pageSize?: number | undefined, signal?: AbortSignal): Promise<VaultDto> {
++    vault_Get(page?: number | undefined, pageSize?: number | undefined, source?: VaultClipSource | null | undefined, signal?: AbortSignal): Promise<VaultDto> {
+         let url_ = this.baseUrl + "/api/vault?";
+         if (page === null)
+             throw new globalThis.Error("The parameter 'page' cannot be null.");
+@@ -1124,6 +1126,8 @@ export class VaultClient {
+             throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
+         else if (pageSize !== undefined)
+             url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
++        if (source !== undefined && source !== null)
++            url_ += "source=" + encodeURIComponent("" + source) + "&";
+         url_ = url_.replace(/[?&]$/, "");
+ 
+         let options_: RequestInit = {
+@@ -1302,6 +1306,97 @@ export class VaultClient {
+         return Promise.resolve<VaultDownloadDto>(null as any);
+     }
+ 
++    /**
++     * Turn keeping your posts' originals automatically on or off. Off: a post's originals are deleted once it's
++    published. Clips already in your vault stay.
++     */
++    vault_UpdateSettings(request: VaultSettingsRequest, signal?: AbortSignal): Promise<VaultSettingsDto> {
++        let url_ = this.baseUrl + "/api/vault/settings";
++        url_ = url_.replace(/[?&]$/, "");
++
++        const content_ = JSON.stringify(request);
++
++        let options_: RequestInit = {
++            body: content_,
++            method: "PUT",
++            signal,
++            headers: {
++                "Content-Type": "application/json",
++                "Accept": "application/json"
++            }
++        };
++
++        return this.http.fetch(url_, options_).then((_response: Response) => {
++            return this.processVault_UpdateSettings(_response);
++        });
++    }
++
++    protected processVault_UpdateSettings(response: Response): Promise<VaultSettingsDto> {
++        const status = response.status;
++        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
++        if (status === 200) {
++            return response.text().then((_responseText) => {
++            let result200: any = null;
++            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as VaultSettingsDto;
++            return result200;
++            });
++        } else if (status !== 200 && status !== 204) {
++            return response.text().then((_responseText) => {
++            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
++            });
++        }
++        return Promise.resolve<VaultSettingsDto>(null as any);
++    }
++
++    /**
++     * Links, valid for 15 minutes, that show your clips in the page (for thumbnails). Up to 50 at a time; ids that
++    aren't your stored clips are left out.
++     * @param ids (optional) 
++     */
++    vault_Previews(ids?: string[] | undefined, signal?: AbortSignal): Promise<VaultPreviewDto[]> {
++        let url_ = this.baseUrl + "/api/vault/previews?";
++        if (ids === null)
++            throw new globalThis.Error("The parameter 'ids' cannot be null.");
++        else if (ids !== undefined)
++            ids && ids.forEach(item => { url_ += "ids=" + encodeURIComponent("" + item) + "&"; });
++        url_ = url_.replace(/[?&]$/, "");
++
++        let options_: RequestInit = {
++            method: "GET",
++            signal,
++            headers: {
++                "Accept": "application/json"
++            }
++        };
++
++        return this.http.fetch(url_, options_).then((_response: Response) => {
++            return this.processVault_Previews(_response);
++        });
++    }
++
++    protected processVault_Previews(response: Response): Promise<VaultPreviewDto[]> {
++        const status = response.status;
++        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
++        if (status === 200) {
++            return response.text().then((_responseText) => {
++            let result200: any = null;
++            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as VaultPreviewDto[];
++            return result200;
++            });
++        } else if (status === 400) {
++            return response.text().then((_responseText) => {
++            let result400: any = null;
++            result400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ValidationProblemDetails;
++            return throwException("A server side error occurred.", status, _responseText, _headers, result400);
++            });
++        } else if (status !== 200 && status !== 204) {
++            return response.text().then((_responseText) => {
++            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
++            });
++        }
++        return Promise.resolve<VaultPreviewDto[]>(null as any);
++    }
++
+     /**
+      * Delete one of your clips now.
+      */
+@@ -9432,6 +9527,8 @@ export interface VaultDto {
+     maxFileBytes: number;
+     /** The clips. */
+     clips: PagedResultOfVaultClipDto;
++    /** Whether the originals of your published posts go into your vault automatically (on by default). */
++    autoSave: boolean;
+ }
+ 
+ /** The caller's subscription plan. Logged-out callers have no plan (modules treat them separately). Billing isn't built yet: the identity server will issue the access-token claim plan (free, premium or premium_plus) once it is; until then every signed-in user is Free unless listed in Plans:Overrides. */
+@@ -9489,6 +9586,24 @@ export interface VaultDownloadDto {
+     expiresAt: string;
+ }
+ 
++/** Your vault's settings. */
++export interface VaultSettingsDto {
++    /** Whether the originals of your published posts go into your vault automatically. */
++    autoSave: boolean;
++}
++
++export interface VaultSettingsRequest {
++    autoSave: boolean;
++}
++
++/** A short-lived link that shows one of your clips in the page (not as a download). */
++export interface VaultPreviewDto {
++    /** The clip. */
++    clipId: string;
++    /** Shows the original, for a thumbnail or preview. */
++    url: string;
++}
++
+ /** Your home area and area alerts. PlaceName and the position (to about 1 km) are null until you choose a home area. CanUseAlerts is true on Premium and Premium +. Quiet hours are 22:00 to 07:00 UK time; Instant alerts are capped at InstantDailyCap a day; summaries go at 08:00. */
+ export interface AreaSettingsDto {
+     placeName: string | null;

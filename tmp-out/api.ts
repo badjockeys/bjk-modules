@@ -1110,11 +1110,13 @@ export class VaultClient {
     }
 
     /**
-     * Your vault: your plan's limits, the space used, and a page of your clips, newest first.
+     * Your vault: your plan's limits, the space used, whether your posts' originals are kept automatically, and a page
+    of your clips, newest first. source lists only clips from your posts (Post) or only uploads.
      * @param page (optional) 
      * @param pageSize (optional) 
+     * @param source (optional) 
      */
-    vault_Get(page?: number | undefined, pageSize?: number | undefined, signal?: AbortSignal): Promise<VaultDto> {
+    vault_Get(page?: number | undefined, pageSize?: number | undefined, source?: VaultClipSource | null | undefined, signal?: AbortSignal): Promise<VaultDto> {
         let url_ = this.baseUrl + "/api/vault?";
         if (page === null)
             throw new globalThis.Error("The parameter 'page' cannot be null.");
@@ -1124,6 +1126,8 @@ export class VaultClient {
             throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
         else if (pageSize !== undefined)
             url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
+        if (source !== undefined && source !== null)
+            url_ += "source=" + encodeURIComponent("" + source) + "&";
         url_ = url_.replace(/[?&]$/, "");
 
         let options_: RequestInit = {
@@ -1300,6 +1304,97 @@ export class VaultClient {
             });
         }
         return Promise.resolve<VaultDownloadDto>(null as any);
+    }
+
+    /**
+     * Turn keeping your posts' originals automatically on or off. Off: a post's originals are deleted once it's
+    published. Clips already in your vault stay.
+     */
+    vault_UpdateSettings(request: VaultSettingsRequest, signal?: AbortSignal): Promise<VaultSettingsDto> {
+        let url_ = this.baseUrl + "/api/vault/settings";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(request);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "PUT",
+            signal,
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processVault_UpdateSettings(_response);
+        });
+    }
+
+    protected processVault_UpdateSettings(response: Response): Promise<VaultSettingsDto> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as VaultSettingsDto;
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<VaultSettingsDto>(null as any);
+    }
+
+    /**
+     * Links, valid for 15 minutes, that show your clips in the page (for thumbnails). Up to 50 at a time; ids that
+    aren't your stored clips are left out.
+     * @param ids (optional) 
+     */
+    vault_Previews(ids?: string[] | undefined, signal?: AbortSignal): Promise<VaultPreviewDto[]> {
+        let url_ = this.baseUrl + "/api/vault/previews?";
+        if (ids === null)
+            throw new globalThis.Error("The parameter 'ids' cannot be null.");
+        else if (ids !== undefined)
+            ids && ids.forEach(item => { url_ += "ids=" + encodeURIComponent("" + item) + "&"; });
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            signal,
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processVault_Previews(_response);
+        });
+    }
+
+    protected processVault_Previews(response: Response): Promise<VaultPreviewDto[]> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as VaultPreviewDto[];
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            result400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ValidationProblemDetails;
+            return throwException("A server side error occurred.", status, _responseText, _headers, result400);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<VaultPreviewDto[]>(null as any);
     }
 
     /**
@@ -9432,6 +9527,8 @@ export interface VaultDto {
     maxFileBytes: number;
     /** The clips. */
     clips: PagedResultOfVaultClipDto;
+    /** Whether the originals of your published posts go into your vault automatically (on by default). */
+    autoSave: boolean;
 }
 
 /** The caller's subscription plan. Logged-out callers have no plan (modules treat them separately). Billing isn't built yet: the identity server will issue the access-token claim plan (free, premium or premium_plus) once it is; until then every signed-in user is Free unless listed in Plans:Overrides. */
@@ -9487,6 +9584,24 @@ export interface VaultDownloadDto {
     url: string;
     /** When the link stops working. */
     expiresAt: string;
+}
+
+/** Your vault's settings. */
+export interface VaultSettingsDto {
+    /** Whether the originals of your published posts go into your vault automatically. */
+    autoSave: boolean;
+}
+
+export interface VaultSettingsRequest {
+    autoSave: boolean;
+}
+
+/** A short-lived link that shows one of your clips in the page (not as a download). */
+export interface VaultPreviewDto {
+    /** The clip. */
+    clipId: string;
+    /** Shows the original, for a thumbnail or preview. */
+    url: string;
 }
 
 /** Your home area and area alerts. PlaceName and the position (to about 1 km) are null until you choose a home area. CanUseAlerts is true on Premium and Premium +. Quiet hours are 22:00 to 07:00 UK time; Instant alerts are capped at InstantDailyCap a day; summaries go at 08:00. */
