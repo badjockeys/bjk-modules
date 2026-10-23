@@ -41,6 +41,7 @@ public sealed record MediaProcessingJob(
         MediaJobStep.Segment => $"{MediaId:D}/r{Revision}/s{Segment}",
         MediaJobStep.Assemble => $"{MediaId:D}/r{Revision}/assemble",
         MediaJobStep.Visibility => $"{MediaId:D}/visibility/{RequestId:N}",
+        MediaJobStep.ShareCopy => $"{MediaId:D}/share/{RequestId:N}",
         _ => MediaId.ToString("D"),
     };
 
@@ -52,6 +53,16 @@ public sealed record MediaProcessingJob(
         new(media.Id, media.UserId, media.MediaType, media.OriginalKey, media.OriginalContentType)
         {
             Step = MediaJobStep.Visibility,
+            Revision = media.Revision,
+            RequestId = Guid.NewGuid(),
+        };
+
+    /// <summary>The job that makes the vertical copy of a video for sharing (see <see cref="MediaJobStep.ShareCopy"/>).</summary>
+    /// <param name="media">The video.</param>
+    public static MediaProcessingJob ForShareCopy(MediaItem media) =>
+        new(media.Id, media.UserId, media.MediaType, media.OriginalKey, media.OriginalContentType)
+        {
+            Step = MediaJobStep.ShareCopy,
             Revision = media.Revision,
             RequestId = Guid.NewGuid(),
         };
@@ -89,4 +100,10 @@ public enum MediaJobStep
     /// from the current mark, not the one at the time of queueing, so repeats and out-of-order jobs are harmless.
     /// </summary>
     Visibility,
+
+    /// <summary>
+    /// Make the vertical copy of a Ready video for sharing (<see cref="Domain.ShareCopy"/>) from its published, blurred and
+    /// silent file. Never changes the media: if it fails, only the copy is marked Failed.
+    /// </summary>
+    ShareCopy,
 }

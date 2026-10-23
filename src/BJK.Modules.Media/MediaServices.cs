@@ -118,6 +118,7 @@ public static class MediaServices
             }));
         services.TryAddScoped<IMediaRepository, MediaRepository>();
         services.TryAddScoped<IKnownImageRepository, KnownImageRepository>();
+        services.TryAddScoped<IShareCopyStore, ShareCopyStore>();
 
         services.AddOptions<MediaOptions>()
             .Bind(configuration.GetSection(MediaOptions.SectionName))

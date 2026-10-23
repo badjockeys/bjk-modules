@@ -162,6 +162,20 @@ internal sealed class S3MediaStorage(IAmazonS3 s3, IOptions<MediaStorageOptions>
         }
     }
 
+    public async Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, string fileName, CancellationToken cancellationToken)
+    {
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _options.OriginalsBucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = (clock.GetUtcNow() + lifetime).UtcDateTime,
+            Protocol = _protocol,
+        };
+        request.ResponseHeaderOverrides.ContentDisposition = $"attachment; filename=\"{fileName}\"";
+        return new Uri(await s3.GetPreSignedURLAsync(request));
+    }
+
     public async Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken)
     {
         var url = await s3.GetPreSignedURLAsync(new GetPreSignedUrlRequest

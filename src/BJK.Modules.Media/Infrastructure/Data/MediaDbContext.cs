@@ -24,6 +24,9 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
 
     public DbSet<VideoSegment> VideoSegments => Set<VideoSegment>();
 
+    /// <summary>Vertical copies of videos made for sharing (<c>media.ShareCopies</c>).</summary>
+    public DbSet<ShareCopy> ShareCopies => Set<ShareCopy>();
+
 
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
 
@@ -124,6 +127,21 @@ internal sealed class SensitiveMediaMarkConfiguration : IEntityTypeConfiguration
 
         // Removed with the media row (e.g. when an account is permanently deleted).
         builder.HasOne<MediaItem>().WithMany().HasForeignKey(m => m.MediaId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class ShareCopyConfiguration : IEntityTypeConfiguration<ShareCopy>
+{
+    public void Configure(EntityTypeBuilder<ShareCopy> builder)
+    {
+        builder.ToTable("ShareCopies");
+        builder.HasKey(c => c.MediaId);
+        builder.Property(c => c.MediaId).ValueGeneratedNever();
+        builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.Key).HasMaxLength(MediaItem.KeyMaxLength);
+
+        // Removed with the media row (e.g. when an account is permanently deleted).
+        builder.HasOne<MediaItem>().WithMany().HasForeignKey(c => c.MediaId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

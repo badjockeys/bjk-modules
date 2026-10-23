@@ -1,6 +1,7 @@
 using BJK.Modules.Media.UseCases;
 using BJK.Modules.Media.UseCases.Delete;
 using BJK.Modules.Media.UseCases.Get;
+using BJK.Modules.Media.UseCases.Share;
 using BJK.Modules.Media.UseCases.Upload;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Security;
@@ -58,6 +59,28 @@ public sealed class MediaController(ISender sender) : ControllerBase
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default) =>
         await sender.Send(new ListMyMediaQuery(page, pageSize), cancellationToken);
+
+    /// <summary>
+    /// Your video's vertical copy for TikTok, Reels, Shorts and X: whether it's been made, and a short-lived download
+    /// link once it has. Only the uploader can see it; anyone else gets 404.
+    /// </summary>
+    [HttpGet("{id:guid}/share-copy")]
+    [ProducesResponseType<ShareCopyDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ShareCopyDto> GetShareCopy(Guid id, CancellationToken cancellationToken) =>
+        await sender.Send(new GetShareCopyQuery(id), cancellationToken);
+
+    /// <summary>
+    /// Ask for your video's vertical copy for sharing: 1080×1920, made from the published (blurred, silent) file with a
+    /// small watermark and an end card. Returns at once (Rendering); poll <c>GET /api/media/{id}/share-copy</c>. If one
+    /// is already made or being made, that's returned instead. Not for photos or videos marked sensitive (400).
+    /// </summary>
+    [HttpPost("{id:guid}/share-copy")]
+    [ProducesResponseType<ShareCopyDto>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RequestShareCopy(Guid id, CancellationToken cancellationToken) =>
+        Accepted(await sender.Send(new RequestShareCopyCommand(id), cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
