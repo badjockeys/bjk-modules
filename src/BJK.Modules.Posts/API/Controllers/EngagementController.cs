@@ -104,6 +104,18 @@ public sealed class EngagementController(ISender sender) : ControllerBase
     public async Task<ActionResult<PostReachDto>> Reach(Guid id, CancellationToken cancellationToken) =>
         Ok(await sender.Send(new GetPostReachQuery(id), cancellationToken));
 
+    /// <summary>
+    /// Your post's analytics: views, local views, reactions, comments and shares over time (hourly for 48 hours,
+    /// then daily, then weekly after 90 days). Its author only; on Free the points are locked (totals only).
+    /// </summary>
+    [HttpGet("{id:guid}/analytics")]
+    [Authorize(Policy = PostsModule.UsePolicy)]
+    [ProducesResponseType<PostAnalyticsDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PostAnalyticsDto>> Analytics(Guid id, CancellationToken cancellationToken) =>
+        Ok(await sender.Send(new GetPostAnalyticsQuery(id), cancellationToken));
+
     /// <summary>Your settings for your own posts: when votes on them close.</summary>
     [HttpGet("preferences")]
     [Authorize(Policy = PostsModule.UsePolicy)]
