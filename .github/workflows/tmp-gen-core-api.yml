@@ -1,0 +1,57 @@
+# TEMPORARY (never merged): builds bjk-core's API from the feature branch below with this repo's package access
+# (bjk-core can't read BJK.Modules.Chat until it's granted), regenerates the web app's API client and pushes it here.
+name: tmp-gen-core-api
+
+on:
+  push:
+    branches: [tmp/gen-core-api]
+
+permissions:
+  contents: write
+  packages: read
+
+env:
+  CORE_REF: feature/ask-bad-jockeys
+  NuGetPackageSourceCredentials_badjockeys: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }}
+  ConnectionStrings__BadJockeysDatabase: Server=localhost,1433;Database=badjockeys;User Id=sa;Password=Ci-Passw0rd-2026;TrustServerCertificate=True
+  Authentication__Authority: http://localhost:5999
+  Authentication__RequireHttpsMetadata: "false"
+  Cors__AllowedOrigins__0: http://localhost:3000
+  Captcha__TurnstileSecretKey: 1x0000000000000000000000000000000AA
+  Media__Storage__ServiceUrl: http://localhost:9090
+  Media__Storage__AccessKeyId: ci-s3
+  Media__Storage__SecretAccessKey: ci-s3-secret
+  Media__Storage__OriginalsBucket: bjk-ci-originals
+  Media__Storage__PublicBucket: bjk-ci-public
+  Media__Storage__PublicBaseUrl: http://localhost:9090/bjk-ci-public/
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: badjockeys/bjk-core
+          ref: ${{ env.CORE_REF }}
+          path: core
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: core/global.json
+      - name: Build the API and regenerate the client
+        working-directory: core
+        run: |
+          dotnet restore BJK.Core.slnx > ../dotnet.log 2>&1 || echo "RESTORE FAILED" >> ../dotnet.log
+          dotnet build BJK.Core.slnx --configuration Release --no-restore -p:GenerateApiClient=true >> ../dotnet.log 2>&1 || echo "BUILD FAILED" >> ../dotnet.log
+          tail -60 ../dotnet.log
+      - name: Push the results
+        run: |
+          mkdir -p tmp-out
+          cp core/src/web/src/lib/generated/api.ts tmp-out/api.ts
+          grep -v "warning NU" dotnet.log | tail -150 > tmp-out/dotnet.log || true
+          git -C core rev-parse HEAD > tmp-out/core-sha.txt
+          git config user.name "tmp-gen"
+          git config user.email "noreply@anthropic.com"
+          git add tmp-out
+          git commit -m "tmp: generated API client" --allow-empty
+          git push origin HEAD:tmp/gen-core-api
