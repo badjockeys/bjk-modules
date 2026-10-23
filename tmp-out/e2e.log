@@ -3,52 +3,95 @@
 > playwright test
 
 
-Running 45 tests using 1 worker
+Running 47 tests using 1 worker
 
-  ✓   1 [desktop] › e2e/communities.spec.ts:12:5 › members see a community's shared posts and can reply to its discussions (1.1s)
-  ✓   2 [desktop] › e2e/communities.spec.ts:34:5 › a private community stays locked until you're let in (446ms)
-  ✓   3 [desktop] › e2e/communities.spec.ts:45:7 › sharing when posting › the composer recommends the community covering where it happened and shares into it (1.0s)
-  ✓   4 [desktop] › e2e/communities.spec.ts:82:5 › an admin invites someone, who hears about it and accepts (897ms)
-  ✓   5 [desktop] › e2e/communities.spec.ts:100:5 › replying to someone's discussion tells them (610ms)
-  ✓   6 [desktop] › e2e/communities.spec.ts:114:5 › an author shares a post that's already up into another community (610ms)
-  ✓   7 [desktop] › e2e/feed.spec.ts:9:5 › visitors see the feed, sensitive posts blurred and no comments (728ms)
-  ✓   8 [desktop] › e2e/feed.spec.ts:55:5 › members who haven't verified their age are offered the age check for sensitive posts (599ms)
-  ✓   9 [desktop] › e2e/feed.spec.ts:77:5 › category trends show each type's line, total and change; Free is the last 7 days (424ms)
-  ✓  10 [desktop] › e2e/feed.spec.ts:98:5 › Premium members choose a longer range and narrow trends to an area (576ms)
-  ✓  11 [desktop] › e2e/feed.spec.ts:110:5 › hashtags in posts link to the tag's page, and Trending shows tags and places (672ms)
-  ✓  12 [desktop] › e2e/feed.spec.ts:129:5 › category pages filter the feed, from Category trends, with an empty state (710ms)
-  ✓  13 [desktop] › e2e/feed.spec.ts:154:5 › signing in goes to the identity server and comes back to the page (852ms)
-  ✓  14 [desktop] › e2e/feed.spec.ts:183:5 › members can sign out (710ms)
-  ✓  15 [desktop] › e2e/feed.spec.ts:190:5 › members switch between For you, Following and a custom timeline, and follow people (1.7s)
-  ✓  16 [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page (901ms)
-  ✓  17 [desktop] › e2e/map.spec.ts:9:5 › visitors are asked to sign in to see the incident map (334ms)
-  ✓  18 [desktop] › e2e/map.spec.ts:18:5 › Free members get the 7-day preview with filters locked, and area figures (650ms)
-  ✓  19 [desktop] › e2e/map.spec.ts:39:5 › Premium members filter by vehicle and conditions (877ms)
-  ✓  20 [desktop] › e2e/post.spec.ts:12:7 › posting › a photo post goes live after processing (6.0s)
-  ✓  21 [desktop] › e2e/post.spec.ts:78:7 › posting › the composer pops out in a dialog from the top of the feed and closes after posting (2.0s)
-  ✓  22 [desktop] › e2e/post.spec.ts:149:7 › posting › closing a started post offers to keep it as a draft, which reopens later and posts (1.8s)
-  ✓  23 [desktop] › e2e/post.spec.ts:204:7 › posting › a passenger approves their tag from the account page (605ms)
-  ✓  24 [desktop] › e2e/post.spec.ts:217:5 › typing # in a post suggests hashtags, most used first (624ms)
-  ✓  25 [desktop] › e2e/post.spec.ts:228:5 › the post's author hides a comment and turns comments off (893ms)
-  ✓  26 [desktop] › e2e/post.spec.ts:253:5 › comment, reply and react (1.7s)
-  ✓  27 [desktop] › e2e/post.spec.ts:344:5 › members report a post from its ⋯ menu (556ms)
-  ✓  28 [desktop] › e2e/post.spec.ts:362:5 › the bell shows unread notifications until you open them (1.1s)
-  ✓  29 [desktop] › e2e/post.spec.ts:385:5 › Premium members choose a home area and switch on area alerts (1.5s)
-  ✓  30 [desktop] › e2e/post.spec.ts:404:5 › Free members can set a home area but alerts are Premium (1.1s)
-  ✓  31 [desktop] › e2e/post.spec.ts:412:5 › vote on who's at fault, then save the post to bookmarks (717ms)
-  ✓  32 [desktop] › e2e/post.spec.ts:431:5 › new members get three welcome steps after making a profile (459ms)
-  ✓  33 [desktop] › e2e/post.spec.ts:439:5 › authors can report their post to the police: the portal in England and Wales, 101 elsewhere (458ms)
-  ✓  34 [desktop] › e2e/post.spec.ts:462:5 › other people's posts don't offer to report them to the police (357ms)
-  ✓  35 [desktop] › e2e/post.spec.ts:468:5 › authors download their video for TikTok, Reels and Shorts, with a caption to paste (3.8s)
-  ✓  36 [desktop] › e2e/post.spec.ts:486:5 › other people's videos can't be downloaded for sharing (434ms)
-  ✓  37 [desktop] › e2e/post.spec.ts:493:5 › your vault keeps clips you add, which you can post or delete (994ms)
-  ✓  38 [desktop] › e2e/post.spec.ts:529:5 › automatic saving of your posts' originals can be turned off, and the profile tab leads to the vault (888ms)
-  ✓  39 [desktop] › e2e/post.spec.ts:551:5 › other people's profiles have no vault (392ms)
-  ✓  40 [desktop] › e2e/post.spec.ts:557:5 › a Premium author opens their post's analytics, as charts or a table (502ms)
-  ✓  41 [desktop] › e2e/post.spec.ts:571:5 › members keep their household cars and pick one when posting (633ms)
-  ✓  42 [desktop] › e2e/reels.spec.ts:9:5 › visitors watch their free reels, then are asked to join (8.4s)
-  ✓  43 [desktop] › e2e/reels.spec.ts:41:5 › members see every reel, with no count or category filter, and can open the premium page (471ms)
-  ✓  44 [desktop] › e2e/report.spec.ts:9:5 › anyone can report content with the public form (2.2s)
-  ✓  45 [mobile] › e2e/mobile.spec.ts:9:5 › phones get the sign-up bar, then the glass tab bar and + button once signed in (994ms)
+  ✓   1 [desktop] › e2e/chat.spec.ts:9:5 › Premium members ask about their own town and open the answer on the map (1.6s)
+  ✓   2 [desktop] › e2e/chat.spec.ts:35:5 › Free members without a home area see untailored examples and the locked preview (611ms)
+  ✓   3 [desktop] › e2e/communities.spec.ts:12:5 › members see a community's shared posts and can reply to its discussions (779ms)
+  ✓   4 [desktop] › e2e/communities.spec.ts:34:5 › a private community stays locked until you're let in (453ms)
+  ✓   5 [desktop] › e2e/communities.spec.ts:45:7 › sharing when posting › the composer recommends the community covering where it happened and shares into it (1.0s)
+  ✓   6 [desktop] › e2e/communities.spec.ts:82:5 › an admin invites someone, who hears about it and accepts (924ms)
+  ✓   7 [desktop] › e2e/communities.spec.ts:100:5 › replying to someone's discussion tells them (673ms)
+  ✓   8 [desktop] › e2e/communities.spec.ts:114:5 › an author shares a post that's already up into another community (619ms)
+  ✓   9 [desktop] › e2e/feed.spec.ts:9:5 › visitors see the feed, sensitive posts blurred and no comments (751ms)
+  ✓  10 [desktop] › e2e/feed.spec.ts:55:5 › members who haven't verified their age are offered the age check for sensitive posts (624ms)
+  ✓  11 [desktop] › e2e/feed.spec.ts:77:5 › category trends show each type's line, total and change; Free is the last 7 days (461ms)
+  ✓  12 [desktop] › e2e/feed.spec.ts:98:5 › Premium members choose a longer range and narrow trends to an area (576ms)
+  ✓  13 [desktop] › e2e/feed.spec.ts:110:5 › hashtags in posts link to the tag's page, and Trending shows tags and places (692ms)
+  ✓  14 [desktop] › e2e/feed.spec.ts:129:5 › category pages filter the feed, from Category trends, with an empty state (767ms)
+  ✓  15 [desktop] › e2e/feed.spec.ts:154:5 › signing in goes to the identity server and comes back to the page (967ms)
+  ✓  16 [desktop] › e2e/feed.spec.ts:183:5 › members can sign out (764ms)
+  ✓  17 [desktop] › e2e/feed.spec.ts:190:5 › members switch between For you, Following and a custom timeline, and follow people (1.6s)
+  ✘  18 [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page (10.5s)
+  ✓  19 [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page (retry #1) (987ms)
+  ✓  20 [desktop] › e2e/map.spec.ts:9:5 › visitors are asked to sign in to see the incident map (316ms)
+  ✓  21 [desktop] › e2e/map.spec.ts:18:5 › Free members get the 7-day preview with filters locked, and area figures (650ms)
+  ✓  22 [desktop] › e2e/map.spec.ts:39:5 › Premium members filter by vehicle and conditions (814ms)
+  ✓  23 [desktop] › e2e/post.spec.ts:12:7 › posting › a photo post goes live after processing (6.0s)
+  ✓  24 [desktop] › e2e/post.spec.ts:78:7 › posting › the composer pops out in a dialog from the top of the feed and closes after posting (2.2s)
+  ✓  25 [desktop] › e2e/post.spec.ts:149:7 › posting › closing a started post offers to keep it as a draft, which reopens later and posts (2.0s)
+  ✓  26 [desktop] › e2e/post.spec.ts:204:7 › posting › a passenger approves their tag from the account page (747ms)
+  ✓  27 [desktop] › e2e/post.spec.ts:217:5 › typing # in a post suggests hashtags, most used first (666ms)
+  ✓  28 [desktop] › e2e/post.spec.ts:228:5 › the post's author hides a comment and turns comments off (879ms)
+  ✓  29 [desktop] › e2e/post.spec.ts:253:5 › comment, reply and react (1.9s)
+  ✓  30 [desktop] › e2e/post.spec.ts:344:5 › members report a post from its ⋯ menu (597ms)
+  ✓  31 [desktop] › e2e/post.spec.ts:362:5 › the bell shows unread notifications until you open them (1.3s)
+  ✓  32 [desktop] › e2e/post.spec.ts:385:5 › Premium members choose a home area and switch on area alerts (1.6s)
+  ✓  33 [desktop] › e2e/post.spec.ts:404:5 › Free members can set a home area but alerts are Premium (709ms)
+  ✓  34 [desktop] › e2e/post.spec.ts:412:5 › vote on who's at fault, then save the post to bookmarks (747ms)
+  ✓  35 [desktop] › e2e/post.spec.ts:431:5 › new members get three welcome steps after making a profile (491ms)
+  ✓  36 [desktop] › e2e/post.spec.ts:439:5 › authors can report their post to the police: the portal in England and Wales, 101 elsewhere (508ms)
+  ✓  37 [desktop] › e2e/post.spec.ts:462:5 › other people's posts don't offer to report them to the police (416ms)
+  ✓  38 [desktop] › e2e/post.spec.ts:468:5 › authors download their video for TikTok, Reels and Shorts, with a caption to paste (3.9s)
+  ✓  39 [desktop] › e2e/post.spec.ts:486:5 › other people's videos can't be downloaded for sharing (467ms)
+  ✓  40 [desktop] › e2e/post.spec.ts:493:5 › your vault keeps clips you add, which you can post or delete (1.1s)
+  ✓  41 [desktop] › e2e/post.spec.ts:529:5 › automatic saving of your posts' originals can be turned off, and the profile tab leads to the vault (1.0s)
+  ✓  42 [desktop] › e2e/post.spec.ts:551:5 › other people's profiles have no vault (417ms)
+  ✓  43 [desktop] › e2e/post.spec.ts:557:5 › a Premium author opens their post's analytics, as charts or a table (538ms)
+  ✓  44 [desktop] › e2e/post.spec.ts:571:5 › members keep their household cars and pick one when posting (686ms)
+  ✓  45 [desktop] › e2e/reels.spec.ts:9:5 › visitors watch their free reels, then are asked to join (8.4s)
+  ✓  46 [desktop] › e2e/reels.spec.ts:41:5 › members see every reel, with no count or category filter, and can open the premium page (573ms)
+  ✓  47 [desktop] › e2e/report.spec.ts:9:5 › anyone can report content with the public form (2.4s)
+  ✓  48 [mobile] › e2e/mobile.spec.ts:9:5 › phones get the sign-up bar, then the glass tab bar and + button once signed in (1.1s)
 
-  45 passed (58.2s)
+
+  1) [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('button', { name: '↑ 1 new post' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('button', { name: '↑ 1 new post' }) with timeout 10000ms
+      - waiting for getByRole('button', { name: '↑ 1 new post' })
+
+
+      245 |   await page.clock.fastForward(31_000);
+      246 |   const pill = page.getByRole("button", { name: "↑ 1 new post" });
+    > 247 |   await expect(pill).toBeVisible();
+          |                      ^
+      248 |   await expect(page.getByText("Straight through the red on the A6")).toBeHidden();
+      249 |
+      250 |   await pill.click();
+        at /home/runner/work/bjk-modules/bjk-modules/core/src/web/e2e/feed.spec.ts:247:22
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/feed-new-posts-show-as-a-p-35b83--without-reloading-the-page-desktop/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/feed-new-posts-show-as-a-p-35b83--without-reloading-the-page-desktop/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/feed-new-posts-show-as-a-p-35b83--without-reloading-the-page-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/feed-new-posts-show-as-a-p-35b83--without-reloading-the-page-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 flaky
+    [desktop] › e2e/feed.spec.ts:230:5 › new posts show as a pill at the top of the feed, without reloading the page 
+  46 passed (1.2m)

@@ -7,6 +7,116 @@
 /* eslint-disable */
 // ReSharper disable InconsistentNaming
 
+export class ChatClient {
+    private http: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> };
+    private baseUrl: string;
+    protected jsonParseReviver: ((key: string, value: any) => any) | undefined = undefined;
+
+    constructor(baseUrl?: string, http?: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> }) {
+        this.http = http ? http : window as any;
+        this.baseUrl = baseUrl ?? "";
+    }
+
+    /**
+     * Ask a question. Premium and Premium + only (403 for Free). Counts against the day's allowance: 403 with
+    code = daily_limit once it's used up; 503 when the model can't be reached (the question doesn't
+    count). Send the window's earlier turns in history; nothing is stored.
+     */
+    chat_Ask(command: AskQuestionCommand, signal?: AbortSignal): Promise<ChatReplyDto> {
+        let url_ = this.baseUrl + "/api/chat/questions";
+        url_ = url_.replace(/[?&]$/, "");
+
+        const content_ = JSON.stringify(command);
+
+        let options_: RequestInit = {
+            body: content_,
+            method: "POST",
+            signal,
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processChat_Ask(_response);
+        });
+    }
+
+    protected processChat_Ask(response: Response): Promise<ChatReplyDto> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ChatReplyDto;
+            return result200;
+            });
+        } else if (status === 400) {
+            return response.text().then((_responseText) => {
+            let result400: any = null;
+            result400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ValidationProblemDetails;
+            return throwException("A server side error occurred.", status, _responseText, _headers, result400);
+            });
+        } else if (status === 403) {
+            return response.text().then((_responseText) => {
+            let result403: any = null;
+            result403 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ProblemDetails;
+            return throwException("A server side error occurred.", status, _responseText, _headers, result403);
+            });
+        } else if (status === 503) {
+            return response.text().then((_responseText) => {
+            let result503: any = null;
+            result503 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ProblemDetails;
+            return throwException("A server side error occurred.", status, _responseText, _headers, result503);
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<ChatReplyDto>(null as any);
+    }
+
+    /**
+     * The caller's allowance today and example questions. Anyone may call: Free and logged-out callers get
+    canAsk false, for the locked preview.
+     */
+    chat_GetUsage(signal?: AbortSignal): Promise<ChatUsageDto> {
+        let url_ = this.baseUrl + "/api/chat/usage";
+        url_ = url_.replace(/[?&]$/, "");
+
+        let options_: RequestInit = {
+            method: "GET",
+            signal,
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+
+        return this.http.fetch(url_, options_).then((_response: Response) => {
+            return this.processChat_GetUsage(_response);
+        });
+    }
+
+    protected processChat_GetUsage(response: Response): Promise<ChatUsageDto> {
+        const status = response.status;
+        let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+            let result200: any = null;
+            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ChatUsageDto;
+            return result200;
+            });
+        } else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+            return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve<ChatUsageDto>(null as any);
+    }
+}
+
 export class AdminKnownImagesClient {
     private http: { fetch(url: RequestInfo, init?: RequestInit): Promise<Response> };
     private baseUrl: string;
@@ -9270,6 +9380,143 @@ export class PersonalDataClient {
     }
 }
 
+/** The answer to a question plus the allowance after it. */
+export interface ChatReplyDto {
+    /** The answer. */
+    answer: ChatAnswerDto;
+    /** The allowance after it. */
+    usage: ChatUsageDto;
+    /** Send it back with this turn in history; turns without a valid token are ignored. Null for blocked questions, which aren't part of the history. */
+    turnToken: string | null;
+}
+
+/** One answer: a sentence or two, maybe a card, maybe a map link, and follow-up suggestions. */
+export interface ChatAnswerDto {
+    text: string;
+    kind: ChatAnswerKind;
+    card: ChatCardDto | null;
+    map: ChatMapLinkDto | null;
+    suggestions: string[];
+}
+
+/** What sort of reply this is, so the app can style it. */
+export type ChatAnswerKind = "Answer" | "TooFew" | "Clarify" | "Refused" | "OutOfScope" | "Failed";
+
+/** A card drawn from the query's rows (never from figures the model wrote). Points for number, line, bar and places cards; Columns and Rows for tables ("<3" where hidden). */
+export interface ChatCardDto {
+    type: ChatCardType;
+    title: string | null;
+    valueLabel: string | null;
+    points: ChatCardPointDto[];
+    columns: string[] | null;
+    rows: (string | null)[][] | null;
+    hiddenRows: number;
+}
+
+/** How to draw the card under the answer. */
+export type ChatCardType = "Number" | "Line" | "Bar" | "Places" | "Table";
+
+/** One bar, point or place on a card. */
+export interface ChatCardPointDto {
+    /** The label: a month, hour, kind of incident, place... */
+    label: string;
+    /** The figure, or null when it's hidden. */
+    value: number | null;
+    /** True when there were fewer than 3 incidents, so the figure isn't shown ("fewer than 3"). */
+    hidden: boolean;
+    /** For places: the area's latitude (about 1 km squares), when known. */
+    latitude: number | null;
+    /** For places: the area's longitude, when known. */
+    longitude: number | null;
+}
+
+/** "Open on the map": where to centre the heat map and which subcategories to filter by. */
+export interface ChatMapLinkDto {
+    /** Centre latitude, if the answer was about an area. */
+    latitude: number | null;
+    /** Centre longitude. */
+    longitude: number | null;
+    /** Suggested zoom. */
+    zoom: number | null;
+    /** Up to 3 subcategory names (as in the heat map's categories filter). */
+    subcategories: string[];
+}
+
+/** The caller's allowance. Free members (and logged-out callers) get CanAsk false and the example questions for the locked preview. */
+export interface ChatUsageDto {
+    /** free, premium or premium_plus; null when logged out. */
+    plan: string | null;
+    /** True for Premium and Premium +. */
+    canAsk: boolean;
+    /** Questions per UK day (0 for Free). */
+    limit: number;
+    /** Asked today. */
+    used: number;
+    /** Left today. */
+    remaining: number;
+    /** When the allowance starts again (midnight UK time). */
+    resetsAt: string;
+    /** The earliest date the plan can ask about (null for Free). */
+    historyFrom: string | null;
+    /** Questions to show in the empty chat or the locked preview. */
+    exampleQuestions: string[];
+    /** True when the member has reached the day's misuse limit (too many blocked questions): asking returns 429
+chat_paused until ResetsAt. */
+    paused: boolean;
+}
+
+export interface ProblemDetails {
+    type: string | null;
+    title: string | null;
+    status: number | null;
+    detail: string | null;
+    instance: string | null;
+
+    [key: string]: any;
+}
+
+export interface HttpValidationProblemDetails extends ProblemDetails {
+    errors: { [key: string]: string[]; };
+
+    [key: string]: any;
+}
+
+export interface ValidationProblemDetails extends HttpValidationProblemDetails {
+    errors: { [key: string]: string[]; };
+
+    [key: string]: any;
+}
+
+/** Ask Bad Jockeys a question. Premium and Premium + only, within the day's allowance, and through the guard rails (ChatGuard): blocked questions don't use the allowance but count towards Chat:MisuseLimit. */
+export interface AskQuestionCommand {
+    /** The question, up to 500 characters. */
+    question: string;
+    /** Earlier turns in this chat window, oldest first (the app keeps them; nothing is stored). */
+    history: ChatTurn[] | null;
+    /** Where "near me" means: the member's location, if the app has it. Without it, their home area (if they've chosen one). */
+    near: NearPlace | null;
+}
+
+/** One earlier turn of this chat window, sent back by the app (history lives only in the window). */
+export interface ChatTurn {
+    /** What the member asked. */
+    question: string;
+    /** The answer's text. */
+    answer: string;
+    /** The turnToken that came with the answer. Turns without a valid one are dropped. */
+    token: string | null;
+}
+
+/** A place the member is asking from: their location or home area, sent by the app. */
+export interface NearPlace {
+    /** Latitude. */
+    latitude: number;
+    /** Longitude. */
+    longitude: number;
+    /** The place's name if the app knows it (e.g. "Prescot"). */
+    name: string | null;
+}
+
 export interface PagedResultOfKnownImageMatchDto {
     items: KnownImageMatchDto[];
     page: number;
@@ -9294,28 +9541,6 @@ export interface KnownImageMatchDto {
 
 /** How a known image is identified. */
 export type KnownHashKind = "Pdq" | "Sha256" | "Md5";
-
-export interface ProblemDetails {
-    type: string | null;
-    title: string | null;
-    status: number | null;
-    detail: string | null;
-    instance: string | null;
-
-    [key: string]: any;
-}
-
-export interface HttpValidationProblemDetails extends ProblemDetails {
-    errors: { [key: string]: string[]; };
-
-    [key: string]: any;
-}
-
-export interface ValidationProblemDetails extends HttpValidationProblemDetails {
-    errors: { [key: string]: string[]; };
-
-    [key: string]: any;
-}
 
 export interface MarkReportedRequest {
     /** The authority's reference for the report. */
