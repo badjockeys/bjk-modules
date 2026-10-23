@@ -216,7 +216,7 @@ public sealed class VaultTests
         await Keeper().KeepAsync([full, already, fromVault], null, Ct);
 
         _store.DidNotReceive().Add(Arg.Any<VaultClip>());
-        await _storage.DidNotReceiveWithAnyArgs().CopyInsideAsync(default, default!, default, default!, default);
+        await _storage.DidNotReceiveWithAnyArgs().CopyInsideAsync(default, default!, default, default!, Ct);
     }
 
     [Fact]
