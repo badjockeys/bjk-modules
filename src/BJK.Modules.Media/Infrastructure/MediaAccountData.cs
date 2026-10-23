@@ -11,7 +11,7 @@ namespace BJK.Modules.Media.Infrastructure;
 /// When an account is permanently deleted, removes every file in the user's storage folder and every media row.
 /// Deactivation needs nothing here: the media is only reachable through the user's (now hidden) posts and profile.
 /// </summary>
-internal sealed class MediaUserLifecycleHandler(IMediaRepository media, IMediaStorage storage) : IUserLifecycleHandler
+internal sealed class MediaUserLifecycleHandler(IMediaRepository media, IMediaStorage storage, IVaultStore? vault = null) : IUserLifecycleHandler
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
     {
@@ -22,7 +22,49 @@ internal sealed class MediaUserLifecycleHandler(IMediaRepository media, IMediaSt
 
         // Files first: if that fails part-way, the rows still say what's left and the event is retried.
         await storage.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+        if (vault is not null)
+        {
+            await vault.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+        }
+
         await media.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
+    }
+}
+
+/// <summary>The user's vault: each clip's details, with a 24-hour link to download it.</summary>
+internal sealed class VaultPersonalDataExporter(MediaDbContext db, IMediaStorage storage) : IPersonalDataExporter
+{
+    private static readonly TimeSpan DownloadLinkLifetime = TimeSpan.FromHours(24);
+
+    public string Section => "vault";
+
+    public async Task<object?> ExportAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var clips = await db.VaultClips.AsNoTracking()
+            .Where(c => c.UserId == userId && c.Status == VaultClipStatus.Stored)
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var result = new List<object>(clips.Count);
+        foreach (var c in clips)
+        {
+            result.Add(new
+            {
+                c.Id,
+                c.FileName,
+                c.MediaType,
+                c.ContentType,
+                c.SizeBytes,
+                c.Source,
+                c.PostId,
+                c.CreatedAt,
+                c.ExpiresAt,
+                DownloadUrl = await storage.CreateDownloadUrlAsync(MediaBucket.Vault, c.Key, DownloadLinkLifetime, cancellationToken),
+                DownloadUrlExpiresIn = "24 hours",
+            });
+        }
+
+        return result;
     }
 }
 

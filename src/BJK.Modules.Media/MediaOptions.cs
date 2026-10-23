@@ -133,6 +133,76 @@ public sealed class MediaStorageOptions
 
     /// <summary>The bucket sensitive files go in: <see cref="SensitiveBucket"/>, or the originals bucket.</summary>
     public string EffectiveSensitiveBucket => string.IsNullOrWhiteSpace(SensitiveBucket) ? OriginalsBucket! : SensitiveBucket.Trim();
+
+    /// <summary>
+    /// Private bucket for the vault: people's original clips, kept for up to 3 years (owner, 23 Oct 2026). Needs a CORS
+    /// rule allowing <c>PUT</c> and <c>GET</c> from the web app (people upload to it and the composer reads clips back
+    /// to post them), and no lifecycle rule. Optional: if not set, vault files go in the sensitive bucket (which has no
+    /// lifecycle rule either) under a <c>vault/</c> folder. Never the originals bucket, whose 90-day rule would cut
+    /// people's clips short.
+    /// </summary>
+    public string? VaultBucket { get; set; }
+
+    /// <summary>The bucket vault files go in: <see cref="VaultBucket"/>, or the sensitive bucket.</summary>
+    public string EffectiveVaultBucket => string.IsNullOrWhiteSpace(VaultBucket) ? EffectiveSensitiveBucket : VaultBucket.Trim();
+}
+
+/// <summary>
+/// The vault: each person's original clips, kept privately for them (owner, 23 Oct 2026). Section <c>Media:Vault</c>.
+/// How long clips are kept and how much space there is depend on the plan; every value has the owner's default.
+/// </summary>
+public sealed class VaultOptions
+{
+    public const string SectionName = "Media:Vault";
+
+    /// <summary>Days a clip is kept on Free (30).</summary>
+    [Range(1, 36500)]
+    public int FreeRetentionDays { get; set; } = 30;
+
+    /// <summary>Days a clip is kept on Premium (12 months).</summary>
+    [Range(1, 36500)]
+    public int PremiumRetentionDays { get; set; } = 365;
+
+    /// <summary>Days a clip is kept on Premium + (3 years: the time limit for personal injury claims).</summary>
+    [Range(1, 36500)]
+    public int PremiumPlusRetentionDays { get; set; } = 3 * 365;
+
+    /// <summary>Space on Free (2 GB).</summary>
+    [Range(1, long.MaxValue)]
+    public long FreeQuotaBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Space on Premium (25 GB).</summary>
+    [Range(1, long.MaxValue)]
+    public long PremiumQuotaBytes { get; set; } = 25L * 1024 * 1024 * 1024;
+
+    /// <summary>Space on Premium + (100 GB).</summary>
+    [Range(1, long.MaxValue)]
+    public long PremiumPlusQuotaBytes { get; set; } = 100L * 1024 * 1024 * 1024;
+
+    /// <summary>Largest single file uploaded straight to the vault (2 GB, about 10 minutes of dashcam footage).</summary>
+    [Range(1, long.MaxValue)]
+    public long MaxFileBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>
+    /// After a move to a plan that keeps clips for less time, how long clips that would now be out of date are still
+    /// kept (7 days), so nobody loses a clip without notice.
+    /// </summary>
+    [Range(0, 365)]
+    public int DowngradeNoticeDays { get; set; } = 7;
+
+    public TimeSpan RetentionFor(Shared.Security.SubscriptionPlan plan) => TimeSpan.FromDays(plan switch
+    {
+        Shared.Security.SubscriptionPlan.PremiumPlus => PremiumPlusRetentionDays,
+        Shared.Security.SubscriptionPlan.Premium => PremiumRetentionDays,
+        _ => FreeRetentionDays,
+    });
+
+    public long QuotaFor(Shared.Security.SubscriptionPlan plan) => plan switch
+    {
+        Shared.Security.SubscriptionPlan.PremiumPlus => PremiumPlusQuotaBytes,
+        Shared.Security.SubscriptionPlan.Premium => PremiumQuotaBytes,
+        _ => FreeQuotaBytes,
+    };
 }
 
 /// <summary>The processing worker. Section <c>Media:Processing</c>; only the worker host reads it.</summary>

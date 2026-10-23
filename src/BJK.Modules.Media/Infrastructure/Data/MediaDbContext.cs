@@ -27,6 +27,12 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
     /// <summary>Vertical copies of videos made for sharing (<c>media.ShareCopies</c>).</summary>
     public DbSet<ShareCopy> ShareCopies => Set<ShareCopy>();
 
+    /// <summary>People's original clips, kept for them (<c>media.VaultClips</c>).</summary>
+    public DbSet<VaultClip> VaultClips => Set<VaultClip>();
+
+    /// <summary>The plan last seen for each person using the vault (<c>media.VaultAccounts</c>).</summary>
+    public DbSet<VaultAccount> VaultAccounts => Set<VaultAccount>();
+
 
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
 
@@ -127,6 +133,38 @@ internal sealed class SensitiveMediaMarkConfiguration : IEntityTypeConfiguration
 
         // Removed with the media row (e.g. when an account is permanently deleted).
         builder.HasOne<MediaItem>().WithMany().HasForeignKey(m => m.MediaId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class VaultClipConfiguration : IEntityTypeConfiguration<VaultClip>
+{
+    public void Configure(EntityTypeBuilder<VaultClip> builder)
+    {
+        builder.ToTable("VaultClips");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Id).ValueGeneratedNever();
+        builder.Property(c => c.Source).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.MediaType).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.FileName).HasMaxLength(VaultClip.FileNameMaxLength);
+        builder.Property(c => c.ContentType).HasMaxLength(MediaItem.ContentTypeMaxLength);
+        builder.Property(c => c.Key).HasMaxLength(MediaItem.KeyMaxLength);
+
+        // A person's vault, newest first; the hourly cleanup by expiry; and "is this media's original kept already?".
+        builder.HasIndex(c => new { c.UserId, c.CreatedAt });
+        builder.HasIndex(c => new { c.Status, c.ExpiresAt });
+        builder.HasIndex(c => c.MediaId);
+    }
+}
+
+internal sealed class VaultAccountConfiguration : IEntityTypeConfiguration<VaultAccount>
+{
+    public void Configure(EntityTypeBuilder<VaultAccount> builder)
+    {
+        builder.ToTable("VaultAccounts");
+        builder.HasKey(a => a.UserId);
+        builder.Property(a => a.UserId).ValueGeneratedNever();
+        builder.Property(a => a.Plan).HasConversion<string>().HasMaxLength(20);
     }
 }
 

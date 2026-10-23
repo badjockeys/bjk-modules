@@ -27,7 +27,7 @@ public sealed class MediaController(ISender sender) : ControllerBase
     public async Task<IActionResult> RequestUpload(RequestUploadRequest request, CancellationToken cancellationToken)
     {
         var result = await sender.Send(
-            new RequestUploadCommand(request.FileName, request.ContentType, request.SizeBytes),
+            new RequestUploadCommand(request.FileName, request.ContentType, request.SizeBytes, request.VaultClipId),
             cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = result.MediaId }, result);
@@ -93,4 +93,8 @@ public sealed class MediaController(ISender sender) : ControllerBase
     }
 }
 
-public sealed record RequestUploadRequest(string FileName, string ContentType, long SizeBytes);
+/// <param name="FileName">The name on the device.</param>
+/// <param name="ContentType">The file's type.</param>
+/// <param name="SizeBytes">Its size.</param>
+/// <param name="VaultClipId">When posting a clip from your vault: the clip (see <c>/api/vault</c>).</param>
+public sealed record RequestUploadRequest(string FileName, string ContentType, long SizeBytes, Guid? VaultClipId = null);

@@ -50,6 +50,17 @@ public sealed class MediaModule(string connectionStringName) : IModule
         // Originals are deleted once their post is published; the sweeper catches the rest after 24 hours, and then
         // deletes uploads nothing uses (Posts and Profiles report what's in use through IMediaUsage).
         services.AddScoped<OriginalsCleanup>();
+
+        // The vault: people's originals, kept for them (owner, 23 Oct 2026).
+        services.AddOptions<VaultOptions>()
+            .Bind(configuration.GetSection(VaultOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.TryAddScoped<IVaultStore, VaultStore>();
+        services.AddScoped<VaultPlans>();
+        services.AddScoped<VaultKeeper>();
+        services.AddScoped<VaultCleanup>();
+        services.AddScoped<IPersonalDataExporter, VaultPersonalDataExporter>();
         services.AddScoped<UnusedMediaCleanup>();
         services.AddHostedService<OriginalsSweeper>();
         services.TryAddSingleton<IMediaJobQueue, MediaJobQueue>();
