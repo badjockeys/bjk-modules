@@ -99,6 +99,15 @@ src/
     Templates/                   SMSTemplates: the wording of every text we send
     Infrastructure/              Twilio sender; Log sender for local development
     SMSModule.cs                 Module entry point
+  BJK.Modules.Chat/              Ask Bad Jockeys, the Premium AI chat. Hosted by bjk-core
+    API/Controllers/             POST /api/chat/questions, GET /api/chat/usage
+    UseCases/                    AskQuestion (plan, daily limit, review log), allowance, answer and card DTOs
+    Agent/                       ChatAgent (the tool loop), AgentPrompt (rules, schema, worked examples),
+                                 Cards (charts drawn from the rows), the OpenAI-compatible model client
+    Sql/                         SqlGuard (T-SQL parser checks, plan date limit), the bjk_chat query runner,
+                                 SmallCounts (figures under 3 hidden)
+    Infrastructure/              chat.DailyUsage (one row per member per UK day), lifecycle and export
+    ChatModule.cs                Module entry point
 tests/
   BJK.Modules.Shared.Tests/
   BJK.Modules.Safety.Tests/
@@ -110,6 +119,7 @@ tests/
   BJK.Modules.Posts.Tests/
   BJK.Modules.Email.Tests/
   BJK.Modules.SMS.Tests/
+  BJK.Modules.Chat.Tests/        Includes Evaluation/: the ~200-question set and its opt-in run
 ```
 
 ## Hosting a module
@@ -168,6 +178,7 @@ Outside Development (DEV, QA, Staging and Live alike), a host refuses to start u
 | `Posts:AppUrl`, `Reels:ViewerKeySecret` | An https address; set | Posts module |
 | `Media:Storage:SensitiveBucket` | Set | Media module |
 | `Media:Redaction:FaceModelPath`, `PlateModelPath`, `PersonModelPath` | Set | Media worker |
+| `Chat:Model:Endpoint`, `ConnectionStrings:BadJockeysChat` | Set: the model server (ending `/v1`) and the bjk_chat login | Chat module |
 
 The modules' other checks (SendGrid or Twilio keys once chosen, the age check providers, storage settings and so on) still apply as before.
 
@@ -935,3 +946,41 @@ Both providers are called over their REST APIs with `HttpClient`, so there are n
 | `SMS:Twilio:FromNumber` | E.164 number or alphanumeric sender ID, used when there's no Messaging Service |
 
 Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to check numbers you collect.
+
+## Ask Bad Jockeys (Chat module)
+
+`BJK.Modules.Chat` is the Premium AI chat: members ask about reported bad driving in plain English ("Are close passes getting worse in Leeds?") and get a sentence or two plus a card drawn from the real figures. Plan and decisions: `claude/ai-chat-plan.md` in the project; wireframes: the "Ask Bad Jockeys: AI chat wireframes" design.
+
+```csharp
+builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJockeysDatabase", "BadJockeysChat"));
+```
+
+**How it answers.** `ChatAgent` gives the model (Qwen3 8B locally through Ollama, Qwen3 32B live on a serverless GPU, both through an OpenAI-compatible `/v1/chat/completions`) the rules, both views with every column described, the 74 subcategories and 22 worked examples (`AgentPrompt`), plus three tools: `run_sql`, `describe_table` and `answer`. The model writes a SELECT, reads the results (at most 50 rows), fixes and retries if the parser or the database sends a problem back, then calls `answer` with its text and the chart that fits. The card's figures come from the query's rows, never from the model's text. It stops after 8 model calls ("Sorry, I couldn't work that one out"; the question is given back). Members never see SQL: answers that show SQL or view names are sent back to the model.
+
+**What keeps it safe** (the database and our code, not the prompt):
+
+- **The bjk_chat login** (`ConnectionStrings:BadJockeysChat`) can read only `reporting.Incidents` and `reporting.Subcategories` (bjk-core `scripts/sql/reporting/login.sql`). The views hold no ids, members, text or exact pins (about 1 km squares).
+- **`SqlGuard`** parses every query with Microsoft's T-SQL parser (ScriptDom) and refuses anything but one SELECT: no INTO, variables, `@@` values, hints, `FOR XML/JSON`, `OPTION`, functions outside a short list (dates, text, maths, ranking, aggregates; no `STRING_AGG`), or tables other than the two views and WITH tables.
+- **Grouped counts only.** The outer SELECT must include a `COUNT(...)`, so no query lists single incidents.
+- **No repeated rows.** The incidents may be read once per query; no CROSS JOIN, APPLY, commas between tables, UNION, VALUES or table functions; joins must match on `Subcategory`. So a count is a real number of incidents and the "fewer than 3" rule can't be dodged by multiplying rows.
+- **Plan date limits.** The guard rewrites the one read of `reporting.Incidents` into `(SELECT * FROM reporting.Incidents WHERE IncidentDate >= @HistoryFrom)`: Premium a year back, Premium + five years (`Chat:HistoryDays`, the same as the heat map).
+- **5 seconds and 1,000 rows** per query.
+- **Counts under 3 hidden.** On any row whose incident count is 1 or 2, the count and every other aggregate column are blanked before the model sees them (it gets `"<3"`), and the card shows the row as hidden.
+
+**Limits.** Premium 20 questions a UK day, Premium + 100 (`Chat:DailyQuestions`), counted atomically in `chat.DailyUsage` (only today's row is kept; rows go with the account). Over the limit: 403 `daily_limit` with `resetsAt`. A question doesn't count when the model is down (503) or it couldn't work it out. Free members and logged-out callers get 403 on asking; `GET /api/chat/usage` gives them `canAsk: false` and example questions for the locked preview.
+
+**History** lives only in the chat window: the app sends the earlier turns (`history`, the last 6 are used) with each question. `near` (the member's location or home area, optional) makes "near me" a box of about 10 km; without it the model asks which town.
+
+**The review log.** Every answer is logged as event **4901** `ChatQuestionAnswered` with the plan, the kind of reply, the question and each query the model tried (with any problem, rows, hidden rows and time), and no member id. Event **4902** `ChatModelUnavailable` (warning) when the model can't be reached. Use them in Kibana to improve the column descriptions and worked examples: the model doesn't learn by itself.
+
+**The question set.** `tests/BJK.Modules.Chat.Tests/Evaluation/questions.json` has 205 real-style questions with the kind of reply expected. The run is a test skipped unless pointed at a model and database; see its README.
+
+| Setting | Meaning |
+|---|---|
+| `Chat:Model:Endpoint` | The model server's base address, ending `/v1` (Ollama: `http://localhost:11434/v1`). Empty: the chat answers 503 (Development only) |
+| `Chat:Model:Name` | Default `qwen3:8b`; live the 32B model's name on the GPU server |
+| `Chat:Model:ApiKey` | Secret. Sent as a bearer token when set (Ollama needs none) |
+| `Chat:Model:TimeoutSeconds` | Default 120: the GPU switches off when idle and the first question waits for it |
+| `Chat:DailyQuestions:Premium`, `:PremiumPlus` | Default 20 and 100 |
+| `Chat:HistoryDays:Premium`, `:PremiumPlus` | Default 365 and 1826 |
+| `ConnectionStrings:BadJockeysChat` | The bjk_chat login. Empty: the chat answers 503 (Development only) |

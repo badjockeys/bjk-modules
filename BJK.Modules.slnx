@@ -11,6 +11,7 @@
     <Project Path="src/BJK.Modules.Email/BJK.Modules.Email.csproj" />
     <Project Path="src/BJK.Modules.SMS/BJK.Modules.SMS.csproj" />
     <Project Path="src/BJK.Modules.Notifications/BJK.Modules.Notifications.csproj" />
+    <Project Path="src/BJK.Modules.Chat/BJK.Modules.Chat.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BJK.Modules.Shared.Tests/BJK.Modules.Shared.Tests.csproj" />
@@ -24,5 +25,6 @@
     <Project Path="tests/BJK.Modules.Email.Tests/BJK.Modules.Email.Tests.csproj" />
     <Project Path="tests/BJK.Modules.SMS.Tests/BJK.Modules.SMS.Tests.csproj" />
     <Project Path="tests/BJK.Modules.Notifications.Tests/BJK.Modules.Notifications.Tests.csproj" />
+    <Project Path="tests/BJK.Modules.Chat.Tests/BJK.Modules.Chat.Tests.csproj" />
   </Folder>
 </Solution>
