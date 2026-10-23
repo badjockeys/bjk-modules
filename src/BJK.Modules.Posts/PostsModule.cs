@@ -22,6 +22,7 @@ using BJK.Modules.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts;
@@ -150,6 +151,9 @@ public sealed class PostsModule(string connectionStringName) : IModule
         // Home timelines: For you (ranked, boosted near the home area), Following and custom timelines.
         services.AddScoped<ITimelineRepository, TimelineRepository>();
         services.AddHomeAreasFallback();
+
+        // Who's posting where, for Who to follow in the Profiles module.
+        services.Replace(ServiceDescriptor.Scoped<IActivePosters, ActivePosters>());
 
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();
