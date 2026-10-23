@@ -17,6 +17,16 @@ public sealed record VoteTally(IReadOnlyDictionary<VoteChoice, int> Counts, Vote
 /// <summary>How far a post reached, for its author: unique viewers, local ones, and shares.</summary>
 public sealed record PostReach(int Views, int LocalViews, int Shares);
 
+/// <summary>
+/// When each thing happened to a post, for its analytics: views (and whether each was local), reactions, visible
+/// comments and replies, and shares.
+/// </summary>
+public sealed record PostActivity(
+    IReadOnlyList<(DateTimeOffset At, bool IsLocal)> Views,
+    IReadOnlyList<DateTimeOffset> Reactions,
+    IReadOnlyList<DateTimeOffset> Comments,
+    IReadOnlyList<DateTimeOffset> Shares);
+
 /// <summary>A viewer having seen a post, to record.</summary>
 public sealed record ViewToRecord(Guid PostId, Guid ViewerKey, bool IsLocal);
 
@@ -71,6 +81,9 @@ public interface IEngagementRepository
     Task<bool> RecordShareAsync(PostShare share, CancellationToken cancellationToken);
 
     Task<PostReach> GetReachAsync(Guid postId, CancellationToken cancellationToken);
+
+    /// <summary>When each view, reaction, visible comment and share of a post happened.</summary>
+    Task<PostActivity> GetActivityAsync(Guid postId, CancellationToken cancellationToken);
 
     Task<AuthorPreferences?> GetPreferencesAsync(Guid userId, CancellationToken cancellationToken);
 
@@ -263,6 +276,19 @@ internal sealed class EngagementRepository(PostsDbContext db) : IEngagementRepos
             .ToListAsync(cancellationToken);
         var shares = await db.PostShares.CountAsync(s => s.PostId == postId, cancellationToken);
         return new PostReach(views.Sum(v => v.Count), views.Where(v => v.IsLocal).Sum(v => v.Count), shares);
+    }
+
+    public async Task<PostActivity> GetActivityAsync(Guid postId, CancellationToken cancellationToken)
+    {
+        var views = await db.PostViews.AsNoTracking().Where(v => v.PostId == postId)
+            .Select(v => new { v.ViewedAt, v.IsLocal }).ToListAsync(cancellationToken);
+        var reactions = await db.Reactions.AsNoTracking().Where(r => r.PostId == postId)
+            .Select(r => r.CreatedAt).ToListAsync(cancellationToken);
+        var comments = await db.Comments.AsNoTracking().Where(c => c.PostId == postId && c.Status == CommentStatus.Visible)
+            .Select(c => c.CreatedAt).ToListAsync(cancellationToken);
+        var shares = await db.PostShares.AsNoTracking().Where(s => s.PostId == postId)
+            .Select(s => s.SharedAt).ToListAsync(cancellationToken);
+        return new PostActivity(views.Select(v => (v.ViewedAt, v.IsLocal)).ToList(), reactions, comments, shares);
     }
 
     public Task<AuthorPreferences?> GetPreferencesAsync(Guid userId, CancellationToken cancellationToken) =>
