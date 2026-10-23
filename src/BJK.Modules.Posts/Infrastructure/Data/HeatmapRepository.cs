@@ -159,8 +159,8 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
         var types = TypeRows();
         var sql = $"""
             SELECT [t].[Name] AS [Key], COUNT(*) AS [Count]
-            FROM (SELECT [TypeFlags] FROM [posts].[Posts] WHERE {where}) AS [x]
-            JOIN (VALUES {types}) AS [t]([Name], [Bit]) ON ([x].[TypeFlags] & [t].[Bit]) <> 0
+            FROM (SELECT [TypeFlags], [TypeFlagsHigh] FROM [posts].[Posts] WHERE {where}) AS [x]
+            JOIN (VALUES {types}) AS [t]([Name], [Low], [High]) ON {TypeMatch}
             GROUP BY [t].[Name]
             ORDER BY COUNT(*) DESC, [t].[Name]
             """;
@@ -184,8 +184,8 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
         };
         var sql = $"""
             SELECT [t].[Name] AS [Key], CAST([x].[Period] AS datetime2) AS [Period], COUNT(*) AS [Count]
-            FROM (SELECT [TypeFlags], {start} AS [Period] FROM [posts].[Posts] WHERE {where}) AS [x]
-            JOIN (VALUES {types}) AS [t]([Name], [Bit]) ON ([x].[TypeFlags] & [t].[Bit]) <> 0
+            FROM (SELECT [TypeFlags], [TypeFlagsHigh], {start} AS [Period] FROM [posts].[Posts] WHERE {where}) AS [x]
+            JOIN (VALUES {types}) AS [t]([Name], [Low], [High]) ON {TypeMatch}
             GROUP BY [t].[Name], [x].[Period]
             ORDER BY [x].[Period], [t].[Name]
             """;
@@ -232,9 +232,11 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
 
         if (filter.Categories.Count > 0)
         {
-            // Any of the chosen types: one bitwise test on the post's TypeFlags.
-            parameters.Add(new SqlParameter("@types", SqlDbType.Int) { Value = IncidentTypeFlags.From(filter.Categories) });
-            sql.Append(" AND ([TypeFlags] & @types) <> 0");
+            // Any of the chosen subcategories: a bitwise test on each half of the post's flags.
+            var mask = IncidentTypeFlags.From(filter.Categories);
+            parameters.Add(new SqlParameter("@typesLow", SqlDbType.BigInt) { Value = mask.Low });
+            parameters.Add(new SqlParameter("@typesHigh", SqlDbType.BigInt) { Value = mask.High });
+            sql.Append(" AND (([TypeFlags] & @typesLow) <> 0 OR ([TypeFlagsHigh] & @typesHigh) <> 0)");
         }
 
         if (filter.Hours is { } hours)
@@ -316,9 +318,18 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
         sql.Append(" AND ").Append(column).Append(" IN (").Append(string.Join(", ", names)).Append(')');
     }
 
-    /// <summary>One row per type with its bit, from the enum (names and bits are code, not user input).</summary>
+    /// <summary>A post row [x] has the subcategory row [t].</summary>
+    private const string TypeMatch = "(([x].[TypeFlags] & [t].[Low]) <> 0 OR ([x].[TypeFlagsHigh] & [t].[High]) <> 0)";
+
+    /// <summary>
+    /// One row per subcategory with its two halves of bits, from the enum (names and bits are code, not user input).
+    /// Cast, as a literal above an int's range would otherwise be a decimal, which has no bitwise AND.
+    /// </summary>
     private static string TypeRows() => string.Join(", ", Enum.GetValues<IncidentCategory>()
-        .Select(t => $"(N'{t}', {IncidentTypeFlags.Bit(t)})"));
+        .Select(t => IncidentTypeFlags.Bit(t))
+        .Zip(Enum.GetValues<IncidentCategory>())
+        .Select(x => FormattableString.Invariant(
+            $"(N'{x.Second}', CAST({x.First.Low} AS bigint), CAST({x.First.High} AS bigint))")));
 
     private static SqlParameter Decimal(string name, decimal value) =>
         new(name, SqlDbType.Decimal) { Value = value, Precision = 18, Scale = 6 };

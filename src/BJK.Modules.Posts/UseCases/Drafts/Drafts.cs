@@ -142,7 +142,7 @@ public sealed class SaveDraftCommandValidator : AbstractValidator<SaveDraftComma
         RuleFor(c => c.Latitude).InclusiveBetween(-90m, 90m);
         RuleFor(c => c.Longitude).InclusiveBetween(-180m, 180m);
         RuleFor(c => c.Types)
-            .Must(t => t is null || t.Count <= Enum.GetValues<IncidentCategory>().Length)
+            .Must(t => t is null || t.Count <= IncidentTaxonomy.MaxPerPost)
             .WithMessage("Too many types of bad driving.");
         RuleForEach(c => c.Types).IsInEnum();
         RuleFor(c => c.Passengers)

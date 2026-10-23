@@ -42,14 +42,23 @@ public sealed class Post
 
     public string? Description { get; private set; }
 
-    /// <summary>The main type of bad driving: the first one the author chose. See <see cref="Types"/> for all of them.</summary>
+    /// <summary>
+    /// The main subcategory of bad driving: the first one the author chose. Its vote is the post's. See
+    /// <see cref="Types"/> for all of them.
+    /// </summary>
     public IncidentCategory Category { get; private set; }
 
-    /// <summary>Every type the author chose, as bits (see <see cref="IncidentTypeFlags"/>).</summary>
-    public int TypeFlags { get; private set; }
+    /// <summary>The main subcategory's group.</summary>
+    public IncidentGroup Group { get; private set; }
 
-    /// <summary>Every type the author chose, the main one first.</summary>
-    public IReadOnlyList<IncidentCategory> Types => IncidentTypeFlags.ToList(TypeFlags, Category);
+    /// <summary>Every subcategory the author chose, as bits 0 to 63 (see <see cref="IncidentTypeFlags"/>).</summary>
+    public long TypeFlags { get; private set; }
+
+    /// <summary>Bits 64 to 127 of the subcategories (see <see cref="IncidentTypeFlags"/>).</summary>
+    public long TypeFlagsHigh { get; private set; }
+
+    /// <summary>Every subcategory the author chose (up to <see cref="IncidentTaxonomy.MaxPerPost"/>), the main one first.</summary>
+    public IReadOnlyList<IncidentCategory> Types => IncidentTypeFlags.ToList(new TypeMask(TypeFlags, TypeFlagsHigh), Category);
 
     /// <summary>The kind of vehicle driven badly, if the author said. Required once any vehicle detail is given.</summary>
     public VehicleType? VehicleType { get; private set; }
@@ -199,8 +208,8 @@ public sealed class Post
     /// <summary>When the closed vote's result was announced; null until then (or for votes that never close).</summary>
     public DateTimeOffset? VoteResultSentAt { get; private set; }
 
-    /// <summary>Which question the post's vote asks, from its types.</summary>
-    public VoteKind VoteKind => PostVoting.KindFor(Types);
+    /// <summary>The post's vote: its main subcategory's question and answers.</summary>
+    public VoteQuestion Vote => IncidentTaxonomy.VoteFor(Category);
 
     /// <summary>True once the vote has closed.</summary>
     public bool IsVoteClosed(DateTimeOffset now) => VoteClosesAt is { } closes && closes <= now;
@@ -586,8 +595,14 @@ public sealed class Post
             throw new ArgumentException("Unknown type of bad driving.", nameof(details));
         }
 
+        if (types.Count > IncidentTaxonomy.MaxPerPost)
+        {
+            throw new ArgumentException($"A post can have up to {IncidentTaxonomy.MaxPerPost} types of bad driving.", nameof(details));
+        }
+
         Category = types[0];
-        TypeFlags = IncidentTypeFlags.From(types);
+        Group = IncidentTaxonomy.GroupOf(Category);
+        (TypeFlags, TypeFlagsHigh) = IncidentTypeFlags.From(types);
 
         var vehicle = details.Vehicle ?? VehicleDetails.None;
         var make = vehicle.Make is null ? null : VehicleCatalogue.Make(vehicle.Make)

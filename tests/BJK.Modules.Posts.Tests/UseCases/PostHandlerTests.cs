@@ -336,7 +336,7 @@ public sealed class PostHandlerTests
     }
 
     private static DraftContent DraftOf(Guid mediaId) =>
-        new("Title", null, [IncidentCategory.Speeding], null, null, null, null, false, [], null, null, null, null, null, [mediaId]);
+        new("Title", null, [IncidentCategory.SpeedingInTown], null, null, null, null, false, [], null, null, null, null, null, [mediaId]);
 
     private void CallerIsModerator()
     {

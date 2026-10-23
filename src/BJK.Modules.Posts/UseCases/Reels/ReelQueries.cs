@@ -96,7 +96,8 @@ public sealed record ListReelsQuery(
     string? Cursor,
     IncidentCategory? Category,
     ViewerContext Viewer,
-    int PageSize = 10) : IRequest<ReelsPage>;
+    int PageSize = 10,
+    IncidentGroup? Group = null) : IRequest<ReelsPage>;
 
 public sealed class ListReelsQueryValidator : AbstractValidator<ListReelsQuery>
 {
@@ -104,6 +105,7 @@ public sealed class ListReelsQueryValidator : AbstractValidator<ListReelsQuery>
     {
         RuleFor(q => q.PageSize).InclusiveBetween(1, 20);
         RuleFor(q => q.Category).IsInEnum();
+        RuleFor(q => q.Group).IsInEnum();
         RuleFor(q => q.Cursor)
             .Must(c => c is null || ReelCursors.TryDecode(c, out _))
             .WithMessage("The cursor isn't valid. Start again without one.");
@@ -137,7 +139,8 @@ public sealed class ListReelsQueryHandler(
                 IncludeSensitive: caller.AgeVerified || PostAccess.IsModerator(caller),
                 viewerId,
                 excluded,
-                after),
+                after,
+                request.Group),
             take + 1,
             cancellationToken);
         var page = items.Take(take).ToList();

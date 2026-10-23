@@ -93,7 +93,10 @@ public sealed record HeatmapRequest(
             : null;
     }
 
-    /// <summary>Reads comma-separated category names (any case). Null if one isn't a category.</summary>
+    /// <summary>
+    /// Reads comma-separated subcategory or group names (any case); a group stands for all its subcategories. Null if
+    /// one is neither.
+    /// </summary>
     public static IReadOnlyList<IncidentCategory>? ParseCategories(string? categories)
     {
         if (string.IsNullOrWhiteSpace(categories))
@@ -104,12 +107,23 @@ public sealed record HeatmapRequest(
         var result = new List<IncidentCategory>();
         foreach (var name in categories.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            if (!Enum.TryParse<IncidentCategory>(name, ignoreCase: true, out var category) || !Enum.IsDefined(category) || int.TryParse(name, out _))
+            if (int.TryParse(name, out _))
             {
                 return null;
             }
 
-            result.Add(category);
+            if (Enum.TryParse<IncidentCategory>(name, ignoreCase: true, out var category) && Enum.IsDefined(category))
+            {
+                result.Add(category);
+            }
+            else if (Enum.TryParse<IncidentGroup>(name, ignoreCase: true, out var group) && Enum.IsDefined(group))
+            {
+                result.AddRange(IncidentTaxonomy.In(group));
+            }
+            else
+            {
+                return null;
+            }
         }
 
         return result;
@@ -128,7 +142,7 @@ public static class HeatmapRequestRules
         validator.RuleFor(q => request(q).Categories)
             .Must(c => HeatmapRequest.ParseCategories(c) is not null)
             .OverridePropertyName("categories")
-            .WithMessage("Give categories as comma-separated names, e.g. Tailgating,ClosePass.");
+            .WithMessage("Give categories as comma-separated names, e.g. Parking,ClosePassCyclist.");
         validator.RuleFor(q => request(q).Hours)
             .Must(h => string.IsNullOrWhiteSpace(h) || HourRange.Parse(h) is not null)
             .OverridePropertyName("hours")
@@ -424,7 +438,11 @@ internal static class HeatmapCells
 /// How many of an area's incidents have this type of bad driving, and what percentage that is. A post can have several
 /// types, so the percentages can add up to more than 100.
 /// </summary>
-public sealed record CategoryShareDto(IncidentCategory Category, int Count, int Percent);
+public sealed record CategoryShareDto(IncidentCategory Category, int Count, int Percent)
+{
+    /// <summary>The group the subcategory is listed under.</summary>
+    public IncidentGroup Group => IncidentTaxonomy.GroupOf(Category);
+}
 
 /// <summary>A place name (usually a road and town, e.g. "A57 Warrington Road, Prescot") and its incidents.</summary>
 public sealed record PlaceCountDto(string Name, int Count);

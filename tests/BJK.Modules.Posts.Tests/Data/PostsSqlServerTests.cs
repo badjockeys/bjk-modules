@@ -95,8 +95,8 @@ public sealed class PostsSqlServerTests : IAsyncLifetime
     [Fact]
     public async Task The_feed_filters_by_any_of_a_posts_types()
     {
-        var both = Post.Create(UserId, Details("Tailgated then shouted at") with { Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage] }, [Guid.NewGuid()], Now);
-        var parking = Post.Create(UserId, Details("Across two bays") with { Category = IncidentCategory.BadParking }, [Guid.NewGuid()], Now);
+        var both = Post.Create(UserId, Details("Tailgated then shouted at") with { Types = [IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures] }, [Guid.NewGuid()], Now);
+        var parking = Post.Create(UserId, Details("Across two bays") with { Category = IncidentCategory.DoubleYellows }, [Guid.NewGuid()], Now);
         await using (var db = Context())
         {
             var repository = new PostRepository(db);
@@ -108,12 +108,46 @@ public sealed class PostsSqlServerTests : IAsyncLifetime
         await using (var db = Context())
         {
             var repository = new PostRepository(db);
-            var (rage, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.RoadRage, null, IncludeHidden: false), 1, 20, Ct);
+            var (rage, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.ShoutingOrGestures, null, IncludeHidden: false), 1, 20, Ct);
             Assert.Equal(new[] { both.Id }, rage.Select(p => p.Id));
-            Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.RoadRage }, rage[0].Types);
+            Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures }, rage[0].Types);
 
-            var (parked, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.BadParking, null, IncludeHidden: false), 1, 20, Ct);
+            var (parked, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.DoubleYellows, null, IncludeHidden: false), 1, 20, Ct);
             Assert.Equal(new[] { parking.Id }, parked.Select(p => p.Id));
+
+            var (inGroup, _) = await repository.SearchAsync(new PostSearch(null, null, null, IncludeHidden: false, Group: IncidentGroup.RoadRage), 1, 20, Ct);
+            Assert.Equal(new[] { both.Id }, inGroup.Select(p => p.Id));
+        }
+    }
+
+    [Fact]
+    public async Task Subcategories_past_the_first_64_are_stored_and_filtered()
+    {
+        var motorway = Post.Create(UserId, Details("Wrong way on the M62") with { Types = [IncidentCategory.WrongWayDriver, IncidentCategory.Tailgating] }, [Guid.NewGuid()], Now);
+        var other = Post.Create(UserId, Details("Across two bays") with { Category = IncidentCategory.AcrossTwoBays }, [Guid.NewGuid()], Now);
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            repository.Add(motorway);
+            repository.Add(other);
+            await repository.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = Context())
+        {
+            var repository = new PostRepository(db);
+            var (found, _) = await repository.SearchAsync(new PostSearch(null, IncidentCategory.WrongWayDriver, null, IncludeHidden: false), 1, 20, Ct);
+            var post = Assert.Single(found);
+            Assert.Equal(motorway.Id, post.Id);
+            Assert.Equal(new[] { IncidentCategory.WrongWayDriver, IncidentCategory.Tailgating }, post.Types);
+            Assert.Equal(IncidentGroup.Motorways, post.Group);
+
+            var (either, _) = await repository.SearchAsync(
+                new PostSearch(null, null, null, IncludeHidden: false, Types: IncidentTypeFlags.From([IncidentCategory.MotorwaysOther, IncidentCategory.AcrossTwoBays])),
+                1,
+                20,
+                Ct);
+            Assert.Equal(new[] { other.Id }, either.Select(p => p.Id));
         }
     }
 

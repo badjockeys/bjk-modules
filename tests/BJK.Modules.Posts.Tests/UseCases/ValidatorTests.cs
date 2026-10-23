@@ -1,4 +1,5 @@
 using BJK.Modules.Posts.Domain;
+using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Posts.UseCases.Create;
 using BJK.Modules.Posts.UseCases.Get;
 using Microsoft.Extensions.Options;
@@ -20,7 +21,7 @@ public sealed class ValidatorTests
         new(
             title,
             null,
-            IncidentCategory.ClosePass,
+            IncidentCategory.ClosePassCyclist,
             incidentAt ?? Now.AddHours(-2),
             latitude,
             longitude,
@@ -164,9 +165,23 @@ public sealed class ValidatorTests
     [Fact]
     public void Several_types_can_be_sent_without_a_category()
     {
-        var command = Command() with { Category = null, Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage] };
+        var command = Command() with { Category = null, Types = [IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures] };
 
         Assert.True(_create.Validate(command).IsValid);
+    }
+
+    [Fact]
+    public void A_post_has_at_most_three_types()
+    {
+        var command = Command() with
+        {
+            Category = null,
+            Types = [IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures, IncidentCategory.BrakeTesting, IncidentCategory.NearMiss],
+        };
+
+        var result = _create.Validate(command);
+
+        Assert.Contains(result.Errors, e => e.ErrorMessage == PostDetailsValidator<CreatePostCommand>.TooManyTypesMessage);
     }
 
     [Fact]

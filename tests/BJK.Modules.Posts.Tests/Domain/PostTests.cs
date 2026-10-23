@@ -149,40 +149,41 @@ public sealed class PostTests
     [Fact]
     public void A_post_keeps_every_type_the_main_one_first()
     {
-        var details = Details() with { Types = [IncidentCategory.Tailgating, IncidentCategory.RoadRage, IncidentCategory.Tailgating] };
+        var details = Details() with { Types = [IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures, IncidentCategory.Tailgating] };
 
         var post = Post.Create(UserId, details, [Guid.NewGuid()], Now);
 
         Assert.Equal(IncidentCategory.Tailgating, post.Category);
-        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.RoadRage }, post.Types);
-        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.Tailgating) | IncidentTypeFlags.Bit(IncidentCategory.RoadRage), post.TypeFlags);
+        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.ShoutingOrGestures }, post.Types);
+        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.Tailgating) | IncidentTypeFlags.Bit(IncidentCategory.ShoutingOrGestures), new TypeMask(post.TypeFlags, post.TypeFlagsHigh));
+        Assert.Equal(IncidentGroup.FollowingTooClose, post.Group);
     }
 
     [Fact]
     public void Without_types_a_post_has_just_its_category()
     {
-        var post = Post.Create(UserId, Details() with { Category = IncidentCategory.BadParking }, [Guid.NewGuid()], Now);
+        var post = Post.Create(UserId, Details() with { Category = IncidentCategory.DoubleYellows }, [Guid.NewGuid()], Now);
 
-        Assert.Equal(new[] { IncidentCategory.BadParking }, post.Types);
-        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.BadParking), post.TypeFlags);
+        Assert.Equal(new[] { IncidentCategory.DoubleYellows }, post.Types);
+        Assert.Equal(IncidentTypeFlags.Bit(IncidentCategory.DoubleYellows), new TypeMask(post.TypeFlags, post.TypeFlagsHigh));
     }
 
     [Fact]
     public void Editing_replaces_the_types()
     {
-        var post = Post.Create(UserId, Details() with { Types = [IncidentCategory.Speeding, IncidentCategory.ClosePass] }, [Guid.NewGuid()], Now);
+        var post = Post.Create(UserId, Details() with { Types = [IncidentCategory.SpeedingInTown, IncidentCategory.ClosePassCyclist] }, [Guid.NewGuid()], Now);
 
-        post.Update(Details() with { Types = [IncidentCategory.MobilePhoneUse] }, Now);
+        post.Update(Details() with { Types = [IncidentCategory.PhoneInHand] }, Now);
 
-        Assert.Equal(IncidentCategory.MobilePhoneUse, post.Category);
-        Assert.Equal(new[] { IncidentCategory.MobilePhoneUse }, post.Types);
+        Assert.Equal(IncidentCategory.PhoneInHand, post.Category);
+        Assert.Equal(new[] { IncidentCategory.PhoneInHand }, post.Types);
     }
 
     [Fact]
     public void Rows_from_before_types_read_as_their_category()
     {
-        Assert.Equal(new[] { IncidentCategory.Other }, IncidentTypeFlags.ToList(0, IncidentCategory.Other));
-        Assert.False(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.BadParking));
+        Assert.Equal(new[] { IncidentCategory.VehiclesOther }, IncidentTypeFlags.ToList(default, IncidentCategory.VehiclesOther));
+        Assert.False(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.DoubleYellows));
         Assert.True(IncidentTypeFlags.IsOnTheRoad(IncidentCategory.Tailgating));
     }
 

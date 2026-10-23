@@ -77,14 +77,14 @@ public sealed class CategoryTrendsTests
             {
                 Row(IncidentCategory.Tailgating, 2026, 10, 12, 4),
                 Row(IncidentCategory.Tailgating, 2026, 10, 18, 8),
-                Row(IncidentCategory.BadParking, 2026, 10, 14, 5),
-                Row(IncidentCategory.Speeding, 2026, 10, 13, 2),
+                Row(IncidentCategory.DoubleYellows, 2026, 10, 14, 5),
+                Row(IncidentCategory.SpeedingInTown, 2026, 10, 13, 2),
             });
         _heatmap.CountByCategoryAsync(Arg.Any<HeatmapFilter>(), Arg.Any<CancellationToken>())
             .Returns(new List<HeatmapCountRow>
             {
                 new() { Key = "Tailgating", Count = 8 },
-                new() { Key = "BadParking", Count = 2 },
+                new() { Key = "DoubleYellows", Count = 2 },
             });
 
         var trends = await Handler(SubscriptionPlan.Free).Handle(new GetCategoryTrendsQuery(null, null, null), Ct);
@@ -98,12 +98,12 @@ public sealed class CategoryTrendsTests
         Assert.Equal(50, tailgating.ChangePercent);
 
         var parking = trends.Categories[1];
-        Assert.Equal(IncidentCategory.BadParking, parking.Category);
+        Assert.Equal(IncidentCategory.DoubleYellows, parking.Category);
         Assert.Equal(5, parking.Total);
         Assert.Null(parking.PreviousTotal);
         Assert.Null(parking.ChangePercent);
 
-        var speeding = Assert.Single(trends.Categories, c => c.Category == IncidentCategory.Speeding);
+        var speeding = Assert.Single(trends.Categories, c => c.Category == IncidentCategory.SpeedingInTown);
         Assert.True(speeding.Suppressed);
         Assert.Null(speeding.Total);
         Assert.Empty(speeding.Points);

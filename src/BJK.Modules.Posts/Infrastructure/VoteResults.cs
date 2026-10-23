@@ -89,7 +89,7 @@ public sealed class VoteResultAnnouncer(
         var tallies = await engagement.GetVoteTalliesAsync(due.Select(p => p.Id).ToList(), null, cancellationToken);
         foreach (var post in due.Where(p => p.IsPublic))
         {
-            var detail = Describe(tallies.GetValueOrDefault(post.Id) ?? VoteTally.Empty);
+            var detail = Describe(tallies.GetValueOrDefault(post.Id) ?? VoteTally.Empty, post.Vote);
             var recipients = new List<Guid> { post.AuthorId };
             recipients.AddRange(await engagement.ListFollowerIdsAsync(post.Id, MaxRecipients, cancellationToken));
             foreach (var userId in recipients.Distinct().Take(MaxRecipients))
@@ -103,34 +103,26 @@ public sealed class VoteResultAnnouncer(
         return due.Count;
     }
 
-    /// <summary>The result in one sentence, e.g. "Most said the other road user was at fault (62% of 41 votes)."</summary>
-    public static string Describe(VoteTally tally)
+    /// <summary>
+    /// The result in one sentence, in the vote's own words, e.g. "Most said \u201cToo close\u201d to \u201cToo close or
+    /// fine?\u201d (62% of 41 votes)."
+    /// </summary>
+    public static string Describe(VoteTally tally, VoteQuestion vote)
     {
-        if (tally.Total == 0)
+        // Only answers to this question (see VoteSummaryDto.For).
+        var counts = tally.Counts.Where(c => c.Value > 0 && vote.Offers(c.Key)).ToList();
+        var total = counts.Sum(c => c.Value);
+        if (total == 0)
         {
             return "Nobody voted.";
         }
 
-        var (choice, count) = tally.Counts.OrderByDescending(c => c.Value).ThenBy(c => c.Key).First();
-        var tied = tally.Counts.Count(c => c.Value == count) > 1;
-        var percent = (int)Math.Round(100.0 * count / tally.Total, MidpointRounding.AwayFromZero);
-        var votes = tally.Total == 1 ? "1 vote" : $"{tally.Total} votes";
-        if (tied)
-        {
-            return $"It was a tie ({votes}).";
-        }
-
-        var verdict = choice switch
-        {
-            VoteChoice.FilmingDriver => "the driver filming was at fault",
-            VoteChoice.OtherRoadUser => "the other road user was at fault",
-            VoteChoice.Both => "both were at fault",
-            VoteChoice.Nobody => "nobody was really at fault",
-            VoteChoice.Minor => "it was minor",
-            VoteChoice.Careless => "it was careless",
-            VoteChoice.Dangerous => "it was dangerous",
-            _ => "it was shocking",
-        };
-        return $"Most said {verdict} ({percent}% of {votes}).";
+        var (choice, count) = counts.OrderByDescending(c => c.Value).ThenBy(c => c.Key).First();
+        var tied = counts.Count(c => c.Value == count) > 1;
+        var percent = (int)Math.Round(100.0 * count / total, MidpointRounding.AwayFromZero);
+        var votes = total == 1 ? "1 vote" : $"{total} votes";
+        return tied
+            ? $"It was a tie ({votes})."
+            : $"Most said \u201c{vote.LabelOf(choice)}\u201d to \u201c{vote.Question}\u201d ({percent}% of {votes}).";
     }
 }

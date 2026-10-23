@@ -333,7 +333,7 @@ public sealed class ListTimelinePostsQueryHandler(
         var area = timeline is { Latitude: { } lat, Longitude: { } lng, RadiusKm: { } radius } ? GeoBox.Around(lat, lng, radius) : null;
         var blocked = await blocks.GetBlockedIdsAsync(userId, cancellationToken);
         var (items, total) = await posts.SearchAsync(
-            new PostSearch(null, null, area, IncludeHidden: false, ExcludeAuthorIds: blocked, TypeFlags: timeline.TypeFlags),
+            new PostSearch(null, null, area, IncludeHidden: false, ExcludeAuthorIds: blocked, Types: timeline.Mask),
             request.Page,
             request.PageSize,
             cancellationToken);

@@ -33,7 +33,7 @@ public sealed class GetPostQueryHandler(IPostRepository posts, PostViews views, 
 /// <summary>
 /// The public feed, newest first. Open to anonymous callers. Sensitive posts are included for everyone, their media
 /// blurred unless the caller may see them (see <see cref="PostDto"/>). Signed-in viewers don't
-/// get posts by people they've blocked. Optional filters: category, author's @handle, and an area (a point plus a
+/// get posts by people they've blocked. Optional filters: group, subcategory, author's @handle, and an area (a point plus a
 /// radius in km).
 /// </summary>
 public sealed record ListPostsQuery(
@@ -44,7 +44,8 @@ public sealed record ListPostsQuery(
     int? RadiusKm = null,
     int Page = 1,
     int PageSize = 20,
-    string? Hashtag = null) : IRequest<PagedResult<PostDto>>;
+    string? Hashtag = null,
+    IncidentGroup? Group = null) : IRequest<PagedResult<PostDto>>;
 
 public sealed class ListPostsQueryValidator : AbstractValidator<ListPostsQuery>
 {
@@ -55,6 +56,7 @@ public sealed class ListPostsQueryValidator : AbstractValidator<ListPostsQuery>
         RuleFor(q => q.Page).GreaterThanOrEqualTo(1);
         RuleFor(q => q.PageSize).InclusiveBetween(1, 50);
         RuleFor(q => q.Category).IsInEnum();
+        RuleFor(q => q.Group).IsInEnum();
         RuleFor(q => q.Latitude).InclusiveBetween(-90m, 90m);
         RuleFor(q => q.Longitude).InclusiveBetween(-180m, 180m);
         RuleFor(q => q.RadiusKm).InclusiveBetween(1, MaxRadiusKm);
@@ -117,7 +119,8 @@ public sealed class ListPostsQueryHandler(
                 area,
                 IncludeHidden: false,
                 ExcludeAuthorIds: blocked,
-                HashtagId: hashtagId),
+                HashtagId: hashtagId,
+                Group: request.Group),
             request.Page,
             request.PageSize,
             cancellationToken);

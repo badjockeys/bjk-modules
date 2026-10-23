@@ -46,13 +46,13 @@ public sealed class DraftTests
         var draft = await Save(Draft() with
         {
             Title = "  Parked across the bus stop ",
-            Types = [IncidentCategory.BadParking, IncidentCategory.Other],
+            Types = [IncidentCategory.DoubleYellows, IncidentCategory.VehiclesOther],
             Passengers = ["@Sam_J", "sam_j", " "],
             MediaIds = photos,
         });
 
         Assert.Equal("Parked across the bus stop", draft.Title);
-        Assert.Equal(new[] { IncidentCategory.BadParking, IncidentCategory.Other }, draft.Types);
+        Assert.Equal(new[] { IncidentCategory.DoubleYellows, IncidentCategory.VehiclesOther }, draft.Types);
         Assert.Equal(new[] { "Sam_J" }, draft.Passengers);
         Assert.Equal(photos, draft.Media.Select(m => m.MediaId));
         Assert.Equal(Now.AddDays(30), draft.ExpiresAt);
@@ -217,7 +217,7 @@ public sealed class DraftTests
         "Overtook on a blind bend", null, null, null, null, null, null, false, null, null, null, null, null, null, null);
 
     private static DraftContent Content(IReadOnlyList<Guid> mediaIds) =>
-        new("Title", null, [IncidentCategory.Speeding], null, null, null, null, false, [], null, null, null, null, null, mediaIds);
+        new("Title", null, [IncidentCategory.SpeedingInTown], null, null, null, null, false, [], null, null, null, null, null, mediaIds);
 
     private static MediaSummary Photo(Guid id, Guid owner) => new(
         id,

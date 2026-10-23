@@ -77,12 +77,12 @@ public sealed class PassengerTests
     public async Task Bad_parking_has_no_passengers()
     {
         var error = await Assert.ThrowsAsync<ValidationException>(
-            () => _tagging.ResolveAsync(UserId, ["sam_j"], [IncidentCategory.BadParking], Ct));
+            () => _tagging.ResolveAsync(UserId, ["sam_j"], [IncidentCategory.DoubleYellows], Ct));
 
         Assert.Equal(PassengerTagging.OnlyDrivingMessage, Assert.Single(error.Errors).ErrorMessage);
 
         // Bad parking alongside a driving type is fine.
-        Assert.Single(await _tagging.ResolveAsync(UserId, ["sam_j"], [IncidentCategory.BadParking, IncidentCategory.RoadRage], Ct));
+        Assert.Single(await _tagging.ResolveAsync(UserId, ["sam_j"], [IncidentCategory.DoubleYellows, IncidentCategory.ShoutingOrGestures], Ct));
     }
 
     [Fact]

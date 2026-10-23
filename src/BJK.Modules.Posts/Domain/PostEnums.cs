@@ -1,23 +1,5 @@
 namespace BJK.Modules.Posts.Domain;
 
-/// <summary>What kind of bad driving a post shows. Stored by name, so new values can be added safely.</summary>
-// Values are bit positions in Post.TypeFlags (see IncidentTypeFlags): add new types at the end, never reorder.
-public enum IncidentCategory
-{
-    RoadRage,
-    DangerousOvertaking,
-    Tailgating,
-    MobilePhoneUse,
-    Speeding,
-    RedLightRunning,
-    CuttingUp,
-    Undertaking,
-    LaneHogging,
-    ClosePass,
-    BadParking,
-    Other,
-}
-
 public enum PostStatus
 {
     /// <summary>Visible to everyone.</summary>

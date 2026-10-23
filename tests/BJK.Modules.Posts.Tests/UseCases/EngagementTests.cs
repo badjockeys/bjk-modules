@@ -61,13 +61,25 @@ public sealed class EngagementTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public void Incidents_between_road_users_ask_whos_at_fault_and_the_rest_ask_how_bad()
+    public void Each_post_asks_its_main_subcategorys_own_question()
     {
-        Assert.Equal(VoteKind.Fault, PostVoting.KindFor([IncidentCategory.Tailgating]));
-        Assert.Equal(VoteKind.Fault, PostVoting.KindFor([IncidentCategory.BadParking, IncidentCategory.RoadRage]));
-        Assert.Equal(VoteKind.Severity, PostVoting.KindFor([IncidentCategory.BadParking]));
-        Assert.Contains(VoteChoice.OtherRoadUser, PostVoting.ChoicesFor(VoteKind.Fault));
-        Assert.DoesNotContain(VoteChoice.Dangerous, PostVoting.ChoicesFor(VoteKind.Fault));
+        var tailgating = Post.Create(UserId, Details() with { Types = [IncidentCategory.Tailgating, IncidentCategory.DoubleYellows] }, [Guid.NewGuid()], Now);
+        Assert.Equal("Too close or fine?", tailgating.Vote.Question);
+        Assert.Equal(new[] { "Far too close", "Too close", "Fine" }, tailgating.Vote.Answers.Select(a => a.Label));
+
+        var parking = Post.Create(UserId, Details() with { Types = [IncidentCategory.DoubleYellows] }, [Guid.NewGuid()], Now);
+        Assert.Equal("Bad parking or fair enough?", parking.Vote.Question);
+        Assert.True(parking.Vote.Offers(VoteChoice.FairEnough));
+        Assert.False(parking.Vote.Offers(VoteChoice.Dangerous));
+    }
+
+    [Fact]
+    public void Every_subcategory_has_a_vote_of_two_to_four_answers_and_each_group_an_other()
+    {
+        Assert.Equal(Enum.GetValues<IncidentCategory>().Order(), IncidentTaxonomy.All.Select(t => t.Category).Order());
+        Assert.All(IncidentTaxonomy.All, t => Assert.InRange(t.Vote.Answers.Count, 2, 4));
+        Assert.All(IncidentTaxonomy.All, t => Assert.Equal(t.Vote.Answers.Count, t.Vote.Answers.Select(a => a.Choice).Distinct().Count()));
+        Assert.All(Enum.GetValues<IncidentGroup>(), g => Assert.Equal("Other", IncidentTaxonomy.Label(IncidentTaxonomy.In(g).Last())));
     }
 
     [Theory]
@@ -278,20 +290,21 @@ public sealed class EngagementTests
         Assert.NotNull(post.VoteResultSentAt);
         await _notifications.Received(2).NotifyAsync(
             Arg.Is<NotificationRequest>(n => n.Type == NotificationType.VoteClosed
-                && n.Detail == "Most said the other road user was at fault (100% of 1 vote)."),
+                && n.Detail == "Most said \u201cThe undertaker\u201d to \u201cWho's at fault?\u201d (100% of 1 vote)."),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public void Results_are_described_in_one_sentence()
     {
-        Assert.Equal("Nobody voted.", VoteResultAnnouncer.Describe(VoteTally.Empty));
+        var howBad = IncidentTaxonomy.VoteFor(IncidentCategory.SpeedingInTown);
+        Assert.Equal("Nobody voted.", VoteResultAnnouncer.Describe(VoteTally.Empty, howBad));
         Assert.Equal(
-            "Most said it was dangerous (63% of 8 votes).",
-            VoteResultAnnouncer.Describe(new VoteTally(new Dictionary<VoteChoice, int> { [VoteChoice.Dangerous] = 5, [VoteChoice.Careless] = 3 }, null)));
+            "Most said \u201cDangerous\u201d to \u201cHow bad was it?\u201d (63% of 8 votes).",
+            VoteResultAnnouncer.Describe(new VoteTally(new Dictionary<VoteChoice, int> { [VoteChoice.Dangerous] = 5, [VoteChoice.Careless] = 3 }, null), howBad));
         Assert.Equal(
             "It was a tie (4 votes).",
-            VoteResultAnnouncer.Describe(new VoteTally(new Dictionary<VoteChoice, int> { [VoteChoice.Both] = 2, [VoteChoice.Nobody] = 2 }, null)));
+            VoteResultAnnouncer.Describe(new VoteTally(new Dictionary<VoteChoice, int> { [VoteChoice.Both] = 2, [VoteChoice.Nobody] = 2 }, null), IncidentTaxonomy.VoteFor(IncidentCategory.Undertaking)));
     }
 
     [Fact]

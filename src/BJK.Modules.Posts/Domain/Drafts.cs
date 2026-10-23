@@ -40,8 +40,11 @@ public sealed class PostDraft
     /// <summary>The main type of bad driving (the first chosen), or null if none is chosen yet.</summary>
     public IncidentCategory? Category { get; private set; }
 
-    /// <summary>Every type chosen, as bits (see <see cref="IncidentTypeFlags"/>).</summary>
-    public int TypeFlags { get; private set; }
+    /// <summary>Every subcategory chosen, as bits 0 to 63 (see <see cref="IncidentTypeFlags"/>).</summary>
+    public long TypeFlags { get; private set; }
+
+    /// <summary>Bits 64 to 127 of the subcategories chosen.</summary>
+    public long TypeFlagsHigh { get; private set; }
 
     public DateTimeOffset? IncidentAt { get; private set; }
 
@@ -73,7 +76,7 @@ public sealed class PostDraft
 
     /// <summary>Every type chosen, the main one first.</summary>
     public IReadOnlyList<IncidentCategory> Types =>
-        Category is { } main ? IncidentTypeFlags.ToList(TypeFlags, main) : [];
+        Category is { } main ? IncidentTypeFlags.ToList(new TypeMask(TypeFlags, TypeFlagsHigh), main) : [];
 
     /// <summary>Passengers' @handles, as typed.</summary>
     public IReadOnlyList<string> Passengers =>
@@ -103,7 +106,7 @@ public sealed class PostDraft
         Description = Clean(content.Description);
         var types = content.Types.Distinct().ToList();
         Category = types.Count > 0 ? types[0] : null;
-        TypeFlags = IncidentTypeFlags.From(types);
+        (TypeFlags, TypeFlagsHigh) = IncidentTypeFlags.From(types.Take(IncidentTaxonomy.MaxPerPost));
         IncidentAt = content.IncidentAt;
         Latitude = content.Latitude;
         Longitude = content.Longitude;
