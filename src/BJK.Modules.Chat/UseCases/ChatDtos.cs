@@ -109,15 +109,3 @@ public sealed record ChatUsageDto(
 /// <param name="Usage">The allowance after it.</param>
 /// <param name="TurnToken">Send it back with this turn in <c>history</c>; turns without a valid token are ignored. Null for blocked questions, which aren't part of the history.</param>
 public sealed record ChatReplyDto(ChatAnswerDto Answer, ChatUsageDto Usage, string? TurnToken = null);
-
-/// <summary>Example questions for the empty chat and the Free preview.</summary>
-public static class ChatExamples
-{
-    public static readonly IReadOnlyList<string> Questions =
-    [
-        "How many bad jockeys near me this month?",
-        "Worst roads for tailgating in Warrington",
-        "Is school-run parking getting better?",
-        "What time of day is worst for speeding?",
-    ];
-}

@@ -4,6 +4,7 @@ using BJK.Modules.Chat.Guard;
 using BJK.Modules.Chat.Infrastructure;
 using BJK.Modules.Chat.Infrastructure.Data;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
@@ -18,7 +19,9 @@ namespace BJK.Modules.Chat.UseCases;
 /// </summary>
 /// <param name="Question">The question, up to 500 characters.</param>
 /// <param name="History">Earlier turns in this chat window, oldest first (the app keeps them; nothing is stored).</param>
-/// <param name="Near">Where "near me" means: the member's location or home area, if the app has it.</param>
+/// <param name="Near">
+/// Where "near me" means: the member's location, if the app has it. Without it, their home area (if they've chosen one).
+/// </param>
 public sealed record AskQuestionCommand(string Question, IReadOnlyList<ChatTurn>? History = null, NearPlace? Near = null) : IRequest<ChatReplyDto>;
 
 public sealed class AskQuestionCommandValidator : AbstractValidator<AskQuestionCommand>
@@ -50,6 +53,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
     private readonly ChatGuard _guard;
     private readonly TurnTokens _tokens;
     private readonly ChatAgent _agent;
+    private readonly IHomeAreas _homeAreas;
     private readonly ChatOptions _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<AskQuestionCommandHandler> _logger;
@@ -61,6 +65,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         ChatGuard guard,
         TurnTokens tokens,
         ChatAgent agent,
+        IHomeAreas homeAreas,
         IOptions<ChatOptions> options,
         TimeProvider clock,
         ILogger<AskQuestionCommandHandler> logger)
@@ -71,6 +76,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         _guard = guard;
         _tokens = tokens;
         _agent = agent;
+        _homeAreas = homeAreas;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
@@ -104,6 +110,10 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
             throw LimitReached(plan.Value, limit, now);
         }
 
+        // The home area tailors the suggestions and, when the app sends no place, says where "near me" is.
+        var home = await _homeAreas.GetAsync(userId, cancellationToken);
+        var examples = ChatExamples.For(home);
+
         // History is only what we signed for this member; anything else is dropped before the guard or model sees it.
         var question = request.Question.Trim();
         var history = _tokens.Verified(userId, request.History);
@@ -113,7 +123,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         GuardVerdict verdict;
         try
         {
-            verdict = await _guard.CheckQuestionAsync(question, history.Count > 0 ? history[^1].Question : null, cancellationToken);
+            verdict = await _guard.CheckQuestionAsync(question, history.Count > 0 ? history[^1].Question : null, examples, cancellationToken);
         }
         catch (ModelUnavailableException ex)
         {
@@ -130,11 +140,12 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
                 ChatLog.Blocked(_logger, plan.Value, verdict.Reason.ToString(), verdict.Reason == GuardReason.PersonalDetails ? "(withheld)" : question);
             }
 
-            return new ChatReplyDto(stopped, ChatAllowance.Describe(_options, plan, counts.Questions, now, strikes));
+            return new ChatReplyDto(stopped, ChatAllowance.Describe(_options, plan, counts.Questions, now, examples, strikes));
         }
 
         var used = await _usage.TryTakeAsync(userId, today, limit, cancellationToken) ?? throw LimitReached(plan.Value, limit, now);
-        var context = new AgentContext(plan.Value, today, ChatAllowance.HistoryFrom(_options, plan, today)!.Value, request.Near);
+        var near = request.Near ?? ChatExamples.NearOf(home);
+        var context = new AgentContext(plan.Value, today, ChatAllowance.HistoryFrom(_options, plan, today)!.Value, near);
         var watch = Stopwatch.StartNew();
         AgentResult result;
         try
@@ -181,7 +192,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         var token = result.Answer.Kind is ChatAnswerKind.Answer or ChatAnswerKind.TooFew or ChatAnswerKind.Clarify
             ? _tokens.Sign(userId, question, result.Answer.Text)
             : null;
-        return new ChatReplyDto(result.Answer, ChatAllowance.Describe(_options, plan, used, now, strikesNow), token);
+        return new ChatReplyDto(result.Answer, ChatAllowance.Describe(_options, plan, used, now, examples, strikesNow), token);
     }
 
     private DailyLimitReachedException LimitReached(SubscriptionPlan plan, int limit, DateTimeOffset now) => new(
@@ -199,7 +210,10 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         new("Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.");
 }
 
-/// <summary>The caller's allowance for today, and the example questions (for the empty chat and the Free preview).</summary>
+/// <summary>
+/// The caller's allowance for today, and the example questions (for the empty chat and the Free preview), tailored to
+/// their home area when they've chosen one.
+/// </summary>
 public sealed record GetChatUsageQuery : IRequest<ChatUsageDto>;
 
 public sealed class GetChatUsageQueryHandler : IRequestHandler<GetChatUsageQuery, ChatUsageDto>
@@ -207,14 +221,22 @@ public sealed class GetChatUsageQueryHandler : IRequestHandler<GetChatUsageQuery
     private readonly ICurrentUser _caller;
     private readonly IPlanResolver _plans;
     private readonly IChatUsage _usage;
+    private readonly IHomeAreas _homeAreas;
     private readonly ChatOptions _options;
     private readonly TimeProvider _clock;
 
-    public GetChatUsageQueryHandler(ICurrentUser caller, IPlanResolver plans, IChatUsage usage, IOptions<ChatOptions> options, TimeProvider clock)
+    public GetChatUsageQueryHandler(
+        ICurrentUser caller,
+        IPlanResolver plans,
+        IChatUsage usage,
+        IHomeAreas homeAreas,
+        IOptions<ChatOptions> options,
+        TimeProvider clock)
     {
         _caller = caller;
         _plans = plans;
         _usage = usage;
+        _homeAreas = homeAreas;
         _options = options.Value;
         _clock = clock;
     }
@@ -223,10 +245,14 @@ public sealed class GetChatUsageQueryHandler : IRequestHandler<GetChatUsageQuery
     {
         var now = _clock.GetUtcNow();
         var plan = _plans.CurrentPlan();
-        var counts = plan is SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus && _caller.UserId() is { } userId
-            ? await _usage.GetAsync(userId, UkDay.Today(now), cancellationToken)
+        var userId = _caller.UserId();
+        var counts = plan is SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus && userId is { } member
+            ? await _usage.GetAsync(member, UkDay.Today(now), cancellationToken)
             : DailyCounts.None;
-        return ChatAllowance.Describe(_options, plan, counts.Questions, now, counts.Strikes);
+
+        // Free members get tailored examples too: the locked preview shows what they could ask about their own area.
+        var home = userId is { } id ? await _homeAreas.GetAsync(id, cancellationToken) : null;
+        return ChatAllowance.Describe(_options, plan, counts.Questions, now, ChatExamples.For(home), counts.Strikes);
     }
 }
 
@@ -240,7 +266,13 @@ internal static class ChatAllowance
     public static DateOnly? HistoryFrom(ChatOptions options, SubscriptionPlan? plan, DateOnly today) =>
         options.HistoryDays.For(plan) is > 0 and var days ? today.AddDays(-days) : null;
 
-    public static ChatUsageDto Describe(ChatOptions options, SubscriptionPlan? plan, int used, DateTimeOffset now, int strikes = 0)
+    public static ChatUsageDto Describe(
+        ChatOptions options,
+        SubscriptionPlan? plan,
+        int used,
+        DateTimeOffset now,
+        IReadOnlyList<string> examples,
+        int strikes = 0)
     {
         var limit = options.DailyQuestions.For(plan);
         var canAsk = limit > 0;
@@ -252,7 +284,7 @@ internal static class ChatAllowance
             Math.Max(0, limit - used),
             UkDay.NextMidnight(now),
             HistoryFrom(options, plan, UkDay.Today(now)),
-            ChatExamples.Questions,
+            examples,
             canAsk && strikes >= options.MisuseLimit);
     }
 }

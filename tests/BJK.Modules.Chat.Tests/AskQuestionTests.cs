@@ -4,6 +4,7 @@ using BJK.Modules.Chat.Infrastructure.Data;
 using BJK.Modules.Chat.UseCases;
 using BJK.Modules.Safety;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,7 @@ public sealed class AskQuestionTests
     private readonly IChatUsage _usage = Substitute.For<IChatUsage>();
     private readonly IContentScreener _screener = Substitute.For<IContentScreener>();
     private readonly ITopicGate _topics = Substitute.For<ITopicGate>();
+    private readonly IHomeAreas _homeAreas = Substitute.For<IHomeAreas>();
     private readonly ChatOptions _options = new() { Model = new ChatModelOptions { Endpoint = "http://localhost:11434/v1" } };
 
     public AskQuestionTests()
@@ -37,13 +39,20 @@ public sealed class AskQuestionTests
         _usage.AddStrikeAsync(UserId, UkToday, Arg.Any<CancellationToken>()).Returns(1);
         _screener.ScreenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ScreeningResult.Clean);
         _topics.IsOnTopicAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(true);
+        _homeAreas.GetAsync(UserId, Arg.Any<CancellationToken>()).Returns((HomeArea?)null);
     }
 
     private TurnTokens Tokens => new(Options.Create(_options));
 
     private AskQuestionCommandHandler Handler(IChatModel model, FakeQueries? queries = null) =>
         new(_caller, _plans, _usage, new ChatGuard(_screener, _topics), Tokens, new ChatAgent(model, queries ?? new FakeQueries(["n"], [10])),
-            Options.Create(_options), new FixedClock(Now), NullLogger<AskQuestionCommandHandler>.Instance);
+            _homeAreas, Options.Create(_options), new FixedClock(Now), NullLogger<AskQuestionCommandHandler>.Instance);
+
+    private GetChatUsageQueryHandler UsageHandler() =>
+        new(_caller, _plans, _usage, _homeAreas, Options.Create(_options), new FixedClock(Now));
+
+    private void LivesIn(string placeName) =>
+        _homeAreas.GetAsync(UserId, Arg.Any<CancellationToken>()).Returns(new HomeArea(placeName, 53.43m, -2.80m, 5));
 
     private static ScriptedModel Answers() => new ScriptedModel()
         .ThenSql("SELECT COUNT(*) AS n FROM reporting.Incidents WHERE IsMainType = 1")
@@ -137,7 +146,7 @@ public sealed class AskQuestionTests
     public async Task Usage_for_free_and_logged_out_callers_is_the_locked_preview()
     {
         _plans.CurrentPlan().Returns((SubscriptionPlan?)null);
-        var handler = new GetChatUsageQueryHandler(_caller, _plans, _usage, Options.Create(_options), new FixedClock(Now));
+        var handler = UsageHandler();
 
         var usage = await handler.Handle(new GetChatUsageQuery(), Ct);
 
@@ -151,7 +160,7 @@ public sealed class AskQuestionTests
     public async Task Usage_for_premium_counts_todays_questions()
     {
         _usage.GetAsync(UserId, UkToday, Arg.Any<CancellationToken>()).Returns(new DailyCounts(7, 0));
-        var handler = new GetChatUsageQueryHandler(_caller, _plans, _usage, Options.Create(_options), new FixedClock(Now));
+        var handler = UsageHandler();
 
         var usage = await handler.Handle(new GetChatUsageQuery(), Ct);
 
@@ -305,4 +314,94 @@ public sealed class AskQuestionTests
 internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => now;
+
+    [Fact]
+    public async Task Example_questions_name_the_members_home_town()
+    {
+        LivesIn("Prescot");
+
+        var usage = await UsageHandler().Handle(new GetChatUsageQuery(), Ct);
+
+        Assert.Equal("How many incidents have there been in Prescot this month?", usage.ExampleQuestions[0]);
+        Assert.All(usage.ExampleQuestions, q => Assert.DoesNotContain("Warrington", q));
+        Assert.Equal(3, usage.ExampleQuestions.Count(q => q.Contains("Prescot", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Free_members_see_their_own_town_in_the_locked_preview()
+    {
+        _plans.CurrentPlan().Returns(SubscriptionPlan.Free);
+        LivesIn("Rainhill");
+
+        var usage = await UsageHandler().Handle(new GetChatUsageQuery(), Ct);
+
+        Assert.False(usage.CanAsk);
+        Assert.Contains("How many incidents have there been in Rainhill this month?", usage.ExampleQuestions);
+    }
+
+    [Fact]
+    public async Task Without_a_home_area_the_examples_arent_tailored()
+    {
+        var usage = await UsageHandler().Handle(new GetChatUsageQuery(), Ct);
+
+        Assert.Equal(ChatExamples.Untailored, usage.ExampleQuestions);
+    }
+
+    [Fact]
+    public async Task Logged_out_callers_get_untailored_examples_without_a_lookup()
+    {
+        _caller.IdentityId.Returns((string?)null);
+        _plans.CurrentPlan().Returns((SubscriptionPlan?)null);
+
+        var usage = await UsageHandler().Handle(new GetChatUsageQuery(), Ct);
+
+        Assert.Equal(ChatExamples.Untailored, usage.ExampleQuestions);
+        await _homeAreas.DidNotReceiveWithAnyArgs().GetAsync(default, Ct);
+    }
+
+    [Fact]
+    public async Task A_postcode_district_home_area_gets_near_me_examples()
+    {
+        LivesIn("WA10");
+
+        var usage = await UsageHandler().Handle(new GetChatUsageQuery(), Ct);
+
+        Assert.Equal("How many incidents have there been near me this month?", usage.ExampleQuestions[0]);
+        Assert.All(usage.ExampleQuestions, q => Assert.DoesNotContain("WA10", q));
+    }
+
+    [Fact]
+    public async Task Replies_suggest_the_members_own_examples()
+    {
+        LivesIn("Prescot");
+
+        var reply = await Handler(Answers()).Handle(new AskQuestionCommand("hi"), Ct);
+
+        Assert.Equal(ChatAnswerKind.Clarify, reply.Answer.Kind);
+        Assert.Contains("How many incidents have there been in Prescot this month?", reply.Answer.Suggestions);
+        Assert.Equal(ChatExamples.For(new HomeArea("Prescot", 0, 0, 5)), reply.Usage.ExampleQuestions);
+    }
+
+    [Fact]
+    public async Task Near_me_defaults_to_the_home_area_when_the_app_sends_no_place()
+    {
+        LivesIn("Prescot");
+        var model = Answers();
+
+        await Handler(model).Handle(new AskQuestionCommand("How many near me?"), Ct);
+
+        Assert.Contains("The member is near Prescot (53.430, -2.800)", model.Calls[0][0].Content);
+    }
+
+    [Fact]
+    public async Task The_apps_place_wins_over_the_home_area()
+    {
+        LivesIn("Prescot");
+        var model = Answers();
+
+        await Handler(model).Handle(new AskQuestionCommand("How many near me?", Near: new NearPlace(53.80, -1.55, "Leeds")), Ct);
+
+        Assert.Contains("The member is near Leeds", model.Calls[0][0].Content);
+        Assert.DoesNotContain("Prescot (", model.Calls[0][0].Content);
+    }
 }

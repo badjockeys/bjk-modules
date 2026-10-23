@@ -7,6 +7,7 @@ using BJK.Modules.Queues;
 using BJK.Modules.Shared;
 using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Data;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.PersonalData;
 using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
@@ -72,6 +73,9 @@ public sealed class ChatModule(string connectionStringName, string chatConnectio
             "the bjk_chat login's connection string (it can read only reporting.Incidents and reporting.Subcategories)");
 
         services.TryAddSingleton(TimeProvider.System);
+
+        // Home areas tailor the example questions and "near me"; without the Notifications module nobody has one.
+        services.AddHomeAreasFallback();
         services.AddSingleton(new ChatDatabase(configuration.GetConnectionString(chatConnectionStringName)));
         services.AddScoped<IIncidentQueries, SqlIncidentQueries>();
         services.AddScoped<IChatUsage, ChatUsage>();
