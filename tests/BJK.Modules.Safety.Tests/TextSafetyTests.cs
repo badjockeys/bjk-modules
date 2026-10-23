@@ -164,5 +164,38 @@ public sealed class TextSafetyTests
         Assert.True(validator.Validate(new Sample("Close pass on the M62 J26", "A road near Bury")).IsValid);
     }
 
+    [Theory]
+    [InlineData("Cheap insurance at https://example.test/quote")]
+    [InlineData("see http://foo")]
+    [InlineData("visit www.cheap-cars.example")]
+    [InlineData("best deals cheap-insurance.co.uk today")]
+    [InlineData("bit.ly/abc123")]
+    [InlineData("go to dashcams.shop now")]
+    [InlineData("WWW.SPAM.EXAMPLE")]
+    public void Web_addresses_are_found(string text) => Assert.True(TextSafety.ContainsWebAddress(text));
+
+    [Theory]
+    [InlineData("Turned left.In the wrong lane")]
+    [InlineData("St.Helens ring road")]
+    [InlineData("Doing 70 in a 30, e.g. near the M62")]
+    [InlineData("3.5 tonne van on the A580")]
+    [InlineData("left.in the bus lane")]
+    [InlineData("Mr.Smith's driving school car")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Ordinary_driving_text_isnt_a_web_address(string? text) => Assert.False(TextSafety.ContainsWebAddress(text));
+
+    [Fact]
+    public void The_link_rule_refuses_with_a_friendly_message()
+    {
+        var validator = new InlineValidator<Sample>();
+        validator.RuleFor(s => s.Title).NoWebAddresses();
+
+        var error = Assert.Single(validator.Validate(new Sample("Get your dashcam at dashcams.shop", null)).Errors);
+        Assert.Equal(TextSafety.WebAddressMessage, error.ErrorMessage);
+        Assert.Equal("WebAddress", error.ErrorCode);
+        Assert.True(validator.Validate(new Sample("Close pass on the A57", null)).IsValid);
+    }
+
     public sealed record Sample(string Title, string? Description);
 }

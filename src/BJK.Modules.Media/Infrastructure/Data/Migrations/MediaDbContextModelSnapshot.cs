@@ -271,6 +271,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<Guid?>("VaultClipId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("VehicleFrames")
+                        .HasColumnType("int");
+
                     b.Property<int?>("Width")
                         .HasColumnType("int");
 
@@ -511,6 +514,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("VehicleFrames")
+                        .HasColumnType("int");
 
                     b.HasKey("MediaId", "Revision", "Index");
 

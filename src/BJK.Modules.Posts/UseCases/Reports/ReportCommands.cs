@@ -11,6 +11,8 @@ using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Reports;
 
@@ -148,14 +150,27 @@ public sealed class ReportProfileCommandValidator : AbstractValidator<ReportProf
     }
 }
 
+/// <summary>
+/// Reports a post. "Not a driving incident" and spam reports act fast (owner, 23 Oct 2026): once
+/// <c>Safety:OffTopic:ReportsToHold</c> different established members (accounts past the new-account period) have
+/// made one, or a Trusted reporter has, the post is held for a moderator until they decide. A post a moderator has
+/// already approved isn't held again.
+/// </summary>
 public sealed class ReportPostCommandHandler(
     IPostRepository posts,
     IReportRepository reports,
     ModerationNotifications notifications,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    IOptions<SafetyOptions>? safety = null,
+    IProfileDirectory? profiles = null,
+    IProfileBadges? badges = null,
+    ILogger<ReportPostCommandHandler>? logger = null)
     : IRequestHandler<ReportPostCommand>
 {
+    /// <summary>Report reasons that mean the post isn't about driving.</summary>
+    public static readonly IReadOnlySet<ReportReason> OffTopicReasons = new HashSet<ReportReason> { ReportReason.NotADrivingIncident, ReportReason.Spam };
+
     public async Task Handle(ReportPostCommand request, CancellationToken cancellationToken)
     {
         var userId = caller.RequireUserId();
@@ -163,8 +178,45 @@ public sealed class ReportPostCommandHandler(
 
         await ReportRules.EnsureFirstReportAsync(reports, userId, ReportTargetType.Post, post.Id, cancellationToken);
 
-        var report = Report.Create(userId, ReportTargetType.Post, post.Id, post.Id, request.Reason, request.Details, clock.GetUtcNow(), caller.Email);
+        var now = clock.GetUtcNow();
+        var report = Report.Create(userId, ReportTargetType.Post, post.Id, post.Id, request.Reason, request.Details, now, caller.Email);
         await ReportRules.SaveAndAcknowledgeAsync(reports, notifications, report, cancellationToken);
+
+        if (OffTopicReasons.Contains(request.Reason) && await ShouldHoldAsync(post, cancellationToken)
+            && post.HoldForReview(PostHoldReasons.OffTopicReports, now))
+        {
+            await posts.SaveChangesAsync(cancellationToken);
+            logger?.LogInformation("Post {PostId} was held for a moderator: reported as not about driving.", post.Id);
+        }
+    }
+
+    private async Task<bool> ShouldHoldAsync(Post post, CancellationToken cancellationToken)
+    {
+        var rules = safety?.Value ?? new SafetyOptions();
+        if (rules.OffTopic.ReportsToHold <= 0 || profiles is null || post.ReviewedAt is not null)
+        {
+            return false;
+        }
+
+        var reporters = (await reports.ListOpenForTargetAsync(ReportTargetType.Post, post.Id, cancellationToken))
+            .Where(r => OffTopicReasons.Contains(r.Reason) && r.ReporterId is not null && r.ReporterId != post.AuthorId)
+            .Select(r => r.ReporterId!.Value)
+            .Distinct()
+            .ToList();
+        if (reporters.Count == 0)
+        {
+            return false;
+        }
+
+        if (badges is not null && (await badges.TrustedReportersAsync(reporters, cancellationToken)).Count > 0)
+        {
+            return true;
+        }
+
+        // Brand-new accounts don't count, so a handful of throwaway accounts can't take a post down.
+        var established = clock.GetUtcNow() - rules.NewAccounts.Period;
+        var people = await profiles.GetSummariesAsync(reporters, cancellationToken);
+        return reporters.Count(id => people.TryGetValue(id, out var p) && p.CreatedAt <= established) >= rules.OffTopic.ReportsToHold;
     }
 }
 
@@ -424,6 +476,12 @@ public sealed class ResolveReportCommandHandler(
                     var post = await posts.GetAsync(report.TargetId, cancellationToken);
                     before = $"Post Status={post?.Status}";
                     post?.Hide(reason, now);
+                    if (ReportPostCommandHandler.OffTopicReasons.Contains(report.Reason))
+                    {
+                        // Counts towards pausing the author's posting (Safety:OffTopic).
+                        post?.MarkRemovedOffTopic(now);
+                    }
+
                     after = $"Post Status={post?.Status}";
                     break;
                 case ReportTargetType.Comment:

@@ -140,6 +140,12 @@ public sealed class Post
     /// <summary>When a moderator last approved the post after screening.</summary>
     public DateTimeOffset? ReviewedAt { get; private set; }
 
+    /// <summary>
+    /// When a moderator removed it as not about driving (or spam): counts towards pausing its author's posting
+    /// (<c>Safety:OffTopic</c>). Cleared if it's shown again.
+    /// </summary>
+    public DateTimeOffset? OffTopicRemovedAt { get; private set; }
+
     public Guid? ReviewedBy { get; private set; }
 
     /// <summary>
@@ -435,7 +441,10 @@ public sealed class Post
         ArgumentNullException.ThrowIfNull(result);
         EnsureNotDeleted();
         ScreeningScore = Math.Round(result.Score, 3);
-        ScreeningLabels = ScreeningText.Labels(result.Labels);
+        // A hold for another reason (no vehicle, reports) stays on the labels when the text is screened again.
+        var holds = (ScreeningLabels ?? string.Empty).Split(',')
+            .Where(l => l is PostHoldReasons.NoVehicle or PostHoldReasons.OffTopicReports);
+        ScreeningLabels = ScreeningText.Labels([.. result.Labels.Where(l => !holds.Contains(l)), .. holds]);
         if (result.Verdict == ScreeningVerdict.Allow)
         {
             return;
@@ -447,6 +456,44 @@ public sealed class Post
             Status = PostStatus.HeldForReview;
         }
     }
+
+    /// <summary>
+    /// Holds a published post for a moderator, for a reason that isn't its text (owner, 23 Oct 2026): no vehicle seen
+    /// in its photos or video (<see cref="PostHoldReasons.NoVehicle"/>), or reported as off-topic by enough members
+    /// (<see cref="PostHoldReasons.OffTopicReports"/>). Only its author and moderators see it until a moderator
+    /// approves it. The reason is added to <see cref="ScreeningLabels"/> for the moderator. A post a moderator has
+    /// already approved isn't held again.
+    /// </summary>
+    /// <returns>True if it's held now.</returns>
+    public bool HoldForReview(string reason, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        EnsureNotDeleted();
+        if (ReviewedAt is not null || Status is not (PostStatus.Published or PostStatus.HeldForReview))
+        {
+            return false;
+        }
+
+        var labels = (ScreeningLabels ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (!labels.Contains(reason))
+        {
+            labels.Add(reason);
+        }
+
+        ScreeningLabels = ScreeningText.Labels(labels);
+        IsFlagged = true;
+        var held = Status == PostStatus.Published;
+        Status = PostStatus.HeldForReview;
+        UpdatedAt = now;
+        return held;
+    }
+
+    /// <summary>A moderator removed it as not about driving or spam (see <see cref="OffTopicRemovedAt"/>).</summary>
+    public void MarkRemovedOffTopic(DateTimeOffset now) => OffTopicRemovedAt ??= now;
+
+    /// <summary>True if it was held for one of the reasons in <see cref="PostHoldReasons"/> that mean off-topic.</summary>
+    public bool WasHeldAsOffTopic =>
+        (ScreeningLabels ?? string.Empty).Split(',').Any(l => l is PostHoldReasons.NoVehicle or PostHoldReasons.OffTopicReports);
 
     /// <summary>A moderator approves the post after screening: it's published (if held) and the flag is cleared.</summary>
     public void Approve(Guid? moderatorId, DateTimeOffset now)
@@ -479,6 +526,7 @@ public sealed class Post
         Status = PostStatus.Published;
         HiddenReason = null;
         HiddenAt = null;
+        OffTopicRemovedAt = null;
         UpdatedAt = now;
     }
 
@@ -577,6 +625,16 @@ public static class PinRounding
             MidpointRounding.AwayFromZero);
         return (lat, Math.Clamp(decimal.Round((decimal)lng, 6, MidpointRounding.AwayFromZero), -180m, 180m));
     }
+}
+
+/// <summary>Why a post was held for a moderator other than its text (kept in its screening labels).</summary>
+public static class PostHoldReasons
+{
+    /// <summary>No vehicle was seen in any of its photos or its video.</summary>
+    public const string NoVehicle = "no_vehicle";
+
+    /// <summary>Enough members reported it as not about driving, or spam.</summary>
+    public const string OffTopicReports = "reported_off_topic";
 }
 
 internal static class ScreeningText

@@ -71,4 +71,7 @@ public interface IProfileBadges
     /// last 6), if they don't already hold it. Members without a profile are skipped.
     /// </summary>
     Task AwardLocalRegularAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+
+    /// <summary>Of these members, those holding the Trusted reporter badge.</summary>
+    Task<IReadOnlyCollection<Guid>> TrustedReportersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
 }

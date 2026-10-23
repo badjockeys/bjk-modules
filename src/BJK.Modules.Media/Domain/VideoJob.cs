@@ -168,6 +168,9 @@ public sealed class VideoSegment
     /// <summary>PDQ hashes (hex, space-separated) of up to eight frames it checked, for the known-image list.</summary>
     public string? PerceptualHashes { get; private set; }
 
+    /// <summary>Frames with a vehicle or plate found; null if vehicle detection wasn't running.</summary>
+    public int? VehicleFrames { get; private set; }
+
     public DateTimeOffset? CompletedAt { get; private set; }
 
     public bool IsDone => Status == VideoSegmentStatus.Done;
@@ -188,6 +191,7 @@ public sealed class VideoSegment
     /// <param name="sensitiveScore">The highest graphic content score, or null.</param>
     /// <param name="nudityScore">The highest nudity score, or null.</param>
     /// <param name="perceptualHashes">PDQ hashes of sampled frames.</param>
+    /// <param name="vehicleFrames">Frames with a vehicle or plate, or null if not checked.</param>
     public bool MarkDone(
         int frames,
         int faces,
@@ -197,7 +201,8 @@ public sealed class VideoSegment
         DateTimeOffset now,
         double? sensitiveScore = null,
         double? nudityScore = null,
-        IEnumerable<string>? perceptualHashes = null)
+        IEnumerable<string>? perceptualHashes = null,
+        int? vehicleFrames = null)
     {
         if (IsDone)
         {
@@ -213,6 +218,7 @@ public sealed class VideoSegment
         SensitiveScore = sensitiveScore;
         NudityScore = nudityScore;
         PerceptualHashes = JoinHashes(perceptualHashes);
+        VehicleFrames = vehicleFrames;
         CompletedAt = now;
         return true;
     }

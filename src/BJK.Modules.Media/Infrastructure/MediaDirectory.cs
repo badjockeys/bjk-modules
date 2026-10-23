@@ -134,6 +134,7 @@ internal sealed class MediaDirectory(
             ready ? links.ExpiresAt : null,
             automatic,
             item.SensitiveScore,
-            ready ? links.Feed : null);
+            ready ? links.Feed : null,
+            item.VehicleSeen);
     }
 }

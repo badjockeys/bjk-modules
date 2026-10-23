@@ -45,7 +45,8 @@ internal sealed class InMemoryVideoJobStore : IVideoJobStore
                 now,
                 result.SensitiveScore,
                 result.NudityScore,
-                result.PerceptualHashes));
+                result.PerceptualHashes,
+                result.VehicleFrames));
 
     public Task<bool> AllDoneAsync(Guid mediaId, int revision, CancellationToken cancellationToken) =>
         Task.FromResult(_jobs.TryGetValue((mediaId, revision), out var job) && job.Segments.All(s => s.IsDone));

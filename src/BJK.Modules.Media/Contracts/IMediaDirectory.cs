@@ -76,6 +76,10 @@ public interface IMediaDirectory
 /// Photos: the feed-size copy (1080 px), for feeds; <paramref name="PlaybackUrl"/> is the full image. Null for videos and
 /// older photos. Like the other addresses, null or signed for restricted media.
 /// </param>
+/// <param name="VehicleSeen">
+/// Whether automatic blurring found a vehicle or number plate in it; null if that wasn't checked. Posts whose photos
+/// and video all show no vehicle are held for a moderator (owner, 23 Oct 2026).
+/// </param>
 public sealed record MediaSummary(
     Guid Id,
     Guid UserId,
@@ -92,7 +96,8 @@ public sealed record MediaSummary(
     DateTimeOffset? LinksExpireAt = null,
     bool IsAutoSensitive = false,
     double? SensitiveScore = null,
-    Uri? FeedUrl = null)
+    Uri? FeedUrl = null,
+    bool? VehicleSeen = null)
 {
     public bool IsReady => Status == MediaStatus.Ready;
 
