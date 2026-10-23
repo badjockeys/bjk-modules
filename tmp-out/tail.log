@@ -1,0 +1,60 @@
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Photos_get_a_1080_pixel_feed_copy_never_enlarged
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.A_short_video_still_gets_a_thumbnail
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.The_sensitive_preview_is_a_small_heavily_blurred_webp
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Newly_accepted_photo_types_become_webp(name: "photo.tiff", encode: ["-frames:v", "1"])
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Newly_accepted_photo_types_become_webp(name: "photo.gif", encode: ["-frames:v", "1"])
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Newly_accepted_photo_types_become_webp(name: "animated.gif", encode: ["-r", "5"])
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Newly_accepted_photo_types_become_webp(name: "photo.avif", encode: ["-frames:v", "1", "-c:v", "libaom-av1", "-still-picture", ···])
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Newly_accepted_photo_types_become_webp(name: "photo.bmp", encode: ["-frames:v", "1"])
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.Probe_reads_size_duration_and_frame_rate
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.FfmpegTranscoderTests.A_large_photo_becomes_a_smaller_webp_and_thumbnail
+  ffmpeg isn't installed.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.YOLOX_finds_people_and_returns_their_heads_and_a_cars_plate_area
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.Detector_cost_per_720p_frame_is_measured
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.LPD_YuNet_finds_the_plate_on_a_car
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.A_30_second_1080p_clip_is_timed_in_one_job_and_in_segments
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.YuNet_finds_the_faces_in_a_crowd_photo
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.A_moving_clip_is_blurred_with_the_real_models_and_timed(kind: "scene")
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[33mskipped[m BJK.Modules.Media.Tests.Processing.RealModelTests.A_moving_clip_is_blurred_with_the_real_models_and_timed(kind: "crowd")
+  BJK_REDACTION_MODELS isn't set; run scripts/download-redaction-models.sh to fetch the models.
+  from /home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64)
+[m/home/runner/work/bjk-modules/bjk-modules/tests/BJK.Modules.Media.Tests/bin/Release/net10.0/BJK.Modules.Media.Tests.dll (net10.0|x64) [32mpassed[m [90m(1s 563ms)[m
+
+[32mTest run summary: Passed!
+[m  total: 305
+  failed: 0
+[32m  succeeded: 248
+[m  skipped: 57
+  duration: 1s 831ms
