@@ -347,6 +347,9 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("AutoSaveOff")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Plan")
                         .IsRequired()
                         .HasMaxLength(20)
