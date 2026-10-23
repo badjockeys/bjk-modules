@@ -283,7 +283,8 @@ public sealed class VaultTests
     [Fact]
     public async Task The_vault_can_list_only_clips_from_posts_or_only_uploads()
     {
-        _store.ListAsync(UserId, 1, 4, VaultClipSource.Upload, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[Stored(UserId)], 1));
+        var upload = Stored(UserId);
+        _store.ListAsync(UserId, 1, 4, VaultClipSource.Upload, Arg.Any<CancellationToken>()).Returns(((IReadOnlyList<VaultClip>)[upload], 1));
 
         var vault = await new GetVaultQueryHandler(_store, Plans(), _resolver, _caller, _options)
             .Handle(new GetVaultQuery(1, 4, VaultClipSource.Upload), Ct);
