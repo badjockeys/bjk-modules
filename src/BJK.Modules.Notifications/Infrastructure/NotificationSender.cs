@@ -130,10 +130,10 @@ internal sealed class NotificationSender(
             try
             {
                 var text = NotificationTexts.Sentence(request.Type, await ActorNameAsync(), people, request.PostTitle, request.Detail);
-                var url = request.PostId is { } id ? $"/p/{id:D}" : "/notifications";
+                var url = Notification.LinkFrom(request.Link) ?? (request.PostId is { } id ? $"/p/{id:D}" : "/notifications");
                 await push.SendAsync(
                     request.UserId,
-                    new PushMessage("Bad Jockeys", text, url, $"{request.Type}:{request.PostId:D}"),
+                    new PushMessage("Bad Jockeys", text, url, $"{request.Type}:{request.PostId?.ToString("D") ?? url}"),
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -160,7 +160,9 @@ internal sealed class NotificationSender(
             return;
         }
 
-        var link = request.PostId is null ? null : Link($"/p/{request.PostId:D}");
+        var link = Notification.LinkFrom(request.Link) is { } path
+            ? Link(path)
+            : request.PostId is null ? null : Link($"/p/{request.PostId:D}");
         var settings = Link("/account/notifications");
         var template = EmailTemplates.Notification(
             NotificationTexts.Subject(request.Type, actorName),

@@ -133,6 +133,10 @@ namespace BJK.Modules.Notifications.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("LastPushedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Link")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<Guid?>("PostId")
                         .HasColumnType("uniqueidentifier");
 

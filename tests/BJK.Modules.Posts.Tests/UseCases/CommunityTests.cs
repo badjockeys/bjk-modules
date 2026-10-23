@@ -6,6 +6,7 @@ using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Safety;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using Microsoft.Extensions.Options;
@@ -25,6 +26,7 @@ public sealed class CommunityTests
     private readonly IPostRepository _posts = Substitute.For<IPostRepository>();
     private readonly IBlockDirectory _blocks = Substitute.For<IBlockDirectory>();
     private readonly ICurrentUser _caller = Substitute.For<ICurrentUser>();
+    private readonly INotificationSender _notifications = Substitute.For<INotificationSender>();
     private readonly TimeProvider _clock = new FixedTimeProvider(Now);
 
     public CommunityTests()
@@ -270,6 +272,137 @@ public sealed class CommunityTests
         await remove.Handle(new RemoveCommunityReplyCommand(community.Slug, discussion.Id, theirs.Id), Ct);
         Assert.Equal(CommunityContentStatus.Removed, theirs.Status);
         Assert.NotEqual(Guid.Empty, reply.Id);
+    }
+
+    // --- Invitations and notifications ---
+
+    [Fact]
+    public async Task Requests_to_join_are_sent_to_the_admins_and_moderators()
+    {
+        var community = Make(CommunityVisibility.Private);
+        var moderator = Guid.NewGuid();
+        _communities.ListModeratorIdsAsync(community.Id, Arg.Any<CancellationToken>()).Returns([OtherUserId, moderator]);
+
+        await new JoinCommunityCommandHandler(_communities, _profiles, _caller, _clock, _notifications).Handle(new JoinCommunityCommand(community.Slug), Ct);
+
+        foreach (var to in new[] { OtherUserId, moderator })
+        {
+            await _notifications.Received(1).NotifyAsync(
+                Arg.Is<NotificationRequest>(n => n.UserId == to && n.Type == NotificationType.CommunityJoinRequest && n.ActorId == UserId
+                    && n.PostTitle == community.Name && n.Link == $"/communities/{community.Slug}/manage?tab=requests"),
+                Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Fact]
+    public async Task Approved_requests_are_announced_and_declined_ones_are_not()
+    {
+        var community = Make(CommunityVisibility.Private);
+        Member(community, UserId, CommunityRole.Admin);
+        var handler = new DecideCommunityRequestCommandHandler(_communities, _caller, _clock, _notifications);
+
+        _communities.GetMemberAsync(community.Id, OtherUserId, Arg.Any<CancellationToken>()).Returns(CommunityMember.Request(community.Id, OtherUserId, Now));
+        await handler.Handle(new DecideCommunityRequestCommand(community.Slug, OtherUserId, false), Ct);
+        await _notifications.DidNotReceiveWithAnyArgs().NotifyAsync(null!, Ct);
+
+        _communities.GetMemberAsync(community.Id, OtherUserId, Arg.Any<CancellationToken>()).Returns(CommunityMember.Request(community.Id, OtherUserId, Now));
+        await handler.Handle(new DecideCommunityRequestCommand(community.Slug, OtherUserId, true), Ct);
+        await _notifications.Received(1).NotifyAsync(
+            Arg.Is<NotificationRequest>(n => n.UserId == OtherUserId && n.Type == NotificationType.CommunityRequestApproved && n.Link == $"/communities/{community.Slug}"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Moderators_invite_people_who_then_join_a_private_community()
+    {
+        var community = Make(CommunityVisibility.Private);
+        Member(community, UserId, CommunityRole.Moderator);
+        Invitee(adult: true);
+
+        var dto = await Invite().Handle(new InviteToCommunityCommand(community.Slug, "@sam_j"), Ct);
+
+        Assert.Equal(CommunityMembershipStatus.Invited, dto.Status);
+        _communities.Received(1).Add(Arg.Is<CommunityMember>(m => m.UserId == OtherUserId && m.Status == CommunityMembershipStatus.Invited && m.InvitedBy == UserId));
+        await _notifications.Received(1).NotifyAsync(
+            Arg.Is<NotificationRequest>(n => n.UserId == OtherUserId && n.Type == NotificationType.CommunityInvite && n.ActorId == UserId),
+            Arg.Any<CancellationToken>());
+
+        // Accepting: the invitation turns into membership, no request needed.
+        var invite = CommunityMember.Invite(community.Id, UserId, OtherUserId, Now);
+        _communities.GetMemberAsync(community.Id, UserId, Arg.Any<CancellationToken>()).Returns(invite);
+        var joined = await Join().Handle(new JoinCommunityCommand(community.Slug), Ct);
+        Assert.Equal(CommunityStanding.Member, joined.Standing);
+        Assert.Equal(1, community.MemberCount);
+        Assert.Null(invite.InvitedBy);
+    }
+
+    [Fact]
+    public async Task Invitations_follow_the_age_block_and_membership_rules()
+    {
+        var community = Make(CommunityVisibility.Private);
+        Member(community, UserId, CommunityRole.Admin);
+
+        Invitee(adult: false);
+        await Assert.ThrowsAsync<ValidationException>(() => Invite().Handle(new InviteToCommunityCommand(community.Slug, "sam_j"), Ct));
+
+        Invitee(adult: true);
+        _blocks.IsBlockedAsync(OtherUserId, UserId, Arg.Any<CancellationToken>()).Returns(true);
+        var blocked = await Assert.ThrowsAsync<ValidationException>(() => Invite().Handle(new InviteToCommunityCommand(community.Slug, "sam_j"), Ct));
+        Assert.Contains("nobody called @sam_j", blocked.Message, StringComparison.Ordinal);
+
+        _blocks.IsBlockedAsync(OtherUserId, UserId, Arg.Any<CancellationToken>()).Returns(false);
+        var banned = CommunityMember.Join(community.Id, OtherUserId, Now);
+        banned.Ban(Now);
+        _communities.GetMemberAsync(community.Id, OtherUserId, Arg.Any<CancellationToken>()).Returns(banned);
+        await Assert.ThrowsAsync<ValidationException>(() => Invite().Handle(new InviteToCommunityCommand(community.Slug, "sam_j"), Ct));
+
+        // Someone who'd asked: inviting them lets them in.
+        var asking = CommunityMember.Request(community.Id, OtherUserId, Now);
+        _communities.GetMemberAsync(community.Id, OtherUserId, Arg.Any<CancellationToken>()).Returns(asking);
+        await Invite().Handle(new InviteToCommunityCommand(community.Slug, "sam_j"), Ct);
+        Assert.True(asking.IsMember);
+        _communities.DidNotReceive().Add(Arg.Any<CommunityMember>());
+    }
+
+    [Fact]
+    public async Task Plain_members_cannot_invite()
+    {
+        var community = Make(CommunityVisibility.Public);
+        Member(community, UserId, CommunityRole.Member);
+        Invitee(adult: true);
+
+        await Assert.ThrowsAsync<ForbiddenException>(() => Invite().Handle(new InviteToCommunityCommand(community.Slug, "sam_j"), Ct));
+    }
+
+    [Fact]
+    public async Task A_discussions_author_hears_about_replies()
+    {
+        var community = Make(CommunityVisibility.Public);
+        Member(community, UserId, CommunityRole.Member);
+        var discussion = CommunityDiscussion.Start(community.Id, OtherUserId, "Worsley roundabout", null, false, Now);
+        _communities.GetDiscussionAsync(community.Id, discussion.Id, Arg.Any<CancellationToken>()).Returns(discussion);
+
+        await new ReplyToCommunityDiscussionCommandHandler(_communities, _profiles, _blocks, _screener, Limits(), _caller, _clock, _notifications)
+            .Handle(new ReplyToCommunityDiscussionCommand(community.Slug, discussion.Id, "Same here"), Ct);
+
+        await _notifications.Received(1).NotifyAsync(
+            Arg.Is<NotificationRequest>(n => n.UserId == OtherUserId && n.Type == NotificationType.CommunityReply && n.PostTitle == "Worsley roundabout"
+                && n.Detail == community.Name && n.Link == $"/communities/{community.Slug}/d/{discussion.Id:D}"),
+            Arg.Any<CancellationToken>());
+    }
+
+    private InviteToCommunityCommandHandler Invite() => new(_communities, _profiles, _blocks, _caller, _clock, _notifications);
+
+    private void Invitee(bool adult)
+    {
+        var sam = new ProfileSummary(OtherUserId, "sam_j", "Sam J", null, Now.AddDays(-90), adult);
+        _profiles.FindByHandleAsync("sam_j", Arg.Any<CancellationToken>()).Returns(sam);
+        _profiles.GetSummariesAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<Guid, ProfileSummary>
+            {
+                [UserId] = new(UserId, "roadhog", "Road Hog", null, Now.AddDays(-90), true),
+                [OtherUserId] = sam,
+            });
     }
 
     private CreateCommunityCommandHandler Create() => new(_communities, _profiles, _plans, _screener, _caller, _clock);

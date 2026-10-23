@@ -10,7 +10,8 @@ public static class NotificationTexts
     /// <param name="actorName">Who did it, or null if they've gone ("Someone").</param>
     /// <param name="count">How many people, for grouped reactions.</param>
     /// <param name="postTitle">The post's title, if any.</param>
-    /// <param name="detail">The notification's extra sentence, if it has one (a closed vote's result).</param>
+    /// <param name="detail">The notification's extra sentence, if it has one (a closed vote's result; for a community
+    /// reply, the community's name).</param>
     public static string Sentence(NotificationType type, string? actorName, int count, string? postTitle, string? detail = null)
     {
         var who = string.IsNullOrWhiteSpace(actorName) ? "Someone" : actorName;
@@ -33,6 +34,12 @@ public static class NotificationTexts
             NotificationType.VoteClosed => string.IsNullOrWhiteSpace(detail)
                 ? $"The vote on {on} has closed."
                 : $"The vote on {on} has closed. {detail}",
+            NotificationType.CommunityJoinRequest => $"{who} asked to join {Community(postTitle)}.",
+            NotificationType.CommunityRequestApproved => $"You're in: your request to join {Community(postTitle)} was approved.",
+            NotificationType.CommunityInvite => $"{who} invited you to join {Community(postTitle)}.",
+            NotificationType.CommunityReply => string.IsNullOrWhiteSpace(detail)
+                ? $"{who} replied to your discussion {on}."
+                : $"{who} replied to your discussion {on} in {detail}.",
             _ => "You have a new notification.",
         };
     }
@@ -52,6 +59,10 @@ public static class NotificationTexts
             NotificationType.NewFollower => $"{who} followed you on Bad Jockeys",
             NotificationType.CommentOnFollowedPost => $"{who} commented on a post you follow",
             NotificationType.VoteClosed => "The vote has closed: see the result",
+            NotificationType.CommunityJoinRequest => $"{who} asked to join your community",
+            NotificationType.CommunityRequestApproved => "You're in: your request to join was approved",
+            NotificationType.CommunityInvite => $"{who} invited you to a community on Bad Jockeys",
+            NotificationType.CommunityReply => $"{who} replied to your discussion",
             _ => "New on Bad Jockeys",
         };
     }
@@ -68,6 +79,12 @@ public static class NotificationTexts
         NotificationType.NewFollower => "New followers",
         NotificationType.CommentOnFollowedPost => "Comments on posts you follow",
         NotificationType.VoteClosed => "Vote results",
+        NotificationType.CommunityJoinRequest => "Requests to join communities you run",
+        NotificationType.CommunityRequestApproved => "Your requests to join are approved",
+        NotificationType.CommunityInvite => "Invitations to communities",
+        NotificationType.CommunityReply => "Replies to your community discussions",
         _ => type.ToString(),
     };
+
+    private static string Community(string? name) => string.IsNullOrWhiteSpace(name) ? "a community" : name;
 }
