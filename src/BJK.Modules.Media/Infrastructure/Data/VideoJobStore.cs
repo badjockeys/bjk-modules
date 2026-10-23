@@ -14,6 +14,7 @@ namespace BJK.Modules.Media.Infrastructure.Data;
 /// <param name="SensitiveScore">The highest graphic content score of the frames checked; null if detection was off.</param>
 /// <param name="NudityScore">The highest nudity score of the frames checked; null if not checked.</param>
 /// <param name="PerceptualHashes">PDQ hashes of up to eight frames checked.</param>
+/// <param name="VehicleFrames">Frames with a vehicle or plate found; null if vehicle detection wasn't running.</param>
 public sealed record VideoSegmentResult(
     int Frames,
     int FacesBlurred,
@@ -22,7 +23,8 @@ public sealed record VideoSegmentResult(
     TimeSpan Elapsed,
     double? SensitiveScore = null,
     double? NudityScore = null,
-    IReadOnlyList<string>? PerceptualHashes = null);
+    IReadOnlyList<string>? PerceptualHashes = null,
+    int? VehicleFrames = null);
 
 /// <summary>
 /// Progress of videos processed in segments (<c>media.VideoJobs</c>, <c>media.VideoSegments</c>). Every change that
@@ -115,6 +117,7 @@ internal sealed class VideoJobStore(MediaDbContext db) : IVideoJobStore
                     .SetProperty(s => s.SensitiveScore, result.SensitiveScore)
                     .SetProperty(s => s.NudityScore, result.NudityScore)
                     .SetProperty(s => s.PerceptualHashes, hashes)
+                    .SetProperty(s => s.VehicleFrames, result.VehicleFrames)
                     .SetProperty(s => s.CompletedAt, now),
                 cancellationToken);
         return updated == 1;

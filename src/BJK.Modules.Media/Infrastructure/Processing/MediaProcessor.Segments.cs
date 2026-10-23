@@ -131,7 +131,8 @@ internal sealed partial class MediaProcessor
                         result.Elapsed,
                         result.SensitiveScore,
                         result.NudityScore,
-                        result.PerceptualHashes),
+                        result.PerceptualHashes,
+                        result.VehicleFrames),
                     clock.GetUtcNow(),
                     cancellationToken);
                 logger.LogInformation(
@@ -240,7 +241,10 @@ internal sealed partial class MediaProcessor
                 }
 
                 // Counts are per segment, so a face crossing a join is counted once in each.
-                item.RecordRedaction(segments.Sum(s => s.FacesBlurred ?? 0), segments.Sum(s => s.PlatesBlurred ?? 0));
+                item.RecordRedaction(
+                    segments.Sum(s => s.FacesBlurred ?? 0),
+                    segments.Sum(s => s.PlatesBlurred ?? 0),
+                    VehicleFramesOf(segments.Select(s => s.VehicleFrames)));
                 await ApplySensitiveScoreAsync(item, segments.Max(s => s.SensitiveScore), cancellationToken);
                 // The nudity score and the frames' PDQ hashes (for "block copies") come from the segments too.
                 item.RecordContentChecks(segments.Max(s => s.NudityScore), SpreadHashes(segments.Select(s => s.PerceptualHashList)));
@@ -286,5 +290,16 @@ internal sealed partial class MediaProcessor
         }
 
         return Enumerable.Range(0, count).Select(i => all[(int)((long)i * (all.Count - 1) / (count - 1))]).ToList();
+    }
+
+    /// <summary>
+    /// Vehicle frames over a video's segments: the total where any were checked; if none were found but some segment
+    /// wasn't checked, it isn't known (null), so a video isn't held for a part nobody looked at.
+    /// </summary>
+    internal static int? VehicleFramesOf(IEnumerable<int?> segments)
+    {
+        var list = segments.ToList();
+        var found = list.Sum(v => v ?? 0);
+        return found > 0 ? found : list.Count > 0 && list.All(v => v is not null) ? 0 : null;
     }
 }

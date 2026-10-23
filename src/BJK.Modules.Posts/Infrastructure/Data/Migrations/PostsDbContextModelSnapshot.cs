@@ -736,6 +736,9 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("nvarchar(254)");
 
+                    b.Property<DateTimeOffset?>("OffTopicRemovedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("PlaceName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");

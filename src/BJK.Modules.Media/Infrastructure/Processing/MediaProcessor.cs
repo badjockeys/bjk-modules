@@ -205,7 +205,7 @@ internal sealed partial class MediaProcessor(
         }
 
         var duration = item.MediaType == MediaType.Video ? probe.DurationSeconds : null;
-        item.RecordRedaction(redaction.FacesBlurred, redaction.PlatesBlurred);
+        item.RecordRedaction(redaction.FacesBlurred, redaction.PlatesBlurred, redaction.VehicleFrames);
         item.RecordContentChecks(redaction.NudityScore, redaction.PerceptualHashes);
         await ApplySensitiveScoreAsync(item, redaction.SensitiveScore, cancellationToken);
         var outcome = await PublishAsync(

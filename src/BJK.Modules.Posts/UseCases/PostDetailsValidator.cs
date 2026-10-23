@@ -108,6 +108,11 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
         RuleFor(x => x.Title).NoPersonalDetails();
         RuleFor(x => x.Description).NoPersonalDetails();
         RuleFor(x => x.PlaceName).NoPersonalDetails();
+
+        // No links (owner, 23 Oct 2026, to keep spam out). Text already refused above isn't told twice.
+        RuleFor(x => x.Title).NoWebAddresses().When(x => TextSafety.Check(x.Title) is null);
+        RuleFor(x => x.Description).NoWebAddresses().When(x => TextSafety.Check(x.Description) is null);
+        RuleFor(x => x.PlaceName).NoWebAddresses().When(x => TextSafety.Check(x.PlaceName) is null);
     }
 }
 

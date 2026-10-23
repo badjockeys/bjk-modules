@@ -130,6 +130,11 @@ public sealed class ReviewScreenedPostCommandHandler(
         else
         {
             post.Hide(reason, now);
+            if (post.WasHeldAsOffTopic)
+            {
+                // Held for no vehicle or off-topic reports, and removed: counts towards pausing its author's posting.
+                post.MarkRemovedOffTopic(now);
+            }
         }
 
         await audit.RecordAsync(

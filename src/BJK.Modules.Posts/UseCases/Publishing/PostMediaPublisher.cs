@@ -19,7 +19,9 @@ namespace BJK.Modules.Posts.UseCases.Publishing;
 /// in any order: called when the post is created and for every <c>media.ready</c> / <c>media.failed</c> event. It also
 /// applies automatic sensitive tags: if the media worker's graphic content detection marked any of the post's media,
 /// the post is tagged sensitive (source Automatic) before it's published, recorded in the audit log, and queued for a
-/// moderator to confirm or undo. Once a post is published, its media's uploaded originals are deleted.
+/// moderator to confirm or undo. Once a post is published, its media's uploaded originals are deleted. A post whose
+/// photos and video were all checked and show no vehicle is held for a moderator instead of going public (owner, 23 Oct
+/// 2026: posts must be about driving).
 /// </summary>
 public sealed class PostMediaPublisher(
     IPostRepository posts,
@@ -83,6 +85,12 @@ public sealed class PostMediaPublisher(
             var tagged = TagIfDetected(post, found.Values);
             if (post.MarkMediaReady(now))
             {
+                // Hold it in the same save, so a post with no vehicle in sight is never shown before a moderator looks.
+                if (NoVehicleSeen(found.Values) && post.HoldForReview(PostHoldReasons.NoVehicle, now))
+                {
+                    logger.LogInformation("Post {PostId} was held for a moderator: no vehicle was seen in its photos or video.", post.Id);
+                }
+
                 await posts.SaveChangesAsync(cancellationToken);
                 logger.LogInformation("Post {PostId} published: all its photos and videos are ready.", post.Id);
                 if (tagged)
@@ -97,7 +105,11 @@ public sealed class PostMediaPublisher(
                     .Where(t => t.Status == PassengerTagStatus.Pending)
                     .Select(t => t.UserId)
                     .ToList();
-                await Passengers.PassengerTagging.NotifyTaggedAsync(notifier, post, waiting, cancellationToken);
+                if (post.IsPublished)
+                {
+                    await Passengers.PassengerTagging.NotifyTaggedAsync(notifier, post, waiting, cancellationToken);
+                }
+
                 if (post.IsPublic && areaAlerts is not null)
                 {
                     await areaAlerts.PostPublishedAsync(post.ToPublished(now), cancellationToken);
@@ -107,6 +119,14 @@ public sealed class PostMediaPublisher(
 
         return post.MediaState;
     }
+
+    /// <summary>
+    /// True if every photo and video was checked for vehicles and none showed one. Media not checked (detection off,
+    /// or processed before it existed) never count against a post.
+    /// </summary>
+    /// <param name="items">The post's media, from the Media module.</param>
+    public static bool NoVehicleSeen(IReadOnlyCollection<MediaSummary> items) =>
+        items.Count > 0 && items.All(m => m.VehicleSeen == false);
 
     /// <summary>
     /// The post's media are all ready and it's published: the uploaded originals aren't needed any more, so the Media

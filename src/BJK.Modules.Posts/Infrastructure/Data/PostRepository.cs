@@ -106,6 +106,12 @@ public interface IPostRepository
     /// <summary>How many posts the author has created since the given time, including ones since deleted or hidden.</summary>
     Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// How many of the author's posts a moderator removed as not about driving since the given time, and when the
+    /// latest was (null if none).
+    /// </summary>
+    Task<(int Count, DateTimeOffset? Latest)> GetOffTopicRemovalsSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken);
+
     /// <summary>Reaction and comment counts for each post, and the viewer's own reaction.</summary>
     Task<IReadOnlyDictionary<Guid, PostStats>> GetStatsAsync(
         IReadOnlyCollection<Guid> postIds,
@@ -348,6 +354,15 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
 
     public Task<int> CountCreatedSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken) =>
         db.Posts.CountAsync(p => p.AuthorId == authorId && p.CreatedAt >= since, cancellationToken);
+
+    public async Task<(int Count, DateTimeOffset? Latest)> GetOffTopicRemovalsSinceAsync(Guid authorId, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        var removals = await db.Posts.AsNoTracking()
+            .Where(p => p.AuthorId == authorId && p.OffTopicRemovedAt != null && p.OffTopicRemovedAt >= since)
+            .Select(p => p.OffTopicRemovedAt!.Value)
+            .ToListAsync(cancellationToken);
+        return (removals.Count, removals.Count == 0 ? null : removals.Max());
+    }
 
     public async Task<IReadOnlyDictionary<Guid, PostStats>> GetStatsAsync(
         IReadOnlyCollection<Guid> postIds,

@@ -17,6 +17,30 @@ public sealed class SafetyOptions
 
     /// <summary>Limits for accounts in their first day. Section <c>Safety:NewAccounts</c>.</summary>
     public NewAccountLimitOptions NewAccounts { get; set; } = new();
+
+    /// <summary>Keeping posts about driving: reports that hold a post, and pausing repeat posters. Section <c>Safety:OffTopic</c>.</summary>
+    public OffTopicOptions OffTopic { get; set; } = new();
+}
+
+/// <summary>
+/// Owner, 23 Oct 2026: posts must be about driving. A post reported as "Not a driving incident" or spam by
+/// <see cref="ReportsToHold"/> different established members (or once by a Trusted Reporter) is held for a moderator
+/// straight away. Someone who has <see cref="RemovalsToPause"/> posts removed as off-topic within
+/// <see cref="Window"/> can't post again until <see cref="Pause"/> after the latest removal.
+/// </summary>
+public sealed class OffTopicOptions
+{
+    /// <summary>Default 3. 0 turns holding on reports off.</summary>
+    public int ReportsToHold { get; set; } = 3;
+
+    /// <summary>Default 2. 0 turns pausing off.</summary>
+    public int RemovalsToPause { get; set; } = 2;
+
+    /// <summary>Default 30 days.</summary>
+    public TimeSpan Window { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>Default 7 days.</summary>
+    public TimeSpan Pause { get; set; } = TimeSpan.FromDays(7);
 }
 
 /// <summary>
@@ -40,8 +64,14 @@ internal sealed class SafetyOptionsValidator : IValidateOptions<SafetyOptions>
     public ValidateOptionsResult Validate(string? name, SafetyOptions options)
     {
         var limits = options.NewAccounts;
-        return limits.Period < TimeSpan.Zero || limits.MaxPosts < 0 || limits.MaxComments < 0
-            ? ValidateOptionsResult.Fail("Safety:NewAccounts:Period, MaxPosts and MaxComments can't be negative.")
+        if (limits.Period < TimeSpan.Zero || limits.MaxPosts < 0 || limits.MaxComments < 0)
+        {
+            return ValidateOptionsResult.Fail("Safety:NewAccounts:Period, MaxPosts and MaxComments can't be negative.");
+        }
+
+        var offTopic = options.OffTopic;
+        return offTopic.ReportsToHold < 0 || offTopic.RemovalsToPause < 0 || offTopic.Window < TimeSpan.Zero || offTopic.Pause < TimeSpan.Zero
+            ? ValidateOptionsResult.Fail("Safety:OffTopic:ReportsToHold, RemovalsToPause, Window and Pause can't be negative.")
             : ValidateOptionsResult.Success;
     }
 }

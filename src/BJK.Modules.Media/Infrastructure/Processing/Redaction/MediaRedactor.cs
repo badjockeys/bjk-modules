@@ -25,6 +25,11 @@ namespace BJK.Modules.Media.Infrastructure.Processing.Redaction;
 /// <param name="ClassificationTime">Part of <paramref name="Elapsed"/> spent scoring graphic content and nudity.</param>
 /// <param name="NudityScore">The highest nudity score of the frames scored, or null if not checked.</param>
 /// <param name="PerceptualHashes">PDQ hashes (hex) of up to eight of the frames checked, spread through a video.</param>
+/// <param name="VehicleFrames">
+/// Frames analysed in which a vehicle (car, motorbike, bus, van or lorry) or a number plate was found; null if vehicle
+/// detection wasn't running (<c>Media:Redaction:BlurPlateAreas</c> off, or the detector unavailable). Posts with no
+/// vehicle in any photo or video are held for a moderator (owner, 23 Oct 2026).
+/// </param>
 public sealed record RedactionResult(
     int FacesBlurred,
     int PlatesBlurred,
@@ -37,7 +42,8 @@ public sealed record RedactionResult(
     int FramesClassified = 0,
     TimeSpan ClassificationTime = default,
     double? NudityScore = null,
-    IReadOnlyList<string>? PerceptualHashes = null)
+    IReadOnlyList<string>? PerceptualHashes = null,
+    int? VehicleFrames = null)
 {
     public bool NeedsReview => ReviewReasons.Count > 0;
 }
@@ -571,7 +577,8 @@ internal sealed class MediaRedactor(
             pass.FramesClassified,
             pass.ClassificationTime,
             pass.NudityScore,
-            pass.PerceptualHashes);
+            pass.PerceptualHashes,
+            pass.ChecksVehicles ? pass.VehicleFrames : null);
     }
 
     private DetectionPass NewPass(int maxSize) =>
@@ -690,6 +697,12 @@ internal sealed class MediaRedactor(
 
         public TimeSpan ClassificationTime => _classifyTimer.Elapsed;
 
+        /// <summary>True while vehicles are being looked for (plate areas on, and the person and vehicle detector working).</summary>
+        public bool ChecksVehicles => _options.BlurPlateAreas && _active.Any(d => d.Target == RedactionTarget.Head);
+
+        /// <summary>Frames in which a vehicle or a number plate was found.</summary>
+        public int VehicleFrames { get; private set; }
+
         /// <param name="frame">The full frame (blurring is applied to it by the caller).</param>
         /// <param name="classify">Also score this frame for graphic content (when detection is on).</param>
         public List<DetectionBox> Detect(RgbFrame frame, bool classify = false)
@@ -704,7 +717,14 @@ internal sealed class MediaRedactor(
                 var small = Scaled(frame, _maxSize);
                 Classify(small, classify);
                 var faces = _maxSize <= 0 ? frame : Resized(frame, _options.FaceDetectionSize);
-                return WithoutFoundPlates(DetectAll(target => target == RedactionTarget.Face ? faces : small, frame));
+                var boxes = DetectAll(target => target == RedactionTarget.Face ? faces : small, frame);
+                if (boxes.Any(b => (b.Target == RedactionTarget.PlateArea && b.Confidence >= _options.VehicleMinConfidence)
+                    || (b.Target == RedactionTarget.NumberPlate && b.Confidence >= _options.PlateMinConfidence)))
+                {
+                    VehicleFrames++;
+                }
+
+                return WithoutFoundPlates(boxes);
             }
             finally
             {

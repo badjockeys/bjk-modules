@@ -118,4 +118,18 @@ internal sealed class ProfileBadges(IProfileRepository profiles, TimeProvider cl
 
         await profiles.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyCollection<Guid>> TrustedReportersAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+    {
+        var trusted = new List<Guid>();
+        foreach (var userId in userIds.Distinct())
+        {
+            if (await profiles.GetBadgeAsync(userId, Domain.Badge.TrustedReporter, cancellationToken) is not null)
+            {
+                trusted.Add(userId);
+            }
+        }
+
+        return trusted;
+    }
 }

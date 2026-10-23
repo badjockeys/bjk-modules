@@ -37,6 +37,9 @@ public static partial class TextSafety
     public const string StreetAddressMessage =
         "Street addresses can't be included. Name the road or area instead, for example \"A56, Bury\".";
 
+    public const string WebAddressMessage =
+        "Links can't be included in posts. Keep it to what happened on the road: the photos or video show the rest.";
+
     public const string SocialHandleMessage =
         "Social media handles and profile links can't be included, so nobody can be tracked down from what's posted here.";
 
@@ -135,6 +138,15 @@ public static partial class TextSafety
 
         return null;
     }
+
+    /// <summary>
+    /// A web address (owner, 23 Oct 2026: links are refused in posts to keep spam out): anything starting http:// or
+    /// https:// or www., or a bare domain ending in a common top-level domain ("cheap-insurance.co.uk",
+    /// "bit.ly/abc"). Bare domains must be lower case, so a missing space after a full stop ("left.In the lane")
+    /// isn't refused; ambiguous endings such as .in, .to and .me only count with http(s):// or www.
+    /// </summary>
+    public static bool ContainsWebAddress(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && (ExplicitLinkPattern().IsMatch(text) || BareDomainPattern().IsMatch(text));
 
     /// <summary>An email address, such as name@example.com.</summary>
     public static bool ContainsEmailAddress(string text) => EmailPattern().IsMatch(text);
@@ -297,6 +309,14 @@ public static partial class TextSafety
     [GeneratedRegex(@"[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex EmailPattern();
 
+    [GeneratedRegex(@"(?:\bhttps?://|(?<![\w.@])www\.)[^\s]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ExplicitLinkPattern();
+
+    [GeneratedRegex(
+        @"(?<![\w.@-])[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(?:com|net|org|uk|io|ly|tv|info|biz|shop|store|app|link|xyz|site|online|live|gg|ai|eu|ie|top|club|click|win|bet|casino|vip|pro|news|blog|dev|page|icu|cc|ws|ru|cn)(?![\w-])(?:/[^\s]*)?",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex BareDomainPattern();
+
     [GeneratedRegex(@"(?<![A-Z0-9_.@])@[A-Z0-9_][A-Z0-9_.]{1,29}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex HandlePattern();
 
@@ -342,4 +362,11 @@ public static class TextSafetyRules
             .Must(text => TextSafety.Check((object?)text as string) is null)
             .WithMessage((_, text) => TextSafety.Check((object?)text as string)?.Message ?? string.Empty)
             .WithErrorCode("PersonalDetails");
+
+    /// <summary>Refuses text containing a web address (posts' titles, descriptions and place names).</summary>
+    public static IRuleBuilderOptions<T, TText> NoWebAddresses<T, TText>(this IRuleBuilder<T, TText> rule) =>
+        rule
+            .Must(text => !TextSafety.ContainsWebAddress((object?)text as string))
+            .WithMessage(TextSafety.WebAddressMessage)
+            .WithErrorCode("WebAddress");
 }

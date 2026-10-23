@@ -107,6 +107,15 @@ public sealed class MediaItem
     public int? PlatesBlurred { get; private set; }
 
     /// <summary>
+    /// Frames of the latest processing in which a vehicle or number plate was found (1 or 0 for a photo); null if
+    /// vehicle detection wasn't running, so it isn't known. Zero: no vehicle seen, so its post is held for a moderator.
+    /// </summary>
+    public int? VehicleFrames { get; private set; }
+
+    /// <summary>True or false once vehicles were looked for; null if not known.</summary>
+    public bool? VehicleSeen => VehicleFrames is { } frames ? frames > 0 : null;
+
+    /// <summary>
     /// How many times a moderator has had the media re-processed. Part of the processed file names, so a new version
     /// never reuses a cached address.
     /// </summary>
@@ -253,10 +262,12 @@ public sealed class MediaItem
     /// <summary>Records how many faces and plates the worker blurred. Called before <see cref="MarkReady"/> or <see cref="MarkNeedsReview"/>.</summary>
     /// <param name="faces">Faces blurred.</param>
     /// <param name="plates">Number plates blurred.</param>
-    public void RecordRedaction(int faces, int plates)
+    /// <param name="vehicleFrames">Frames with a vehicle or plate found, or null if vehicles weren't looked for.</param>
+    public void RecordRedaction(int faces, int plates, int? vehicleFrames = null)
     {
         FacesBlurred = faces;
         PlatesBlurred = plates;
+        VehicleFrames = vehicleFrames;
     }
 
     /// <summary>Records the graphic content score of the latest processing (null if detection was off).</summary>
