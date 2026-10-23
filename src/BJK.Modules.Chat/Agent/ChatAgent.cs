@@ -11,7 +11,8 @@ namespace BJK.Modules.Chat.Agent;
 /// <summary>One earlier turn of this chat window, sent back by the app (history lives only in the window).</summary>
 /// <param name="Question">What the member asked.</param>
 /// <param name="Answer">The answer's text.</param>
-public sealed record ChatTurn(string Question, string Answer);
+/// <param name="Token">The <c>turnToken</c> that came with the answer. Turns without a valid one are dropped.</param>
+public sealed record ChatTurn(string Question, string Answer, string? Token = null);
 
 /// <summary>A query the agent tried, for the review log: the SQL as the model wrote it and how it went.</summary>
 public sealed record AgentStep(string Sql, string? Problem, int Rows, int HiddenRows, long Milliseconds);

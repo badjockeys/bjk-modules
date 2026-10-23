@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\BJK.Modules.Shared\BJK.Modules.Shared.csproj" />
     <ProjectReference Include="..\BJK.Modules.Queues\BJK.Modules.Queues.csproj" />
+    <ProjectReference Include="..\BJK.Modules.Safety\BJK.Modules.Safety.csproj" />
   </ItemGroup>
 
   <ItemGroup>

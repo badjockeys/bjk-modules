@@ -57,8 +57,13 @@ internal sealed partial class OpenAiCompatibleChatModel(HttpClient http, IOption
             ["temperature"] = Temperature,
             ["stream"] = false,
             ["messages"] = new JsonArray([.. messages.Select(ToJson)]),
-            ["tools"] = new JsonArray([.. tools.Select(ToJson)]),
         };
+
+        // Some servers refuse an empty tools list, so a call without tools (the topic gate) leaves it out.
+        if (tools.Count > 0)
+        {
+            body["tools"] = new JsonArray([.. tools.Select(ToJson)]);
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.Endpoint!.TrimEnd('/')}/chat/completions")
         {

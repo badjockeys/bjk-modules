@@ -89,6 +89,10 @@ public sealed record ChatAnswerDto(
 /// <param name="ResetsAt">When the allowance starts again (midnight UK time).</param>
 /// <param name="HistoryFrom">The earliest date the plan can ask about (null for Free).</param>
 /// <param name="ExampleQuestions">Questions to show in the empty chat or the locked preview.</param>
+/// <param name="Paused">
+/// True when the member has reached the day's misuse limit (too many blocked questions): asking returns 429
+/// <c>chat_paused</c> until <see cref="ResetsAt"/>.
+/// </param>
 public sealed record ChatUsageDto(
     string? Plan,
     bool CanAsk,
@@ -97,10 +101,14 @@ public sealed record ChatUsageDto(
     int Remaining,
     DateTimeOffset ResetsAt,
     DateOnly? HistoryFrom,
-    IReadOnlyList<string> ExampleQuestions);
+    IReadOnlyList<string> ExampleQuestions,
+    bool Paused = false);
 
 /// <summary>The answer to a question plus the allowance after it.</summary>
-public sealed record ChatReplyDto(ChatAnswerDto Answer, ChatUsageDto Usage);
+/// <param name="Answer">The answer.</param>
+/// <param name="Usage">The allowance after it.</param>
+/// <param name="TurnToken">Send it back with this turn in <c>history</c>; turns without a valid token are ignored. Null for blocked questions, which aren't part of the history.</param>
+public sealed record ChatReplyDto(ChatAnswerDto Answer, ChatUsageDto Usage, string? TurnToken = null);
 
 /// <summary>Example questions for the empty chat and the Free preview.</summary>
 public static class ChatExamples

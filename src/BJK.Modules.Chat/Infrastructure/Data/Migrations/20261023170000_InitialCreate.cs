@@ -21,7 +21,8 @@ namespace BJK.Modules.Chat.Infrastructure.Data.Migrations
                 {
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Day = table.Column<DateOnly>(type: "date", nullable: false),
-                    Questions = table.Column<int>(type: "int", nullable: false)
+                    Questions = table.Column<int>(type: "int", nullable: false),
+                    Strikes = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {

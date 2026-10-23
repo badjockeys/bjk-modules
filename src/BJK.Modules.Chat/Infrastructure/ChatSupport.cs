@@ -57,6 +57,19 @@ internal static class ChatLog
             new EventId(AnsweredEventId, "ChatQuestionAnswered"),
             "Ask Bad Jockeys ({Plan}) answered {Kind} to {Question} after {ModelCalls} model calls in {Milliseconds} ms. Steps: {Steps}");
 
+    /// <summary>Event id of <see cref="Blocked"/>: a question stopped by the guard rails (a strike).</summary>
+    public const int BlockedEventId = 4903;
+
+    private static readonly Action<ILogger, string, string, string, Exception?> BlockedMessage =
+        LoggerMessage.Define<string, string, string>(
+            LogLevel.Information,
+            new EventId(BlockedEventId, "ChatQuestionBlocked"),
+            "Ask Bad Jockeys ({Plan}) blocked a question ({Reason}): {Question}");
+
+    /// <summary>A blocked question, with the reason. No member id; questions with personal details aren't logged.</summary>
+    public static void Blocked(ILogger logger, SubscriptionPlan plan, string reason, string question) =>
+        BlockedMessage(logger, SubscriptionPlanClaims.ToClaimValue(plan), reason, question, null);
+
     public static readonly Action<ILogger, string, Exception?> ModelUnavailable =
         LoggerMessage.Define<string>(
             LogLevel.Warning,
@@ -92,11 +105,12 @@ internal sealed class ChatPersonalDataExporter(IChatUsage usage, TimeProvider cl
     public async Task<object?> ExportAsync(Guid userId, CancellationToken cancellationToken)
     {
         var today = UkDay.Today(clock.GetUtcNow());
-        var used = await usage.UsedAsync(userId, today, cancellationToken);
+        var counts = await usage.GetAsync(userId, today, cancellationToken);
         return new
         {
-            questionsAskedToday = used,
-            note = "Chats aren't saved: questions and answers stay in the chat window until it's closed. Only today's count is kept, for the daily limit.",
+            questionsAskedToday = counts.Questions,
+            questionsBlockedToday = counts.Strikes,
+            note = "Chats aren't saved: questions and answers stay in the chat window until it's closed. Only today's counts are kept, for the daily limit and the misuse limit.",
         };
     }
 }

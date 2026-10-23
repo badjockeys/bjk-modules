@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using BJK.Modules.Chat.Agent;
+using BJK.Modules.Chat.Guard;
 using BJK.Modules.Chat.Infrastructure;
 using BJK.Modules.Chat.Infrastructure.Data;
 using BJK.Modules.Shared.Exceptions;
@@ -12,7 +13,8 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Chat.UseCases;
 
 /// <summary>
-/// Ask Bad Jockeys a question. Premium and Premium + only, within the day's allowance.
+/// Ask Bad Jockeys a question. Premium and Premium + only, within the day's allowance, and through the guard rails
+/// (<see cref="ChatGuard"/>): blocked questions don't use the allowance but count towards <c>Chat:MisuseLimit</c>.
 /// </summary>
 /// <param name="Question">The question, up to 500 characters.</param>
 /// <param name="History">Earlier turns in this chat window, oldest first (the app keeps them; nothing is stored).</param>
@@ -29,6 +31,7 @@ public sealed class AskQuestionCommandValidator : AbstractValidator<AskQuestionC
         {
             turn.RuleFor(t => t.Question).NotNull().MaximumLength(ChatOptions.MaxQuestionLength);
             turn.RuleFor(t => t.Answer).NotNull().MaximumLength(2000);
+            turn.RuleFor(t => t.Token).MaximumLength(100);
         });
         When(c => c.Near is not null, () =>
         {
@@ -44,6 +47,8 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
     private readonly ICurrentUser _caller;
     private readonly IPlanResolver _plans;
     private readonly IChatUsage _usage;
+    private readonly ChatGuard _guard;
+    private readonly TurnTokens _tokens;
     private readonly ChatAgent _agent;
     private readonly ChatOptions _options;
     private readonly TimeProvider _clock;
@@ -53,6 +58,8 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         ICurrentUser caller,
         IPlanResolver plans,
         IChatUsage usage,
+        ChatGuard guard,
+        TurnTokens tokens,
         ChatAgent agent,
         IOptions<ChatOptions> options,
         TimeProvider clock,
@@ -61,6 +68,8 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         _caller = caller;
         _plans = plans;
         _usage = usage;
+        _guard = guard;
+        _tokens = tokens;
         _agent = agent;
         _options = options.Value;
         _clock = clock;
@@ -84,28 +93,60 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         var now = _clock.GetUtcNow();
         var today = UkDay.Today(now);
         var limit = _options.DailyQuestions.For(plan);
-        var used = await _usage.TryTakeAsync(userId, today, limit, cancellationToken)
-            ?? throw new DailyLimitReachedException(
-                plan == SubscriptionPlan.Premium
-                    ? $"That's your {limit} questions for today. You can ask again from midnight. Premium + gets {_options.DailyQuestions.PremiumPlus} a day and looks back 5 years."
-                    : $"That's your {limit} questions for today. You can ask again from midnight.",
-                limit,
-                UkDay.NextMidnight(now));
+        var counts = await _usage.GetAsync(userId, today, cancellationToken);
+        if (counts.Strikes >= _options.MisuseLimit)
+        {
+            throw Paused();
+        }
 
+        if (counts.Questions >= limit)
+        {
+            throw LimitReached(plan.Value, limit, now);
+        }
+
+        // History is only what we signed for this member; anything else is dropped before the guard or model sees it.
+        var question = request.Question.Trim();
+        var history = _tokens.Verified(userId, request.History);
+
+        // The guard rails: fixed checks, the content screener and the topic gate. Blocked questions don't use the
+        // allowance, but misuse counts as a strike.
+        GuardVerdict verdict;
+        try
+        {
+            verdict = await _guard.CheckQuestionAsync(question, history.Count > 0 ? history[^1].Question : null, cancellationToken);
+        }
+        catch (ModelUnavailableException ex)
+        {
+            ChatLog.ModelUnavailable(_logger, ex.Message, null);
+            throw Busy();
+        }
+
+        if (verdict.Reply is { } stopped)
+        {
+            var strikes = counts.Strikes;
+            if (verdict.IsStrike)
+            {
+                strikes = await _usage.AddStrikeAsync(userId, today, cancellationToken);
+                ChatLog.Blocked(_logger, plan.Value, verdict.Reason.ToString(), verdict.Reason == GuardReason.PersonalDetails ? "(withheld)" : question);
+            }
+
+            return new ChatReplyDto(stopped, ChatAllowance.Describe(_options, plan, counts.Questions, now, strikes));
+        }
+
+        var used = await _usage.TryTakeAsync(userId, today, limit, cancellationToken) ?? throw LimitReached(plan.Value, limit, now);
         var context = new AgentContext(plan.Value, today, ChatAllowance.HistoryFrom(_options, plan, today)!.Value, request.Near);
         var watch = Stopwatch.StartNew();
         AgentResult result;
         try
         {
-            result = await _agent.AskAsync(request.Question.Trim(), request.History ?? [], context, cancellationToken);
+            result = await _agent.AskAsync(question, history, context, cancellationToken);
         }
         catch (Exception ex) when (ex is ModelUnavailableException or ServiceUnavailableException)
         {
             // Not the member's fault: the question doesn't count.
             await _usage.GiveBackAsync(userId, today, CancellationToken.None);
             ChatLog.ModelUnavailable(_logger, ex.Message, null);
-            throw ex as ServiceUnavailableException
-                ?? new ServiceUnavailableException("Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.");
+            throw ex as ServiceUnavailableException ?? Busy();
         }
         catch (OperationCanceledException)
         {
@@ -113,17 +154,49 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
             throw;
         }
 
-        if (result.Answer.Kind == ChatAnswerKind.Failed)
+        // The reply is checked too: no personal details, links, SQL or abuse ever reach the member.
+        if (result.Answer.Kind is ChatAnswerKind.Answer or ChatAnswerKind.TooFew or ChatAnswerKind.Clarify
+            && !await _guard.CheckAnswerAsync(result.Answer, cancellationToken))
+        {
+            result = result with { Answer = ChatAgent.Fallback };
+        }
+
+        var strikesNow = counts.Strikes;
+        if (result.Answer.Kind is ChatAnswerKind.Refused or ChatAnswerKind.OutOfScope)
+        {
+            // The agent itself declined: treated like a blocked question.
+            await _usage.GiveBackAsync(userId, today, cancellationToken);
+            used--;
+            strikesNow = await _usage.AddStrikeAsync(userId, today, cancellationToken);
+            ChatLog.Blocked(_logger, plan.Value, $"Agent{result.Answer.Kind}", question);
+        }
+        else if (result.Answer.Kind == ChatAnswerKind.Failed)
         {
             await _usage.GiveBackAsync(userId, today, cancellationToken);
             used--;
         }
 
-        ChatLog.Answered(_logger, plan.Value, request.Question, result, watch.Elapsed);
+        ChatLog.Answered(_logger, plan.Value, question, result, watch.Elapsed);
 
-        var usage = ChatAllowance.Describe(_options, plan, used, now);
-        return new ChatReplyDto(result.Answer, usage);
+        var token = result.Answer.Kind is ChatAnswerKind.Answer or ChatAnswerKind.TooFew or ChatAnswerKind.Clarify
+            ? _tokens.Sign(userId, question, result.Answer.Text)
+            : null;
+        return new ChatReplyDto(result.Answer, ChatAllowance.Describe(_options, plan, used, now, strikesNow), token);
     }
+
+    private DailyLimitReachedException LimitReached(SubscriptionPlan plan, int limit, DateTimeOffset now) => new(
+        plan == SubscriptionPlan.Premium
+            ? $"That's your {limit} questions for today. You can ask again from midnight. Premium + gets {_options.DailyQuestions.PremiumPlus} a day and looks back 5 years."
+            : $"That's your {limit} questions for today. You can ask again from midnight.",
+        limit,
+        UkDay.NextMidnight(now));
+
+    private static TooManyRequestsException Paused() => new(
+        "Ask Bad Jockeys is paused until midnight: it's had too many questions today that it can't help with. It only answers questions about bad driving and parking reported on Bad Jockeys.",
+        ChatAllowance.PausedCode);
+
+    private static ServiceUnavailableException Busy() =>
+        new("Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.");
 }
 
 /// <summary>The caller's allowance for today, and the example questions (for the empty chat and the Free preview).</summary>
@@ -150,21 +223,24 @@ public sealed class GetChatUsageQueryHandler : IRequestHandler<GetChatUsageQuery
     {
         var now = _clock.GetUtcNow();
         var plan = _plans.CurrentPlan();
-        var used = plan is SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus && _caller.UserId() is { } userId
-            ? await _usage.UsedAsync(userId, UkDay.Today(now), cancellationToken)
-            : 0;
-        return ChatAllowance.Describe(_options, plan, used, now);
+        var counts = plan is SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus && _caller.UserId() is { } userId
+            ? await _usage.GetAsync(userId, UkDay.Today(now), cancellationToken)
+            : DailyCounts.None;
+        return ChatAllowance.Describe(_options, plan, counts.Questions, now, counts.Strikes);
     }
 }
 
 /// <summary>Works out allowances and date limits from the settings.</summary>
 internal static class ChatAllowance
 {
+    /// <summary>The 429 code when the misuse limit is reached.</summary>
+    public const string PausedCode = "chat_paused";
+
     /// <summary>The earliest date a plan can ask about, or null for Free.</summary>
     public static DateOnly? HistoryFrom(ChatOptions options, SubscriptionPlan? plan, DateOnly today) =>
         options.HistoryDays.For(plan) is > 0 and var days ? today.AddDays(-days) : null;
 
-    public static ChatUsageDto Describe(ChatOptions options, SubscriptionPlan? plan, int used, DateTimeOffset now)
+    public static ChatUsageDto Describe(ChatOptions options, SubscriptionPlan? plan, int used, DateTimeOffset now, int strikes = 0)
     {
         var limit = options.DailyQuestions.For(plan);
         var canAsk = limit > 0;
@@ -176,6 +252,7 @@ internal static class ChatAllowance
             Math.Max(0, limit - used),
             UkDay.NextMidnight(now),
             HistoryFrom(options, plan, UkDay.Today(now)),
-            ChatExamples.Questions);
+            ChatExamples.Questions,
+            canAsk && strikes >= options.MisuseLimit);
     }
 }

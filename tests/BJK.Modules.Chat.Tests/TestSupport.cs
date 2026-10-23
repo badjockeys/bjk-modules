@@ -13,6 +13,8 @@ internal sealed class ScriptedModel : IChatModel
 
     public List<IReadOnlyList<ModelMessage>> Calls { get; } = [];
 
+    public List<IReadOnlyList<ToolDefinition>> Tools { get; } = [];
+
     public ScriptedModel Then(ModelMessage reply)
     {
         _replies.Enqueue(reply);
@@ -31,6 +33,7 @@ internal sealed class ScriptedModel : IChatModel
     public Task<ModelMessage> CompleteAsync(IReadOnlyList<ModelMessage> messages, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken)
     {
         Calls.Add([.. messages]);
+        Tools.Add([.. tools]);
         return Task.FromResult(_replies.Count > 0 ? _replies.Dequeue() : ModelMessage.Assistant(null));
     }
 
