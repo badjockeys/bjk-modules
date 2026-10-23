@@ -44,11 +44,37 @@ jobs:
           dotnet restore BJK.Core.slnx > ../dotnet.log 2>&1 || echo "RESTORE FAILED" >> ../dotnet.log
           dotnet build BJK.Core.slnx --configuration Release --no-restore -p:GenerateApiClient=true >> ../dotnet.log 2>&1 || echo "BUILD FAILED" >> ../dotnet.log
           tail -60 ../dotnet.log
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Format, lint, typecheck, test and build the web app
+        working-directory: core/src/web
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund > ../../../web.log 2>&1
+          {
+            echo "== prettier"; npx prettier --write . | grep -v "unchanged" ;
+            echo "== eslint"; npx eslint . --fix --max-warnings=0;
+            echo "== typecheck"; npm run typecheck;
+            echo "== vitest"; npx vitest run;
+            echo "== build"; npm run build;
+          } >> ../../../web.log 2>&1 || true
+          tail -200 ../../../web.log
+      - name: End-to-end tests (chat, map, feed)
+        working-directory: core/src/web
+        run: |
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+          npm run e2e -- e2e/chat.spec.ts e2e/map.spec.ts e2e/feed.spec.ts e2e/mobile.spec.ts > ../../../e2e.log 2>&1 || echo "E2E FAILED" >> ../../../e2e.log
+          tail -150 ../../../e2e.log
       - name: Push the results
         run: |
           mkdir -p tmp-out
           cp core/src/web/src/lib/generated/api.ts tmp-out/api.ts
           grep -v "warning NU" dotnet.log | tail -150 > tmp-out/dotnet.log || true
+          cp web.log tmp-out/web.log || true
+          tail -400 e2e.log > tmp-out/e2e.log || true
+          git -C core diff > tmp-out/core.patch || true
           git -C core rev-parse HEAD > tmp-out/core-sha.txt
           git config user.name "tmp-gen"
           git config user.email "noreply@anthropic.com"
