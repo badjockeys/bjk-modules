@@ -66,15 +66,6 @@ public sealed class Post
     /// <summary>A make from <see cref="VehicleCatalogue"/>, if given.</summary>
     public string? VehicleMake { get; private set; }
 
-    /// <summary>The author's household car it was filmed from (<see cref="HouseholdCar"/>), if chosen.</summary>
-    public Guid? FilmedFromCarId { get; private set; }
-
-    /// <summary>
-    /// That car's nickname, kept on the post ("Filmed from: Dave's Golf") so it reads the same if the car is deleted;
-    /// renaming the car renames it here too.
-    /// </summary>
-    public string? FilmedFrom { get; private set; }
-
     /// <summary>A model of <see cref="VehicleMake"/> from <see cref="VehicleCatalogue"/>, if given.</summary>
     public string? VehicleModel { get; private set; }
 
@@ -525,24 +516,6 @@ public sealed class Post
         IsFlagged = false;
         ReviewedAt = now;
         ReviewedBy = moderatorId;
-        UpdatedAt = now;
-    }
-
-    /// <summary>Which of the author's cars it was filmed from, or none.</summary>
-    public void SetFilmedFrom(HouseholdCar? car, DateTimeOffset now)
-    {
-        if (car is not null && car.UserId != AuthorId)
-        {
-            throw new ArgumentException("Only the author's own car can be chosen.", nameof(car));
-        }
-
-        if (FilmedFromCarId == car?.Id && FilmedFrom == car?.Nickname)
-        {
-            return;
-        }
-
-        FilmedFromCarId = car?.Id;
-        FilmedFrom = car?.Nickname;
         UpdatedAt = now;
     }
 
