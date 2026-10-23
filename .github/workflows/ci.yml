@@ -99,3 +99,6 @@ jobs:
           dotnet ef migrations has-pending-model-changes \
             --project src/BJK.Modules.Notifications --context NotificationsDbContext \
             --configuration Release --no-build
+          dotnet ef migrations has-pending-model-changes \
+            --project src/BJK.Modules.Chat --context ChatDbContext \
+            --configuration Release --no-build
