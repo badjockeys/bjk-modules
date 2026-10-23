@@ -94,7 +94,7 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         // The placeholder while no model is chosen: log it (no member id, no question text) and don't count it.
         if (!_options.UsesModel)
         {
-            ChatLog.NotSwitchedOn(_logger, plan);
+            ChatLog.NotSwitchedOn(_logger, plan.Value);
             throw new ServiceUnavailableException("Ask Bad Jockeys isn't switched on yet. That question didn't count.");
         }
 
