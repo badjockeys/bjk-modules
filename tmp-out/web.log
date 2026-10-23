@@ -1,19 +1,18 @@
 npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
 
-added 486 packages in 11s
+added 486 packages in 13s
 npm warn install-scripts 2 packages have install scripts not yet covered by allowScripts:
 npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)
 npm warn install-scripts   unrs-resolver@1.12.2 (postinstall: node postinstall.js)
 npm warn install-scripts
 npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
-== prettier
-src/actions/vault.ts 5ms
-src/app/account/page.tsx 15ms
-src/app/account/vault/page.tsx 4ms
-src/app/u/[handle]/page.tsx 14ms
-src/components/VaultScreen.tsx 24ms
 == eslint
+== prettier
+src/components/VaultScreen.tsx 27ms
+== prettier check
+Checking formatting...
+All matched files use Prettier code style!
 == typecheck
 
 > bjk-web@0.1.0 typecheck
@@ -25,34 +24,34 @@ Generating route types...
 
 [1m[46m RUN [49m[22m [36mv3.2.7 [39m[90m/home/runner/work/bjk-modules/bjk-modules/core/src/web[39m
 
- [32m✓[39m tests/api-client.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 18[2mms[22m[39m
- [32m✓[39m tests/reels-map.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 31[2mms[22m[39m
- [32m✓[39m tests/engagement.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 17[2mms[22m[39m
- [32m✓[39m tests/trends.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 21[2mms[22m[39m
- [32m✓[39m tests/components.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 746[2mms[22m[39m
- [32m✓[39m tests/vault.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
- [32m✓[39m tests/format.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
- [32m✓[39m tests/categories.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
- [32m✓[39m tests/hashtags.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 22[2mms[22m[39m
- [32m✓[39m tests/trim.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
- [32m✓[39m tests/share-video.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
- [32m✓[39m tests/new-posts.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
- [32m✓[39m tests/upload-types.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 5[2mms[22m[39m
- [32m✓[39m tests/timelines.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
- [32m✓[39m tests/notification-links.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
- [32m✓[39m tests/analytics.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 20[2mms[22m[39m
- [32m✓[39m tests/communities.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 18[2mms[22m[39m
- [32m✓[39m tests/police.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 6[2mms[22m[39m
- [32m✓[39m tests/vehicles.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
- [32m✓[39m tests/web-addresses.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
- [32m✓[39m tests/tag-suggestions.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
- [32m✓[39m tests/session.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 10[2mms[22m[39m
- [32m✓[39m tests/composer.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m tests/api-client.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m tests/reels-map.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m tests/trends.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m tests/engagement.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m tests/components.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 806[2mms[22m[39m
+ [32m✓[39m tests/vault.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/format.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/categories.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/hashtags.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m tests/trim.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/share-video.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/new-posts.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/upload-types.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/timelines.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/notification-links.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/analytics.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m tests/communities.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m tests/police.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/vehicles.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m tests/web-addresses.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m tests/tag-suggestions.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/session.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/composer.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m23 passed[39m[22m[90m (23)[39m
 [2m      Tests [22m [1m[32m137 passed[39m[22m[90m (137)[39m
-[2m   Start at [22m 19:13:57
-[2m   Duration [22m 5.77s[2m (transform 779ms, setup 2.30s, collect 1.67s, tests 964ms, environment 7.71s, prepare 1.42s)[22m
+[2m   Start at [22m 19:41:11
+[2m   Duration [22m 6.67s[2m (transform 889ms, setup 2.47s, collect 1.94s, tests 1.10s, environment 8.70s, prepare 1.72s)[22m
 
 == build
 
@@ -60,19 +59,19 @@ Generating route types...
 > next build
 
 ▲ Next.js 16.4.2 (Turbopack)
-✓ Running next.config.ts took 20ms
+✓ Running next.config.ts took 26ms
 ⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
 
   Creating an optimized production build ...
-✓ Compiled successfully in 6.2s
+✓ Compiled successfully in 7.0s
   Running TypeScript ...
-  Finished TypeScript in 6.1s ...
+  Finished TypeScript in 7.2s ...
   Collecting page data using 3 workers ...
   Generating static pages using 3 workers (0/11) ...
   Generating static pages using 3 workers (2/11) 
   Generating static pages using 3 workers (5/11) 
   Generating static pages using 3 workers (8/11) 
-✓ Generating static pages using 3 workers (11/11) in 87ms
+✓ Generating static pages using 3 workers (11/11) in 110ms
   Finalizing page optimization ...
 
 Route (app)

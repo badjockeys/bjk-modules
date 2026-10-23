@@ -1,6 +1,6 @@
   Determining projects to restore...
-  Restored /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.Api/BJK.Core.Api.csproj (in 7.05 sec).
-  Restored /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.MediaWorker/BJK.Core.MediaWorker.csproj (in 7.05 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.Api/BJK.Core.Api.csproj (in 7.93 sec).
+  Restored /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.MediaWorker/BJK.Core.MediaWorker.csproj (in 7.93 sec).
   BJK.Core.MediaWorker -> /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.MediaWorker/bin/Release/net10.0/BJK.Core.MediaWorker.dll
   BJK.Core.Api -> /home/runner/work/bjk-modules/bjk-modules/core/src/BJK.Core.Api/bin/Release/net10.0/BJK.Core.Api.dll
   NSwag command line tool for .NET Core Net100, toolchain v14.6.3.0 (NJsonSchema v11.5.2.0 (Newtonsoft.Json v13.0.0.0))
@@ -11,10 +11,10 @@
   Launcher directory: /home/runner/.nuget/packages/nswag.msbuild/14.6.3/tools/Net100
   Done.
   
-  Duration: 00:00:02.5632650
+  Duration: 00:00:02.8878669
 
 Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:08.79
+Time Elapsed 00:00:09.58
