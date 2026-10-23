@@ -67,6 +67,7 @@ public sealed record PostMediaDto(
 /// <c>Vote</c> is the post's "Who's at fault?" or "How bad was it?" vote (see <see cref="Engagement.VoteSummaryDto"/>).
 /// <c>IsFollowing</c> and <c>IsSaved</c>: whether the signed-in viewer follows the post and has bookmarked it.
 /// <c>ShareCount</c>: how many times it was shared (once per viewer per UK day), shown under the post like Facebook.
+/// <c>FilmedFrom</c>: the author's household car it was filmed from ("Filmed from: Dave's Golf").
 /// </summary>
 public sealed record PostDto(
     Guid Id,
@@ -98,7 +99,8 @@ public sealed record PostDto(
     Engagement.VoteSummaryDto? Vote = null,
     bool IsFollowing = false,
     bool IsSaved = false,
-    int ShareCount = 0)
+    int ShareCount = 0,
+    FilmedFromDto? FilmedFrom = null)
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
@@ -326,7 +328,8 @@ public sealed class PostViews(
                 Vote: Engagement.VoteSummaryDto.For(p, tallies.GetValueOrDefault(p.Id) ?? VoteTally.Empty, viewerId, now),
                 IsFollowing: following.Contains(p.Id),
                 IsSaved: saved.Contains(p.Id),
-                ShareCount: s.ShareCount);
+                ShareCount: s.ShareCount,
+                FilmedFrom: p.FilmedFrom is { } label ? new FilmedFromDto(p.FilmedFromCarId, label) : null);
         }).ToList();
     }
 
@@ -360,3 +363,6 @@ public sealed class PostViews(
                 : new PostMediaDto(m.Id, m.MediaType, m.PlaybackUrl, m.ThumbnailUrl, m.DurationSeconds, m.Width, m.Height, m.PreviewUrl, IsBlurred: false, m.LinksExpireAt, m.FeedUrl))
             .ToList();
 }
+
+/// <summary>The author's household car a post was filmed from: its nickname, and its id (for the author's edit form).</summary>
+public sealed record FilmedFromDto(Guid? CarId, string Label);

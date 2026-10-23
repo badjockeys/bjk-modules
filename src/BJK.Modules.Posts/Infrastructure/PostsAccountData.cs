@@ -12,7 +12,8 @@ internal sealed class PostsUserLifecycleHandler(
     IDraftRepository drafts,
     ITimelineRepository? timelines = null,
     ICommunityRepository? communities = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+    IHouseholdCarRepository? cars = null)
     : IUserLifecycleHandler
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
@@ -36,6 +37,11 @@ internal sealed class PostsUserLifecycleHandler(
                 if (communities is not null)
                 {
                     await communities.DeleteAllForUserAsync(userEvent.UserId, (clock ?? TimeProvider.System).GetUtcNow(), cancellationToken);
+                }
+
+                if (cars is not null)
+                {
+                    await cars.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
                 }
 
                 await posts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
@@ -66,6 +72,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
                 p.VehicleModel,
                 p.VehicleColour,
                 p.ReportedToPolice,
+                p.FilmedFrom,
                 p.IncidentAt,
                 p.Latitude,
                 p.Longitude,
@@ -187,6 +194,11 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .OrderBy(v => v.ViewedAt)
             .Select(v => new { v.PostId, v.ViewedAt })
             .ToListAsync(cancellationToken);
+        var householdCars = await db.HouseholdCars.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new { c.Id, c.Make, c.Model, c.Colour, c.Nickname, c.CreatedAt })
+            .ToListAsync(cancellationToken);
         var preferences = await db.AuthorPreferences.AsNoTracking()
             .Where(a => a.UserId == userId)
             .Select(a => new { VoteDuration = a.VoteDuration.ToString(), a.UpdatedAt })
@@ -195,7 +207,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
         return new
         {
             posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals,
-            reelPlays, timelines, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences,
+            reelPlays, timelines, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences, householdCars,
         };
     }
 }

@@ -163,7 +163,8 @@ public sealed class PostsController(ISender sender) : ControllerBase
                 request.VehicleMake,
                 request.VehicleModel,
                 request.VehicleColour,
-                request.ReportedToPolice),
+                request.ReportedToPolice,
+                request.FilmedFromCarId),
             cancellationToken);
 
     /// <summary>Delete your post and its photos and videos.</summary>
@@ -414,7 +415,8 @@ public sealed record UpdatePostRequest(
     string? VehicleMake = null,
     string? VehicleModel = null,
     VehicleColour? VehicleColour = null,
-    bool? ReportedToPolice = null);
+    bool? ReportedToPolice = null,
+    Guid? FilmedFromCarId = null);
 
 /// <summary>Accept or decline being tagged as a passenger.</summary>
 public sealed record TagResponseRequest(bool Accept);
