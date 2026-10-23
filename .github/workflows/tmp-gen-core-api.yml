@@ -11,7 +11,7 @@ permissions:
   packages: read
 
 env:
-  CORE_REF: feature/vault-saved-style
+  CORE_REF: feature/ask-bad-jockeys
   NuGetPackageSourceCredentials_badjockeys: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }}
   ConnectionStrings__BadJockeysDatabase: Server=localhost,1433;Database=badjockeys;User Id=sa;Password=Ci-Passw0rd-2026;TrustServerCertificate=True
   Authentication__Authority: http://localhost:5999
