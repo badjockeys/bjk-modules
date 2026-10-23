@@ -1,0 +1,50 @@
+# TEMPORARY (removed before review): adds the EF migration, builds and runs the Media tests, and pushes the results
+# to tmp/<branch> so they can be copied back into the feature branch.
+name: tmp-dotnet
+
+on:
+  push:
+    branches: [feature/category-taxonomy]
+
+permissions:
+  contents: write
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Ci-Passw0rd-2026
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Ci-Passw0rd-2026 -C -Q 'SELECT 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Migration, build and Media tests
+        env:
+          BJK_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=Ci-Passw0rd-2026;TrustServerCertificate=True;Encrypt=False"
+        run: |
+          {
+            dotnet restore BJK.Modules.slnx && dotnet tool restore
+            echo "== build"
+            dotnet build BJK.Modules.slnx --configuration Release --no-restore 2>&1 | grep -E "error|warn|Build succeeded" | sort -u | head -60
+            for c in "Media MediaDbContext" "Posts PostsDbContext" "Notifications NotificationsDbContext"; do set -- $c; echo "== pending $1"; dotnet ef migrations has-pending-model-changes --project src/BJK.Modules.$1 --context $2 --configuration Release --no-build; done
+            for t in Media Posts Notifications Profiles; do echo "== $t tests"; dotnet test --project tests/BJK.Modules.$t.Tests/BJK.Modules.$t.Tests.csproj --configuration Release --no-build 2>&1 | grep -iE "failed |total:|succeeded:|skipped:" | head -20; done
+          } > dotnet.log 2>&1 || true
+          tail -150 dotnet.log
+      - name: Push results
+        run: |
+          git config user.name "tmp-dotnet"
+          git config user.email "noreply@anthropic.com"
+          git checkout -b tmp/category-taxonomy
+          git add -A src dotnet.log
+          git commit -m "tmp: dotnet results" --allow-empty
+          git push -f origin tmp/category-taxonomy
