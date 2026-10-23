@@ -114,6 +114,17 @@ public static class MediaKeys
     public static string Segment(Guid userId, Guid mediaId, int revision, int index) =>
         $"{Folder(userId, mediaId)}/{SegmentsFolder}/r{revision}/{index:D3}.mp4";
 
+    /// <summary>Sub-folder, in the private originals bucket, for the vertical copy made for sharing.</summary>
+    public const string ShareFolder = "share";
+
+    /// <summary>
+    /// The vertical copy of a video made for sharing (<see cref="Domain.ShareCopy"/>), in the private originals bucket:
+    /// <c>{userId}/{mediaId}/share/vertical.mp4</c>. One per media; making it again replaces it.
+    /// </summary>
+    /// <param name="userId">The uploader.</param>
+    /// <param name="mediaId">The media.</param>
+    public static string ShareVideo(Guid userId, Guid mediaId) => $"{Folder(userId, mediaId)}/{ShareFolder}/vertical.mp4";
+
     /// <summary><c>720p.mp4</c> for revision 0, <c>720p-r2.mp4</c> for revision 2.</summary>
     private static string Revised(string fileName, int revision) =>
         revision <= 0 ? fileName : $"{Path.GetFileNameWithoutExtension(fileName)}-r{revision}{Path.GetExtension(fileName)}";

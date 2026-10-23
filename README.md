@@ -397,6 +397,7 @@ Storage keys are `{userId}/{mediaId}/{fileName}`, where `userId` is the uploader
 | `GET /api/media/{id}` | Anyone with `bjk.media` once Ready; the owner or an admin before that |
 | `GET /api/media/mine` | The signed-in user's own uploads, any state |
 | `DELETE /api/media/{id}` | Owner |
+| `GET`, `POST /api/media/{id}/share-copy` | Owner only (404 for anyone else): the video's vertical copy for sharing (see "Share copies") |
 | `DELETE /api/admin/media/{id}?reason=` | Moderator (`bjk.media.manage`); the reason is required and the action is audited |
 
 Storage is Cloudflare R2. R2 speaks the S3 API and Cloudflare has no .NET SDK of its own, so the module uses the `AWSSDK.S3` client pointed at the R2 endpoint, as Cloudflare's R2 docs recommend. Nothing is sent to AWS and no AWS account is needed. The storage code sits behind `IMediaStorage`, so any S3-compatible store works by changing configuration.
@@ -438,6 +439,15 @@ A 30-second video is processed as six 5-second pieces by up to six worker replic
 3. **Assemble** (once all segments are done): joins the segments with ffmpeg's concat demuxer without re-encoding (`-c copy`, fast start), adds the soundtrack from the original if `RemoveAudio` is off, makes the thumbnail from the joined video, publishes it and sets `Ready`, or keeps it private and sets `NeedsReview` if any segment's detection was uncertain or failed (or a moderator added regions). The segment files are deleted.
 
 **Restart-safe and idempotent.** Progress is in the database, and every update that parallel workers might race on is one conditional SQL statement: a segment is marked done only if it wasn't already (so a redelivered or duplicated job is skipped, not redone); exactly one worker wins the claim to queue the assemble job when the last segment finishes; a redelivered segment job (the worker may have died after claiming but before queueing) queues it again, and the assemble job stops at once if the media is already finished. A plan job delivered again re-queues only the unfinished segments. Jobs for an older revision (a moderator re-processed the media) or for deleted media are skipped. A segment that fails three times marks the media `Failed` ("Processing failed. Try uploading the file again."), as a whole-video job would. Face and plate counts are summed over segments, so a face crossing a join counts once in each.
+
+### Share copies (vertical videos for TikTok, Reels, Shorts and X)
+
+Owner's decision, 23 Oct 2026: the person who posted a video can download a vertical copy to post on other apps; everyone else shares the link.
+
+- **Asking:** `POST /api/media/{id}/share-copy` (202) checks the video is the caller's, Ready and not marked sensitive (400 otherwise; photos can't be shared this way), records a `media.ShareCopies` row (`Rendering`) and queues a `ShareCopy` step on `media.process`. If a current copy is already made, or being made, that's returned instead. `GET` gives the state: `None`, `Rendering`, `Ready` (with a 15-minute signed link that downloads as `bad-jockeys-clip.mp4`) or `Failed`.
+- **Making it** (the media worker, `MediaProcessor.ShareCopy.cs`): from the **published** file, which is already blurred and silent, never the original. 1080×1920 at 30 fps: the video fitted in the middle over a blurred, darkened copy of itself, a small "badjockeys.com" watermark bottom right, then a 2.5-second end card ("Seen on Bad Jockeys", badjockeys.com, faces and number plates are blurred). No sound, no metadata. The two pictures are built into the assembly (`Infrastructure/Processing/Share`). The copy is stored privately at `{userId}/{mediaId}/share/vertical.mp4` in the originals bucket.
+- **When it's made again:** after the video is re-processed (a moderator added blur: a new revision), after 30 days (`ShareCopy.KeptFor`; the bucket's 90-day rule removes old files), if it failed, or if it's been "rendering" for over 15 minutes (lost). A failure only marks the copy `Failed`; the media is never touched.
+- **Removed** with the media (`DELETE`, account deletion); the row goes with the media row. Media tagged sensitive later can't be shared: `GET` shows `None` and the worker refuses.
 
 ### Media events (`media.ready`, `media.failed`)
 

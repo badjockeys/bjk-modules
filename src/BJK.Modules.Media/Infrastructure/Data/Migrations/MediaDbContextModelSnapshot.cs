@@ -305,6 +305,37 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                     b.ToTable("SensitiveMedia", "media");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Media.Domain.ShareCopy", b =>
+                {
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("ReadyAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("MediaId");
+
+                    b.ToTable("ShareCopies", "media");
+                });
+
             modelBuilder.Entity("BJK.Modules.Media.Domain.VideoJob", b =>
                 {
                     b.Property<Guid>("MediaId")
@@ -433,6 +464,15 @@ namespace BJK.Modules.Media.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("BJK.Modules.Media.Domain.SensitiveMediaMark", b =>
+                {
+                    b.HasOne("BJK.Modules.Media.Domain.MediaItem", null)
+                        .WithMany()
+                        .HasForeignKey("MediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("BJK.Modules.Media.Domain.ShareCopy", b =>
                 {
                     b.HasOne("BJK.Modules.Media.Domain.MediaItem", null)
                         .WithMany()

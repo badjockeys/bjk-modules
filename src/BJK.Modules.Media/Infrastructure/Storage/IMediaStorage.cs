@@ -28,7 +28,7 @@ public interface IMediaStorage
 
     /// <summary>
     /// Stores a processed file in the private originals bucket, e.g. blurred files waiting for a moderator. Read them
-    /// with <see cref="CreateOriginalDownloadUrlAsync"/> and remove them with <see cref="DeleteOriginalAsync"/>.
+    /// with <see cref="CreateOriginalDownloadUrlAsync(string, TimeSpan, CancellationToken)"/> and remove them with <see cref="DeleteOriginalAsync"/>.
     /// </summary>
     Task UploadPrivateAsync(string key, string filePath, string contentType, CancellationToken cancellationToken);
 
@@ -43,6 +43,17 @@ public interface IMediaStorage
 
     /// <summary>A short-lived link to download an original, for data exports.</summary>
     Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A short-lived link to download a file from the private originals bucket, saved under <paramref name="fileName"/>
+    /// (the link asks the browser to download it rather than play it).
+    /// </summary>
+    /// <param name="key">The file's key.</param>
+    /// <param name="lifetime">How long the link works.</param>
+    /// <param name="fileName">The name it's saved as: ours, never anything the uploader typed.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    Task<Uri> CreateOriginalDownloadUrlAsync(string key, TimeSpan lifetime, string fileName, CancellationToken cancellationToken) =>
+        CreateOriginalDownloadUrlAsync(key, lifetime, cancellationToken);
 
     /// <summary>The address a processed file is served from through Cloudflare.</summary>
     Uri PublicUrl(string key);

@@ -164,6 +164,50 @@ internal sealed class FfmpegTranscoder(IOptions<MediaProcessingOptions> options,
         await RunOrThrowAsync(_options.FfmpegPath, arguments, "join the video segments", cancellationToken);
     }
 
+    public async Task CreateShareVideoAsync(
+        string playbackPath,
+        string watermarkPath,
+        string endCardPath,
+        string outputPath,
+        CancellationToken cancellationToken) =>
+        await RunOrThrowAsync(
+            _options.FfmpegPath,
+            ShareVideoArguments(playbackPath, watermarkPath, endCardPath, outputPath),
+            "make the video for sharing",
+            cancellationToken);
+
+    /// <summary>The ffmpeg arguments for <see cref="CreateShareVideoAsync"/>.</summary>
+    internal static IReadOnlyList<string> ShareVideoArguments(string playbackPath, string watermarkPath, string endCardPath, string outputPath)
+    {
+        var (w, h) = (ShareVideoAssets.Width, ShareVideoAssets.Height);
+        // Background: the video filling the frame, blurred and darkened. Foreground: the whole video, fitted in the
+        // middle. The watermark sits bottom right, above where the apps put their own captions and buttons. Then the
+        // end card.
+        string[] steps =
+        [
+            "[0:v]fps=30,split=2[a][b]",
+            string.Create(CultureInfo.InvariantCulture, $"[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=40:2,eq=brightness=-0.12[bg]"),
+            string.Create(CultureInfo.InvariantCulture, $"[b]scale={w}:{h}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[fg]"),
+            "[bg][fg]overlay=(W-w)/2:(H-h)/2[v0]",
+            "[v0][1:v]overlay=W-w-48:H-h-220,setsar=1,format=yuv420p[main]",
+            string.Create(CultureInfo.InvariantCulture, $"[2:v]scale={w}:{h},setsar=1,format=yuv420p[end]"),
+            "[main][end]concat=n=2:v=1:a=0[out]",
+        ];
+        var filter = string.Join(';', steps);
+        return
+        [
+            "-hide_banner", "-nostdin", "-y",
+            "-i", playbackPath,
+            "-i", watermarkPath,
+            "-loop", "1", "-framerate", "30", "-t", ShareVideoAssets.EndCardSeconds.ToString(CultureInfo.InvariantCulture), "-i", endCardPath,
+            "-filter_complex", filter,
+            "-map", "[out]", "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-r", "30", "-pix_fmt", "yuv420p",
+            "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart",
+            outputPath,
+        ];
+    }
+
     /// <summary>Average frame rate ("30000/1001"), falling back to the nominal rate; null if neither makes sense.</summary>
     internal static double? FrameRate(JsonElement video)
     {

@@ -25,6 +25,12 @@ internal static class MediaFiles
         }
 
         await DeleteSensitiveCopiesAsync(storage, item, cancellationToken);
+
+        // The vertical copy made for sharing, if there is one (deleting a missing file is fine).
+        if (item.MediaType == MediaType.Video)
+        {
+            await storage.DeleteOriginalAsync(MediaKeys.ShareVideo(item.UserId, item.Id), cancellationToken);
+        }
     }
 
     /// <summary>
