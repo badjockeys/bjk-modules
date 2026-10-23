@@ -1,5 +1,6 @@
 using BJK.Modules.Posts.Domain;
 using BJK.Modules.Posts.Infrastructure.Data;
+using BJK.Modules.Posts.UseCases;
 using BJK.Modules.Posts.UseCases.Communities;
 using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
