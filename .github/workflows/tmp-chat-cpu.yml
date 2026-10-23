@@ -1,0 +1,123 @@
+# TMP (never merged): Ask Bad Jockeys on CPU only. Runs a sample of the question set against Ollama on a standard
+# GitHub runner (4 vCPU, 16 GB, no GPU), times it, benchmarks the real prompt, and pushes the reports to
+# tmp/chat-cpu-eval-output.
+name: tmp chat cpu eval
+on:
+  push:
+    branches: ['tmp/chat-cpu-eval']
+permissions:
+  contents: write
+concurrency:
+  group: tmp-chat-cpu-eval
+  cancel-in-progress: true
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: qwen3-8b-think, model: 'qwen3:8b', nothink: '0' }
+          - { name: qwen3-8b-nothink, model: 'qwen3:8b', nothink: '1' }
+          - { name: qwen3-4b-nothink, model: 'qwen3:4b', nothink: '1' }
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Ci-Passw0rd-2026
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Ci-Passw0rd-2026 -C -Q 'SELECT 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+    env:
+      OUT: ${{ github.workspace }}/out/${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Machine
+        run: |
+          mkdir -p "$OUT"
+          { echo "## Machine"; nproc; lscpu | grep -E 'Model name|^CPU\(s\)|Flags' | sed 's/Flags:.*avx512.*/Flags: has AVX-512/; s/Flags:.*avx2.*/Flags: has AVX2/'; free -g; } | tee "$OUT/machine.txt"
+
+      - name: Seed the reporting tables
+        run: |
+          python3 scripts/tmp/seed-eval.py 'Chat-Eval-2026!' seed.sql
+          docker cp seed.sql ${{ job.services.sql.id }}:/tmp/seed.sql
+          docker exec ${{ job.services.sql.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Ci-Passw0rd-2026 -C -b -i /tmp/seed.sql | tail -4
+
+      - name: Install Ollama (CPU) and pull the model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1 || curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl stop ollama || true
+          # The agent's prompt is about 5-6k tokens: a 16k window so nothing is cut off. One request at a time.
+          OLLAMA_CONTEXT_LENGTH=16384 OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=24h nohup ollama serve > "$OUT/ollama.log" 2>&1 &
+          for _ in $(seq 1 30); do curl -fs http://localhost:11434/api/version && break; sleep 1; done
+          ollama --version | tee -a "$OUT/machine.txt"
+          ollama pull ${{ matrix.model }} > /dev/null
+          ollama list | tee -a "$OUT/machine.txt"
+
+      - name: Build
+        run: |
+          dotnet tool restore > /dev/null
+          dotnet build tests/BJK.Modules.Chat.Tests/BJK.Modules.Chat.Tests.csproj -c Release 2>&1 | tail -3
+
+      # Every 5th question: 41 across all the topics. Per call up to 15 minutes, so slow answers are measured, not cut.
+      - name: Question set
+        continue-on-error: true
+        env:
+          BJK_CHAT_EVAL_ENDPOINT: http://localhost:11434/v1
+          BJK_CHAT_EVAL_MODEL: ${{ matrix.model }}
+          BJK_CHAT_EVAL_NO_THINK: ${{ matrix.nothink }}
+          BJK_CHAT_EVAL_EVERY: "5"
+          BJK_CHAT_EVAL_TIMEOUT: "900"
+          BJK_CHAT_EVAL_DATABASE: "Server=localhost,1433;Database=badjockeys;User Id=bjk_chat;Password=Chat-Eval-2026!;TrustServerCertificate=True;Encrypt=False"
+          BJK_CHAT_EVAL_REPORT: ${{ github.workspace }}/out/${{ matrix.name }}/report.md
+          BJK_CHAT_EVAL_PROMPT: ${{ github.workspace }}/out/${{ matrix.name }}/system-prompt.txt
+        timeout-minutes: 300
+        run: |
+          dotnet test --project tests/BJK.Modules.Chat.Tests/BJK.Modules.Chat.Tests.csproj -c Release --no-build \
+            -- --filter-method "*Run_the_question_set_against_a_real_model" > "$OUT/test.log" 2>&1 || true
+          head -5 "$OUT/report.md" || true
+
+      # The raw speed on the real prompt: prompt reading (prefill) and writing (generation), cold and with the
+      # prompt cached, from Ollama's own timings.
+      - name: Benchmark the prompt
+        if: always()
+        run: |
+          [ -f "$OUT/system-prompt.txt" ] || exit 0
+          suffix=""; [ "${{ matrix.nothink }}" = "1" ] && suffix=$'\n\n/no_think'
+          for q in "How many incidents have there been in Prescot this month?" "Worst roads for tailgating in Warrington"; do
+            jq -n --arg m "${{ matrix.model }}" --rawfile s "$OUT/system-prompt.txt" --arg suf "$suffix" --arg q "$q" \
+              '{model:$m, stream:false, options:{temperature:0.2}, messages:[{role:"system",content:($s+$suf)},{role:"user",content:$q}]}' > req.json
+            curl -s http://localhost:11434/api/chat -d @req.json \
+              | jq -r --arg q "$q" '"\($q): prompt \(.prompt_eval_count) tokens in \((.prompt_eval_duration//0)/1e9|.*10|round/10) s (\(if (.prompt_eval_duration//0) > 0 then (.prompt_eval_count/(.prompt_eval_duration/1e9)|round) else "-" end) tok/s); wrote \(.eval_count) tokens in \((.eval_duration//0)/1e9|.*10|round/10) s (\(if (.eval_duration//0) > 0 then (.eval_count/(.eval_duration/1e9)*10|round/10) else "-" end) tok/s); total \((.total_duration//0)/1e9|.*10|round/10) s"' \
+              | tee -a "$OUT/benchmark.txt"
+          done
+
+      - name: Push the output
+        if: always()
+        run: |
+          grep -E "truncat|error" "$OUT/ollama.log" | head -20 > "$OUT/ollama-warnings.txt" || true
+          grep -F "POST" "$OUT/ollama.log" | tail -400 > "$OUT/ollama-calls.txt" || true
+          tail -60 "$OUT/test.log" > "$OUT/test-tail.txt" 2>/dev/null || true
+          rm -f "$OUT/ollama.log" "$OUT/test.log"
+          url="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          for attempt in 1 2 3 4 5 6; do
+            rm -rf "$RUNNER_TEMP/pub"
+            if ! git clone -q --depth 1 -b tmp/chat-cpu-eval-output "$url" "$RUNNER_TEMP/pub" 2>/dev/null; then
+              mkdir -p "$RUNNER_TEMP/pub"; git -C "$RUNNER_TEMP/pub" init -q -b tmp/chat-cpu-eval-output
+              git -C "$RUNNER_TEMP/pub" remote add origin "$url"
+            fi
+            mkdir -p "$RUNNER_TEMP/pub/results/${{ matrix.name }}"
+            cp -r "$OUT"/. "$RUNNER_TEMP/pub/results/${{ matrix.name }}/"
+            git -C "$RUNNER_TEMP/pub" add -A
+            git -C "$RUNNER_TEMP/pub" -c user.name=ci -c user.email=ci@example.test commit -qm "cpu eval: ${{ matrix.name }} [skip ci]" || true
+            git -C "$RUNNER_TEMP/pub" push -q origin HEAD:tmp/chat-cpu-eval-output && break
+            sleep $((attempt * 7))
+          done

@@ -45,7 +45,10 @@ public sealed partial class ChatAgent(IChatModel model, IIncidentQueries queries
 
     public async Task<AgentResult> AskAsync(string question, IReadOnlyList<ChatTurn> history, AgentContext context, CancellationToken cancellationToken)
     {
-        var messages = new List<ModelMessage> { ModelMessage.System(AgentPrompt.System(context)) };
+        // TMP (CPU evaluation only, never merged): BJK_CHAT_EVAL_NO_THINK=1 turns Qwen3's thinking off.
+        var system = AgentPrompt.System(context)
+            + (Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_NO_THINK") == "1" ? "\n\n/no_think" : string.Empty);
+        var messages = new List<ModelMessage> { ModelMessage.System(system) };
         foreach (var turn in history.TakeLast(HistoryTurns))
         {
             messages.Add(ModelMessage.User(Clip(turn.Question, ChatOptions.MaxQuestionLength)));

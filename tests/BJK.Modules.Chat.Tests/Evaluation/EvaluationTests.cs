@@ -74,6 +74,8 @@ public sealed class EvaluationTests
                 Endpoint = endpoint,
                 Name = modelName,
                 ApiKey = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_API_KEY"),
+                // TMP: CPU calls can take minutes; measure them rather than time out.
+                TimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_TIMEOUT"), out var t) ? t : 120,
             },
         });
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(options.Value.Model.TimeoutSeconds) };
@@ -85,7 +87,20 @@ public sealed class EvaluationTests
             questions = [.. questions.Take(limit)];
         }
 
+        // TMP: every Nth question, for a sample across all topics.
+        if (int.TryParse(Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_EVERY"), out var every) && every > 1)
+        {
+            questions = [.. questions.Where((_, i) => i % every == 0)];
+        }
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var path = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_REPORT")
+            ?? Path.Combine(Path.GetTempPath(), $"ask-bad-jockeys-eval-{DateTime.UtcNow:yyyyMMdd-HHmmss}.md");
+        if (Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_PROMPT") is { Length: > 0 } promptFile)
+        {
+            await File.WriteAllTextAsync(promptFile, AgentPrompt.System(new AgentContext(SubscriptionPlan.PremiumPlus, today, today.AddDays(-1826), null)), Ct);
+        }
+
         var rows = new List<(EvalQuestion Question, AgentResult? Result, string? Error, TimeSpan Took, bool Passed)>();
         foreach (var question in questions)
         {
@@ -100,12 +115,12 @@ public sealed class EvaluationTests
             {
                 rows.Add((question, null, ex.Message, watch.Elapsed, false));
             }
+
+            // TMP: the report after every question, so a run cut short still has one.
+            await File.WriteAllTextAsync(path, Report(modelName, rows), Ct);
         }
 
-        var report = Report(modelName, rows);
-        var path = Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_REPORT")
-            ?? Path.Combine(Path.GetTempPath(), $"ask-bad-jockeys-eval-{DateTime.UtcNow:yyyyMMdd-HHmmss}.md");
-        await File.WriteAllTextAsync(path, report, Ct);
+        await File.WriteAllTextAsync(path, Report(modelName, rows), Ct);
         TestContext.Current.SendDiagnosticMessage($"Evaluation report: {path}");
 
         if (double.TryParse(Environment.GetEnvironmentVariable("BJK_CHAT_EVAL_MIN_PASS"), CultureInfo.InvariantCulture, out var minimum))
