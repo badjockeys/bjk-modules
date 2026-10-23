@@ -32,13 +32,29 @@ public enum NotificationType
 
     /// <summary>The vote on your post, or a post you follow, has closed: here's the result.</summary>
     VoteClosed,
+
+    /// <summary>Someone asked to join a private community you run or moderate (<c>PostTitle</c>: the community).</summary>
+    CommunityJoinRequest,
+
+    /// <summary>Your request to join a private community was approved (<c>PostTitle</c>: the community).</summary>
+    CommunityRequestApproved,
+
+    /// <summary>A community's admin or moderator invited you to join (<c>PostTitle</c>: the community).</summary>
+    CommunityInvite,
+
+    /// <summary>
+    /// Someone replied to your discussion in a community (<c>PostTitle</c>: the discussion, <c>Detail</c>: the
+    /// community).
+    /// </summary>
+    CommunityReply,
 }
 
 /// <summary>
 /// One notification to send. <c>UserId</c> gets it; <c>ActorId</c> is who did it (never notified about their own
 /// actions). <c>PostTitle</c> is kept with the notification, so it reads the same if the post is later edited.
 /// <c>Detail</c> is a short sentence some types carry, such as a closed vote's result (at most
-/// <see cref="DetailMaxLength"/> characters).
+/// <see cref="DetailMaxLength"/> characters). <c>Link</c> is the web app's page for it when that isn't the post's
+/// (<c>/communities/salford-road-watch</c>), at most <see cref="LinkMaxLength"/> characters.
 /// </summary>
 public sealed record NotificationRequest(
     Guid UserId,
@@ -47,9 +63,12 @@ public sealed record NotificationRequest(
     Guid? PostId = null,
     Guid? CommentId = null,
     string? PostTitle = null,
-    string? Detail = null)
+    string? Detail = null,
+    string? Link = null)
 {
     public const int DetailMaxLength = 200;
+
+    public const int LinkMaxLength = 200;
 }
 
 /// <summary>

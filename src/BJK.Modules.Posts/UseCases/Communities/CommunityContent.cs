@@ -4,6 +4,7 @@ using BJK.Modules.Posts.UseCases.Safety;
 using BJK.Modules.Profiles.Contracts;
 using BJK.Modules.Safety;
 using BJK.Modules.Shared.Exceptions;
+using BJK.Modules.Shared.Notifications;
 using BJK.Modules.Shared.Security;
 using FluentValidation;
 using MediatR;
@@ -145,7 +146,8 @@ public sealed class ReplyToCommunityDiscussionCommandHandler(
     IContentScreener screener,
     NewAccountLimits limits,
     ICurrentUser caller,
-    TimeProvider clock)
+    TimeProvider clock,
+    INotificationSender? notifications = null)
     : IRequestHandler<ReplyToCommunityDiscussionCommand, CommunityReplyDto>
 {
     public async Task<CommunityReplyDto> Handle(ReplyToCommunityDiscussionCommand request, CancellationToken cancellationToken)
@@ -170,6 +172,14 @@ public sealed class ReplyToCommunityDiscussionCommandHandler(
         discussion.Replied(now);
         communities.Add(reply);
         await communities.SaveChangesAsync(cancellationToken);
+        if (notifications is not null && !flagged)
+        {
+            await notifications.NotifyAsync(
+                new NotificationRequest(discussion.AuthorId, NotificationType.CommunityReply, userId, PostTitle: discussion.Title,
+                    Detail: community.Name, Link: $"/communities/{community.Slug}/d/{discussion.Id:D}"),
+                cancellationToken);
+        }
+
         return new CommunityReplyDto(reply.Id, reply.Body, AuthorDto.From(userId, people), reply.CreatedAt, CanRemove: true);
     }
 }

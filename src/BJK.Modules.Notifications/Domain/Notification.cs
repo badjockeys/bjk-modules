@@ -39,6 +39,12 @@ public sealed class Notification
     /// <summary>A short sentence some types carry, such as a closed vote's result.</summary>
     public string? Detail { get; private set; }
 
+    /// <summary>The web app's page for it when that isn't the post's (a community, a discussion).</summary>
+    public string? Link { get; private set; }
+
+    /// <summary>Where it opens in the web app: its own link, else the post, else the notifications page.</summary>
+    public string Path => Link ?? (PostId is { } id ? $"/p/{id:D}" : "/notifications");
+
     /// <summary>When it was last sent as a push notification (grouped reactions push at most hourly).</summary>
     public DateTimeOffset? LastPushedAt { get; private set; }
 
@@ -73,6 +79,7 @@ public sealed class Notification
             CommentId = request.CommentId,
             PostTitle = string.IsNullOrEmpty(title) ? null : title.Length <= PostTitleMaxLength ? title : title[..PostTitleMaxLength],
             Detail = Trimmed(request.Detail, NotificationRequest.DetailMaxLength),
+            Link = LinkFrom(request.Link),
             Count = 1,
             CreatedAt = now,
             UpdatedAt = now,
@@ -93,6 +100,15 @@ public sealed class Notification
     public bool MayPush(DateTimeOffset now) => LastPushedAt is not { } last || now - last >= TimeSpan.FromHours(1);
 
     public void MarkPushed(DateTimeOffset now) => LastPushedAt = now;
+
+    /// <summary>Only a path inside the web app ("/communities/x"), never another site.</summary>
+    public static string? LinkFrom(string? link)
+    {
+        var path = link?.Trim();
+        return string.IsNullOrEmpty(path) || path.Length > NotificationRequest.LinkMaxLength || !path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal) || path.Contains('\\')
+            ? null
+            : path;
+    }
 
     private static string? Trimmed(string? value, int max)
     {
@@ -204,5 +220,9 @@ public static class NotificationDefaults
         NotificationType.NewFollower,
         NotificationType.CommentOnFollowedPost,
         NotificationType.VoteClosed,
+        NotificationType.CommunityJoinRequest,
+        NotificationType.CommunityRequestApproved,
+        NotificationType.CommunityInvite,
+        NotificationType.CommunityReply,
     ];
 }

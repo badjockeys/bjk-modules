@@ -14,7 +14,8 @@ public sealed record NotificationActorDto(Guid Id, string? Handle, string Displa
 
 /// <summary>
 /// One notification for the bell. <c>Text</c> is ready to show ("Sam J commented on your post “...”"); <c>At</c> is
-/// when it last changed (a grouped reaction); <c>PostId</c> is where tapping it goes.
+/// when it last changed (a grouped reaction); <c>Path</c> is where tapping it goes in the web app (the post, or a
+/// community page for community notifications).
 /// </summary>
 public sealed record NotificationDto(
     Guid Id,
@@ -26,7 +27,8 @@ public sealed record NotificationDto(
     int Count,
     string Text,
     DateTimeOffset At,
-    bool IsRead);
+    bool IsRead,
+    string Path);
 
 /// <summary>The signed-in user's notifications, newest first.</summary>
 public sealed record ListNotificationsQuery(int Page = 1, int PageSize = 20) : IRequest<PagedResult<NotificationDto>>;
@@ -72,7 +74,8 @@ public sealed class ListNotificationsQueryHandler(INotificationRepository notifi
                 n.Count,
                 NotificationTexts.Sentence(n.Type, actor?.DisplayName, n.Count, n.PostTitle, n.Detail),
                 n.UpdatedAt,
-                n.IsRead);
+                n.IsRead,
+                n.Path);
         }).ToList();
 
         return new PagedResult<NotificationDto>(dtos, request.Page, request.PageSize, total);

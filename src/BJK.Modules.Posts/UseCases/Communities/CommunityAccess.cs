@@ -14,6 +14,9 @@ public enum CommunityStanding
     Requested,
     Member,
     Banned,
+
+    /// <summary>Invited: accept with Join, decline with Leave.</summary>
+    Invited,
 }
 
 /// <summary>A community in a list.</summary>
@@ -32,7 +35,7 @@ public sealed record CommunitySummaryDto(
 /// <summary>
 /// One community, with what you may do in it. <c>CanSeeInside</c>: public, or you're a member, so its posts,
 /// discussions and members can be shown. <c>CanModerate</c>: you're an admin or moderator (requests, removing members
-/// and content). <c>IsAdmin</c>: settings, roles, deleting it. <c>CanJoin</c>: you can join (public) or ask to
+/// and content). <c>IsAdmin</c>: settings, roles, deleting it. <c>CanJoin</c>: you can join (public, or invited) or ask to
 /// (private: adults only).
 /// </summary>
 public sealed record CommunityDto(
@@ -103,6 +106,7 @@ internal static class CommunityAccess
         CommunityMembershipStatus.Member => CommunityStanding.Member,
         CommunityMembershipStatus.Requested => CommunityStanding.Requested,
         CommunityMembershipStatus.Banned => CommunityStanding.Banned,
+        CommunityMembershipStatus.Invited => CommunityStanding.Invited,
         _ => CommunityStanding.None,
     };
 
@@ -151,7 +155,8 @@ internal static class CommunityAccess
     public static CommunityDto Detail(Community c, CommunityMember? member, IReadOnlyDictionary<Guid, ProfileSummary> people, bool viewerIsAdult)
     {
         var standing = StandingOf(member);
-        var canJoin = standing == CommunityStanding.None && (c.Visibility == CommunityVisibility.Public || viewerIsAdult);
+        var canJoin = standing is CommunityStanding.None or CommunityStanding.Invited
+            && (c.Visibility == CommunityVisibility.Public || viewerIsAdult);
         return new CommunityDto(
             c.Id, c.Slug, c.Name, c.Description, c.Rules, c.Visibility, c.PlaceName, c.Latitude, c.Longitude, c.RadiusKm,
             c.MemberCount, AuthorDto.From(c.OwnerId, people), c.CreatedAt, standing, member?.IsMember == true ? member.Role : null,

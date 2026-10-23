@@ -38,6 +38,8 @@ internal sealed class NotificationConfiguration : IEntityTypeConfiguration<Notif
         builder.Property(n => n.Type).HasConversion<string>().HasMaxLength(40);
         builder.Property(n => n.PostTitle).HasMaxLength(Notification.PostTitleMaxLength);
         builder.Property(n => n.Detail).HasMaxLength(NotificationRequest.DetailMaxLength);
+        builder.Property(n => n.Link).HasMaxLength(NotificationRequest.LinkMaxLength);
+        builder.Ignore(n => n.Path);
         builder.Ignore(n => n.IsRead);
 
         // The bell: a user's newest first, and their unread count.
