@@ -72,6 +72,19 @@ public interface IProfileRepository
     /// <summary>Of <paramref name="ids"/>, the active adults (known to be 18 or over), for suggestions.</summary>
     Task<IReadOnlyList<Profile>> GetSuggestableAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// People who follow the user or whom they follow, with active profiles, whose handle or name (any word of it)
+    /// starts with <paramref name="text"/>: people who follow each other first, then followers, then people followed,
+    /// then by name.
+    /// </summary>
+    Task<IReadOnlyList<TagCandidate>> SearchConnectionsAsync(Guid userId, string text, int take, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Other active adults (known to be 18 or over) whose handle or name starts with <paramref name="text"/>, shortest
+    /// handle first, leaving out <paramref name="exclude"/>.
+    /// </summary>
+    Task<IReadOnlyList<Profile>> SearchAdultsAsync(string text, IReadOnlyCollection<Guid> exclude, int take, CancellationToken cancellationToken);
+
     /// <summary>The badges a user holds.</summary>
     Task<IReadOnlyList<Badge>> ListBadgesAsync(Guid userId, CancellationToken cancellationToken);
 
@@ -227,5 +240,34 @@ internal sealed class ProfileRepository(ProfilesDbContext db) : IProfileReposito
                 .Where(p => ids.Contains(p.Id) && p.DeactivatedAt == null && p.IsMinor == false)
                 .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<TagCandidate>> SearchConnectionsAsync(Guid userId, string text, int take, CancellationToken cancellationToken)
+    {
+        var followers = db.Follows.Where(f => f.FolloweeId == userId).Select(f => f.FollowerId);
+        var following = db.Follows.Where(f => f.FollowerId == userId).Select(f => f.FolloweeId);
+        var word = " " + text;
+        var rows = await db.Profiles.AsNoTracking()
+            .Where(p => p.DeactivatedAt == null && p.Id != userId && (followers.Contains(p.Id) || following.Contains(p.Id)))
+            .Where(p => p.Handle.StartsWith(text) || p.DisplayName.StartsWith(text) || p.DisplayName.Contains(word))
+            .Select(p => new { Profile = p, FollowsYou = followers.Contains(p.Id), YouFollow = following.Contains(p.Id) })
+            .OrderByDescending(x => x.FollowsYou && x.YouFollow ? 3 : x.FollowsYou ? 2 : 1)
+            .ThenBy(x => x.Profile.DisplayName)
+            .ThenBy(x => x.Profile.Handle)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => new TagCandidate(r.Profile, r.FollowsYou, r.YouFollow)).ToList();
+    }
+
+    public async Task<IReadOnlyList<Profile>> SearchAdultsAsync(string text, IReadOnlyCollection<Guid> exclude, int take, CancellationToken cancellationToken) =>
+        await db.Profiles.AsNoTracking()
+            .Where(p => p.DeactivatedAt == null && p.IsMinor == false && !exclude.Contains(p.Id))
+            .Where(p => p.Handle.StartsWith(text) || p.DisplayName.StartsWith(text))
+            .OrderBy(p => p.Handle.Length)
+            .ThenBy(p => p.Handle)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 }
+
+/// <summary>Someone connected to the user, and how: they follow the user, the user follows them, or both.</summary>
+public sealed record TagCandidate(Profile Profile, bool FollowsYou, bool YouFollow);
