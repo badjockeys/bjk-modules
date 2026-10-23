@@ -239,6 +239,44 @@ public sealed class NotificationSenderTests
     }
 
     [Fact]
+    public async Task Community_notifications_open_their_own_page()
+    {
+        await Sender().NotifyAsync(
+            new NotificationRequest(UserId, NotificationType.CommunityReply, SamId, PostTitle: "Worsley roundabout",
+                Detail: "Salford Road Watch", Link: "/communities/salford-road-watch/d/abc"),
+            Ct);
+
+        var saved = Assert.Single(_added);
+        Assert.Equal("/communities/salford-road-watch/d/abc", saved.Path);
+        await _push.Received(1).SendAsync(
+            UserId,
+            Arg.Is<PushMessage>(m => m.Body == "Sam J replied to your discussion “Worsley roundabout” in Salford Road Watch."
+                && m.Url == "/communities/salford-road-watch/d/abc"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("https://evil.example/x")]
+    [InlineData("//evil.example/x")]
+    [InlineData("/\\evil.example")]
+    [InlineData("communities/x")]
+    public void Links_are_only_paths_in_the_web_app(string link) => Assert.Null(Notification.LinkFrom(link));
+
+    [Fact]
+    public void Community_notifications_have_their_own_words_and_settings()
+    {
+        Assert.Equal("Sam J asked to join Salford Road Watch.", NotificationTexts.Sentence(NotificationType.CommunityJoinRequest, "Sam J", 1, "Salford Road Watch"));
+        Assert.Equal("Sam J invited you to join Salford Road Watch.", NotificationTexts.Sentence(NotificationType.CommunityInvite, "Sam J", 1, "Salford Road Watch"));
+        Assert.Equal(
+            "You're in: your request to join Salford Road Watch was approved.",
+            NotificationTexts.Sentence(NotificationType.CommunityRequestApproved, "Sam J", 1, "Salford Road Watch"));
+        foreach (var type in new[] { NotificationType.CommunityJoinRequest, NotificationType.CommunityRequestApproved, NotificationType.CommunityInvite, NotificationType.CommunityReply })
+        {
+            Assert.Contains(type, NotificationDefaults.Configurable);
+        }
+    }
+
+    [Fact]
     public async Task Settings_include_push_and_keep_it_when_a_change_leaves_it_out()
     {
         var updated = await new UpdateNotificationSettingsCommandHandler(_repository, _caller).Handle(
