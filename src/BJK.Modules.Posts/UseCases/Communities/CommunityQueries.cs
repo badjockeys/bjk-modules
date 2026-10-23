@@ -30,7 +30,8 @@ public sealed record ListCommunityDiscussionsQuery(string Slug, int Page = 1, in
 public sealed record GetCommunityDiscussionQuery(string Slug, Guid DiscussionId, int Page = 1, int PageSize = 50) : IRequest<CommunityDiscussionDetailDto>;
 
 /// <summary>
-/// The people in a community. Members: anyone who can see inside. Requests and bans: its admins and moderators.
+/// The people in a community. Members: anyone who can see inside. Requests, invitations and bans: its admins and
+/// moderators.
 /// </summary>
 public sealed record ListCommunityMembersQuery(string Slug, CommunityMembershipStatus Status = CommunityMembershipStatus.Member, int Page = 1, int PageSize = 30)
     : IRequest<PagedResult<CommunityMemberDto>>;
