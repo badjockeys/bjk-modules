@@ -34,6 +34,9 @@ namespace BJK.Modules.Chat.Infrastructure.Data.Migrations
                     b.Property<int>("Questions")
                         .HasColumnType("int");
 
+                    b.Property<int>("Strikes")
+                        .HasColumnType("int");
+
                     b.HasKey("UserId", "Day");
 
                     b.ToTable("DailyUsage", "chat");

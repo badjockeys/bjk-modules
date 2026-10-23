@@ -39,6 +39,18 @@ public sealed class ChatSettingsAndPromptTests
         Assert.Contains(mentions, result.FailureMessage);
     }
 
+    [Theory]
+    [InlineData(0, null, "MisuseLimit")]
+    [InlineData(51, null, "MisuseLimit")]
+    [InlineData(5, "too-short", "HistoryKey")]
+    public void Refuses_bad_guard_settings(int misuseLimit, string? historyKey, string mentions)
+    {
+        var result = new ChatOptionsValidator().Validate(null, new ChatOptions { MisuseLimit = misuseLimit, HistoryKey = historyKey });
+
+        Assert.True(result.Failed);
+        Assert.Contains(mentions, result.FailureMessage);
+    }
+
     [Fact]
     public void The_prompt_has_the_date_plan_and_every_subcategory()
     {

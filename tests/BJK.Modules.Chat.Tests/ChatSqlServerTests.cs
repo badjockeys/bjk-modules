@@ -171,10 +171,16 @@ public sealed class ChatSqlServerTests : IAsyncLifetime
         await using (var db = Context())
         {
             var usage = new ChatUsage(db);
-            Assert.Equal(5, await usage.UsedAsync(userId, day, Ct));
+            Assert.Equal(new DailyCounts(5, 0), await usage.GetAsync(userId, day, Ct));
 
             await usage.GiveBackAsync(userId, day, Ct);
-            Assert.Equal(4, await usage.UsedAsync(userId, day, Ct));
+            Assert.Equal(4, (await usage.GetAsync(userId, day, Ct)).Questions);
+
+            // Strikes count separately and never touch the allowance.
+            Assert.Equal(1, await usage.AddStrikeAsync(userId, day, Ct));
+            Assert.Equal(2, await usage.AddStrikeAsync(userId, day, Ct));
+            Assert.Equal(new DailyCounts(4, 2), await usage.GetAsync(userId, day, Ct));
+            Assert.Equal(1, await usage.AddStrikeAsync(Guid.NewGuid(), day, Ct)); // a member's first event of the day
 
             // The next day starts again and clears the old row.
             Assert.Equal(1, await usage.TryTakeAsync(userId, day.AddDays(1), 5, Ct));

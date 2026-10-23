@@ -1,4 +1,5 @@
 using BJK.Modules.Chat.Agent;
+using BJK.Modules.Chat.Guard;
 using BJK.Modules.Chat.Infrastructure;
 using BJK.Modules.Chat.Infrastructure.Data;
 using BJK.Modules.Chat.Sql;
@@ -7,6 +8,7 @@ using BJK.Modules.Shared;
 using BJK.Modules.Shared.Configuration;
 using BJK.Modules.Shared.Data;
 using BJK.Modules.Shared.PersonalData;
+using BJK.Modules.Safety;
 using BJK.Modules.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -62,6 +64,10 @@ public sealed class ChatModule(string connectionStringName, string chatConnectio
             "Chat:Model:Endpoint",
             "the chat model server's address, ending /v1 (without it Ask Bad Jockeys answers 503)");
         services.RequireWhenDeployed(
+            "Chat:HistoryKey",
+            "a random secret of at least 32 characters that signs the chat history",
+            value => value?.Length >= 32);
+        services.RequireWhenDeployed(
             $"ConnectionStrings:{chatConnectionStringName}",
             "the bjk_chat login's connection string (it can read only reporting.Incidents and reporting.Subcategories)");
 
@@ -70,6 +76,13 @@ public sealed class ChatModule(string connectionStringName, string chatConnectio
         services.AddScoped<IIncidentQueries, SqlIncidentQueries>();
         services.AddScoped<IChatUsage, ChatUsage>();
         services.AddScoped<ChatAgent>();
+
+        // The guard rails: fixed checks, the shared content screener (keywords, plus the classifier when
+        // Screening:Endpoint is set), the topic gate and signed history.
+        services.AddContentScreening(configuration);
+        services.AddScoped<ITopicGate, ModelTopicGate>();
+        services.AddScoped<ChatGuard>();
+        services.AddSingleton<TurnTokens>();
         services.AddHttpClient<IChatModel, OpenAiCompatibleChatModel>((sp, client) =>
             client.Timeout = TimeSpan.FromSeconds(sp.GetRequiredService<IOptions<ChatOptions>>().Value.Model.TimeoutSeconds));
 

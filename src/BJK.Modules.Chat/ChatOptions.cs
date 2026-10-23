@@ -38,6 +38,18 @@ public sealed class ChatOptions
     /// </summary>
     public ChatPlanNumbers HistoryDays { get; set; } = new() { Premium = 365, PremiumPlus = 1826 };
 
+    /// <summary>
+    /// Blocked questions (off topic, about people or plates, prompt tricks, abuse) a member may send in a UK day before
+    /// the chat pauses until midnight. They don't use the allowance. Default 5.
+    /// </summary>
+    public int MisuseLimit { get; set; } = 5;
+
+    /// <summary>
+    /// Secret. Signs each answer so the window's history can't be faked (at least 32 characters). Empty: a random key per
+    /// run (Development only).
+    /// </summary>
+    public string? HistoryKey { get; set; }
+
     /// <summary>True when <c>Chat:Model:Endpoint</c> is set. Without it the chat answers 503 (allowed in Development only).</summary>
     public bool UsesModel => !string.IsNullOrWhiteSpace(Model.Endpoint);
 }
@@ -108,6 +120,16 @@ internal sealed class ChatOptionsValidator : IValidateOptions<ChatOptions>
         if (options.DailyQuestions.Premium < 1 || options.DailyQuestions.PremiumPlus < options.DailyQuestions.Premium)
         {
             failures.Add("Chat:DailyQuestions must be at least 1 and grow with the plan (Premium ≤ PremiumPlus).");
+        }
+
+        if (options.MisuseLimit is < 1 or > 50)
+        {
+            failures.Add("Chat:MisuseLimit must be between 1 and 50.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.HistoryKey) && options.HistoryKey.Length < 32)
+        {
+            failures.Add("Chat:HistoryKey must be at least 32 characters.");
         }
 
         if (options.HistoryDays.Premium < 1 || options.HistoryDays.PremiumPlus < options.HistoryDays.Premium)

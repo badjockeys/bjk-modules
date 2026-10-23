@@ -38,11 +38,22 @@ internal sealed class ChatDbContextDesignTimeFactory : IDesignTimeDbContextFacto
             .Options);
 }
 
-/// <summary>Each member's questions per UK day.</summary>
+/// <summary>A member's counts for one UK day.</summary>
+/// <param name="Questions">Questions answered (the allowance used).</param>
+/// <param name="Strikes">Questions blocked as misuse.</param>
+public sealed record DailyCounts(int Questions, int Strikes)
+{
+    public static readonly DailyCounts None = new(0, 0);
+}
+
+/// <summary>Each member's questions and strikes per UK day.</summary>
 public interface IChatUsage
 {
-    /// <summary>Questions asked on <paramref name="day"/>.</summary>
-    Task<int> UsedAsync(Guid userId, DateOnly day, CancellationToken cancellationToken);
+    /// <summary>Questions and strikes on <paramref name="day"/>.</summary>
+    Task<DailyCounts> GetAsync(Guid userId, DateOnly day, CancellationToken cancellationToken);
+
+    /// <summary>Records a blocked question (a strike), atomically. Returns the day's strikes afterwards.</summary>
+    Task<int> AddStrikeAsync(Guid userId, DateOnly day, CancellationToken cancellationToken);
 
     /// <summary>
     /// Counts one question if the member is under <paramref name="limit"/> for the day, atomically (two windows asking
@@ -59,8 +70,27 @@ public interface IChatUsage
 
 internal sealed class ChatUsage(ChatDbContext db) : IChatUsage
 {
-    public Task<int> UsedAsync(Guid userId, DateOnly day, CancellationToken cancellationToken) =>
-        db.DailyUsage.Where(u => u.UserId == userId && u.Day == day).Select(u => u.Questions).FirstOrDefaultAsync(cancellationToken);
+    public async Task<DailyCounts> GetAsync(Guid userId, DateOnly day, CancellationToken cancellationToken) =>
+        await db.DailyUsage.Where(u => u.UserId == userId && u.Day == day)
+            .Select(u => new DailyCounts(u.Questions, u.Strikes))
+            .FirstOrDefaultAsync(cancellationToken) ?? DailyCounts.None;
+
+    public async Task<int> AddStrikeAsync(Guid userId, DateOnly day, CancellationToken cancellationToken)
+    {
+        const string sql =
+            """
+            SET XACT_ABORT ON;
+            BEGIN TRANSACTION;
+            DELETE FROM chat.DailyUsage WHERE UserId = @UserId AND [Day] < @Day;
+            IF NOT EXISTS (SELECT 1 FROM chat.DailyUsage WITH (UPDLOCK, HOLDLOCK) WHERE UserId = @UserId AND [Day] = @Day)
+                INSERT INTO chat.DailyUsage (UserId, [Day], Questions, Strikes) VALUES (@UserId, @Day, 0, 1);
+            ELSE
+                UPDATE chat.DailyUsage SET Strikes = Strikes + 1 WHERE UserId = @UserId AND [Day] = @Day;
+            COMMIT;
+            SELECT Strikes FROM chat.DailyUsage WHERE UserId = @UserId AND [Day] = @Day;
+            """;
+        return (int)(await ScalarAsync(sql, userId, day, 0, cancellationToken))!;
+    }
 
     public async Task<int?> TryTakeAsync(Guid userId, DateOnly day, int limit, CancellationToken cancellationToken)
     {
@@ -73,7 +103,7 @@ internal sealed class ChatUsage(ChatDbContext db) : IChatUsage
             -- The range lock makes two windows asking at once take turns, even for the day's first question.
             IF NOT EXISTS (SELECT 1 FROM chat.DailyUsage WITH (UPDLOCK, HOLDLOCK) WHERE UserId = @UserId AND [Day] = @Day)
             BEGIN
-                INSERT INTO chat.DailyUsage (UserId, [Day], Questions) VALUES (@UserId, @Day, 1);
+                INSERT INTO chat.DailyUsage (UserId, [Day], Questions, Strikes) VALUES (@UserId, @Day, 1, 0);
                 SET @Taken = 1;
             END
             ELSE
