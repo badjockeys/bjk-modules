@@ -17,6 +17,8 @@ namespace BJK.Modules.Posts.UseCases.Update;
 /// previews public) within seconds; untagging publishes them again. <c>Types</c> replace the post's types of bad
 /// driving (or send one <c>Category</c>). <c>Passengers</c> replaces the tagged @handles (null leaves them); new ones
 /// are asked to accept. Changing the types to only bad parking removes every passenger.
+/// <c>FilmedFromCarId</c>: one of the author's household cars; leave it out to keep the current one, or send an
+/// empty id to remove it.
 /// </summary>
 public sealed record UpdatePostCommand(
     Guid PostId,
@@ -34,7 +36,8 @@ public sealed record UpdatePostCommand(
     string? VehicleMake = null,
     string? VehicleModel = null,
     VehicleColour? VehicleColour = null,
-    bool? ReportedToPolice = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
+    bool? ReportedToPolice = null,
+    Guid? FilmedFromCarId = null) : IRequest<PostDto>, IPostDetails, IRequiresAgeVerification;
 
 public sealed class UpdatePostCommandValidator(TimeProvider clock, IOptions<PostsOptions> options)
     : PostDetailsValidator<UpdatePostCommand>(clock, options);
@@ -48,7 +51,8 @@ public sealed class UpdatePostCommandHandler(
     TimeProvider clock,
     PassengerTagging? passengers = null,
     INotificationSender? notifications = null,
-    Hashtags.HashtagSync? hashtags = null)
+    Hashtags.HashtagSync? hashtags = null,
+    IHouseholdCarRepository? cars = null)
     : IRequestHandler<UpdatePostCommand, PostDto>
 {
     public async Task<PostDto> Handle(UpdatePostCommand request, CancellationToken cancellationToken)
@@ -70,6 +74,15 @@ public sealed class UpdatePostCommandHandler(
             ? null
             : await passengers.ResolveAsync(post.AuthorId, request.Passengers, details.Types!, cancellationToken);
         post.Update(details, now);
+
+        // The car it was filmed from: left out keeps it, an empty id removes it.
+        if (request.FilmedFromCarId is { } carId)
+        {
+            post.SetFilmedFrom(
+                carId == Guid.Empty ? null : await Cars.CarViews.FilmedFromAsync(cars, post.AuthorId, carId, cancellationToken),
+                now);
+        }
+
         IReadOnlyList<Guid> tagged = [];
         if (passengers is not null)
         {

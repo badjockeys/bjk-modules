@@ -66,6 +66,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<CommunityReply> CommunityReplies => Set<CommunityReply>();
 
+    public DbSet<HouseholdCar> HouseholdCars => Set<HouseholdCar>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(PostsModule.Schema);
@@ -103,6 +105,8 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.CommentSetting).HasConversion<string>().HasMaxLength(20).HasDefaultValue(CommentSetting.Everyone);
         builder.Property(p => p.VehicleMake).HasMaxLength(VehicleCatalogue.NameMaxLength);
         builder.Property(p => p.VehicleModel).HasMaxLength(VehicleCatalogue.NameMaxLength);
+        builder.Property(p => p.FilmedFrom).HasMaxLength(HouseholdCar.NicknameMaxLength);
+        builder.HasIndex(p => p.FilmedFromCarId).HasFilter("[FilmedFromCarId] IS NOT NULL");
         builder.Ignore(p => p.IsMediaPending);
         builder.Ignore(p => p.AuthorMayRemoveSensitive);
 
@@ -612,4 +616,18 @@ internal sealed class PostsDbContextDesignTimeFactory : IDesignTimeDbContextFact
                 "Server=(design-time);Database=BJK_Design",
                 sql => sql.MigrationsHistoryTable(PostsModule.MigrationsHistoryTable, PostsModule.Schema))
             .Options);
+}
+
+internal sealed class HouseholdCarConfiguration : IEntityTypeConfiguration<HouseholdCar>
+{
+    public void Configure(EntityTypeBuilder<HouseholdCar> builder)
+    {
+        builder.ToTable("HouseholdCars");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.Make).HasMaxLength(VehicleCatalogue.NameMaxLength).IsRequired();
+        builder.Property(c => c.Model).HasMaxLength(VehicleCatalogue.NameMaxLength);
+        builder.Property(c => c.Colour).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.Nickname).HasMaxLength(HouseholdCar.NicknameMaxLength).IsRequired();
+        builder.HasIndex(c => new { c.UserId, c.CreatedAt });
+    }
 }
