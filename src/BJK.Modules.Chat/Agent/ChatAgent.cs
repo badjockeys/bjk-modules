@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -37,6 +38,9 @@ public sealed partial class ChatAgent(IChatModel model, IIncidentQueries queries
         ChatAnswerKind.Failed, null, null, []);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Plain JSON for the model: "&lt;3" and accented place names as they are, not \u003C3.</summary>
+    private static readonly JsonSerializerOptions ModelJson = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public async Task<AgentResult> AskAsync(string question, IReadOnlyList<ChatTurn> history, AgentContext context, CancellationToken cancellationToken)
     {
@@ -172,7 +176,7 @@ public sealed partial class ChatAgent(IChatModel model, IIncidentQueries queries
             json["allHidden"] = "Every row has fewer than 3 incidents. Answer with kind too_few.";
         }
 
-        return json.ToJsonString();
+        return json.ToJsonString(ModelJson);
     }
 
     /// <summary>The model's answer call, before the card is drawn.</summary>
