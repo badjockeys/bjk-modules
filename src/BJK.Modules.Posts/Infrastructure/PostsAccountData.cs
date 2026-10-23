@@ -7,7 +7,12 @@ using Microsoft.EntityFrameworkCore;
 namespace BJK.Modules.Posts.Infrastructure;
 
 /// <summary>Hides a deactivated user's posts and comments, shows them again on return, and deletes them with the account.</summary>
-internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRepository drafts, ITimelineRepository? timelines = null)
+internal sealed class PostsUserLifecycleHandler(
+    IPostRepository posts,
+    IDraftRepository drafts,
+    ITimelineRepository? timelines = null,
+    ICommunityRepository? communities = null,
+    TimeProvider? clock = null)
     : IUserLifecycleHandler
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
@@ -26,6 +31,11 @@ internal sealed class PostsUserLifecycleHandler(IPostRepository posts, IDraftRep
                 if (timelines is not null)
                 {
                     await timelines.DeleteForUserAsync(userEvent.UserId, cancellationToken);
+                }
+
+                if (communities is not null)
+                {
+                    await communities.DeleteAllForUserAsync(userEvent.UserId, (clock ?? TimeProvider.System).GetUtcNow(), cancellationToken);
                 }
 
                 await posts.DeleteAllForUserAsync(userEvent.UserId, cancellationToken);
@@ -188,4 +198,31 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             reelPlays, timelines, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences,
         };
     }
+}
+
+/// <summary>The user's communities (memberships and roles), discussions and replies.</summary>
+internal sealed class CommunitiesPersonalDataExporter(PostsDbContext db) : IPersonalDataExporter
+{
+    public string Section => "communities";
+
+    public async Task<object?> ExportAsync(Guid userId, CancellationToken cancellationToken) => new
+    {
+        Memberships = await (from m in db.CommunityMembers.AsNoTracking()
+                             join c in db.Communities.AsNoTracking() on m.CommunityId equals c.Id
+                             where m.UserId == userId
+                             select new { c.Name, c.Slug, m.Status, m.Role, m.RequestedAt, m.JoinedAt, Owner = c.OwnerId == userId })
+            .ToListAsync(cancellationToken),
+        Discussions = await db.CommunityDiscussions.AsNoTracking()
+            .Where(d => d.AuthorId == userId)
+            .Select(d => new { d.Id, d.CommunityId, d.Title, d.Body, d.Status, d.CreatedAt, d.RemovedAt })
+            .ToListAsync(cancellationToken),
+        Replies = await db.CommunityReplies.AsNoTracking()
+            .Where(r => r.AuthorId == userId)
+            .Select(r => new { r.Id, r.DiscussionId, r.Body, r.Status, r.CreatedAt, r.RemovedAt })
+            .ToListAsync(cancellationToken),
+        SharedPosts = await db.CommunityPosts.AsNoTracking()
+            .Where(s => s.SharedBy == userId)
+            .Select(s => new { s.CommunityId, s.PostId, s.SharedAt })
+            .ToListAsync(cancellationToken),
+    };
 }

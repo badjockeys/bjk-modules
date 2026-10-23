@@ -149,12 +149,16 @@ public sealed class PostsModule(string connectionStringName) : IModule
 
         // Home timelines: For you (ranked, boosted near the home area), Following and custom timelines.
         services.AddScoped<ITimelineRepository, TimelineRepository>();
+
+        // Communities (owner, 23 Oct 2026).
+        services.AddScoped<ICommunityRepository, CommunityRepository>();
         services.AddHomeAreasFallback();
 
         // Post now, publish when ready: pending posts are published on media.ready / media.failed events.
         services.AddScoped<PostMediaPublisher>();
         services.AddMediaEventHandler<PostsMediaEventHandler>(configuration, connectionStringName);
         services.AddScoped<IPersonalDataExporter, PostsPersonalDataExporter>();
+        services.AddScoped<IPersonalDataExporter, CommunitiesPersonalDataExporter>();
         services.AddUserLifecycleHandler<PostsUserLifecycleHandler>(configuration, connectionStringName);
 
         services.AddAuthorizationBuilder()

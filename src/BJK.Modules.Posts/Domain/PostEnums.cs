@@ -115,6 +115,15 @@ public enum ReportTargetType
 
     /// <summary>A user's public profile (handle, display name, bio, avatar).</summary>
     Profile,
+
+    /// <summary>A community: its name, description or rules.</summary>
+    Community,
+
+    /// <summary>A discussion in a community.</summary>
+    CommunityDiscussion,
+
+    /// <summary>A reply to a discussion in a community.</summary>
+    CommunityReply,
 }
 
 public enum ReportReason
