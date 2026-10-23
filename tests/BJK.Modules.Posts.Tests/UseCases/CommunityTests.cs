@@ -45,6 +45,7 @@ public sealed class CommunityTests
     [InlineData("  A6 / A580 — Swinton ", "a6-a580-swinton")]
     [InlineData("Café Racers", "cafe-racers")]
     [InlineData("!!!", "community")]
+    [InlineData("New", "new-community")]
     public void Addresses_come_from_the_name(string name, string slug) => Assert.Equal(slug, Community.SlugFrom(name));
 
     [Fact]

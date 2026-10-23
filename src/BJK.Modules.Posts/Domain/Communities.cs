@@ -57,6 +57,8 @@ public sealed class Community
     /// <summary>The radiuses offered, in km.</summary>
     public static readonly IReadOnlyList<int> Radiuses = [5, 10, 15, 25, 50];
 
+    private static readonly HashSet<string> Reserved = ["new", "suggestions", "discussions", "replies"];
+
     // For EF Core.
     private Community()
     {
@@ -64,7 +66,7 @@ public sealed class Community
 
     public Guid Id { get; private set; }
 
-    /// <summary>Its address, from the name: <c>/c/salford-road-watch</c>. Never changes.</summary>
+    /// <summary>Its address, from the name: <c>/communities/salford-road-watch</c>. Never changes.</summary>
     public string Slug { get; private set; } = string.Empty;
 
     public string Name { get; private set; } = string.Empty;
@@ -173,7 +175,8 @@ public sealed class Community
             text = text[..(SlugMaxLength - 4)].Trim('-');
         }
 
-        return text.Length == 0 ? "community" : text;
+        // Addresses the web app uses for its own pages (/communities/new) can't be a community's.
+        return text.Length == 0 ? "community" : Reserved.Contains(text) ? $"{text}-community" : text;
     }
 }
 
