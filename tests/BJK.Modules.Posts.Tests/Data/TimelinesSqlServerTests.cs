@@ -57,7 +57,7 @@ public sealed class TimelinesSqlServerTests : IAsyncLifetime
             .Options);
     }
 
-    private static Post At(Guid author, string title, decimal lat, decimal lng, DateTimeOffset createdAt, IncidentCategory type = IncidentCategory.Speeding) =>
+    private static Post At(Guid author, string title, decimal lat, decimal lng, DateTimeOffset createdAt, IncidentCategory type = IncidentCategory.SpeedingInTown) =>
         Post.Create(author, Details(title) with { Category = type, Latitude = lat, Longitude = lng, Types = [type] }, [Guid.NewGuid()], createdAt);
 
     [Fact]
@@ -99,9 +99,9 @@ public sealed class TimelinesSqlServerTests : IAsyncLifetime
     {
         var friend = Guid.NewGuid();
         var stranger = Guid.NewGuid();
-        var parkingInLeeds = At(friend, "Parking in Leeds", 53.80m, -1.55m, Now.AddHours(-1), IncidentCategory.BadParking);
+        var parkingInLeeds = At(friend, "Parking in Leeds", 53.80m, -1.55m, Now.AddHours(-1), IncidentCategory.DoubleYellows);
         var speedingInLeeds = At(stranger, "Speeding in Leeds", 53.80m, -1.55m, Now.AddHours(-2));
-        var parkingInYork = At(stranger, "Parking in York", 53.96m, -1.08m, Now.AddHours(-3), IncidentCategory.BadParking);
+        var parkingInYork = At(stranger, "Parking in York", 53.96m, -1.08m, Now.AddHours(-3), IncidentCategory.DoubleYellows);
         await using (var db = Context())
         {
             db.Posts.AddRange(parkingInLeeds, speedingInLeeds, parkingInYork);
@@ -115,18 +115,18 @@ public sealed class TimelinesSqlServerTests : IAsyncLifetime
         Assert.Equal(new[] { parkingInLeeds.Id }, following.Items.Select(p => p.Id));
         Assert.Empty((await posts.SearchAsync(new PostSearch(null, null, null, false, AuthorIds: []), 1, 20, Ct)).Items);
 
-        var parking = IncidentTypeFlags.From([IncidentCategory.BadParking]);
-        var allParking = await posts.SearchAsync(new PostSearch(null, null, null, false, TypeFlags: parking), 1, 20, Ct);
+        var parking = IncidentTypeFlags.From([IncidentCategory.DoubleYellows]);
+        var allParking = await posts.SearchAsync(new PostSearch(null, null, null, false, Types: parking), 1, 20, Ct);
         Assert.Equal(new[] { parkingInLeeds.Id, parkingInYork.Id }, allParking.Items.Select(p => p.Id));
 
         var parkingNearLeeds = await posts.SearchAsync(
-            new PostSearch(null, null, GeoBox.Around(53.80m, -1.55m, 10), false, TypeFlags: parking), 1, 20, Ct);
+            new PostSearch(null, null, GeoBox.Around(53.80m, -1.55m, 10), false, Types: parking), 1, 20, Ct);
         Assert.Equal(new[] { parkingInLeeds.Id }, parkingNearLeeds.Items.Select(p => p.Id));
 
-        var timeline = Timeline.Create(UserId, new TimelineDetails("Parking", [IncidentCategory.BadParking]), 0, Now);
+        var timeline = Timeline.Create(UserId, new TimelineDetails("Parking", [IncidentCategory.DoubleYellows]), 0, Now);
         context.Timelines.Add(timeline);
         await context.SaveChangesAsync(Ct);
         var saved = await new TimelineRepository(context).ListAsync(UserId, Ct);
-        Assert.Equal(new[] { IncidentCategory.BadParking }, Assert.Single(saved).Types);
+        Assert.Equal(new[] { IncidentCategory.DoubleYellows }, Assert.Single(saved).Types);
     }
 }

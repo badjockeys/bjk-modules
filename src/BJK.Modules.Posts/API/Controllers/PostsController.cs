@@ -26,7 +26,8 @@ public sealed class PostsController(ISender sender) : ControllerBase
     /// The public feed, newest first. Anyone can call this; logged-out callers never get sensitive posts, and
     /// signed-in callers don't get posts by people they've blocked.
     /// </summary>
-    /// <param name="type">Only posts with this type of bad driving among their types.</param>
+    /// <param name="type">Only posts with this subcategory of bad driving among their subcategories.</param>
+    /// <param name="group">Only posts with a subcategory in this group.</param>
     /// <param name="category">The old name for <paramref name="type"/>, still accepted.</param>
     /// <param name="author">Only posts by this @handle.</param>
     /// <param name="lat">Centre of an area to search (with lng and radiusKm).</param>
@@ -50,8 +51,11 @@ public sealed class PostsController(ISender sender) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? hashtag = null,
+        [FromQuery] IncidentGroup? group = null,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListPostsQuery(type ?? category, author, lat, lng, radiusKm, page, pageSize, hashtag), cancellationToken);
+        await sender.Send(
+            new ListPostsQuery(type ?? category, author, lat, lng, radiusKm, page, pageSize, hashtag, group),
+            cancellationToken);
 
     /// <summary>The signed-in user's posts, including hidden ones.</summary>
     [HttpGet("mine")]

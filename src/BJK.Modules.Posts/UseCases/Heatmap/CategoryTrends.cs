@@ -27,7 +27,11 @@ public sealed record CategoryTrendDto(
     int? Total,
     int? PreviousTotal,
     int? ChangePercent,
-    IReadOnlyList<int> Points);
+    IReadOnlyList<int> Points)
+{
+    /// <summary>The group the subcategory is listed under.</summary>
+    public IncidentGroup Group => IncidentTaxonomy.GroupOf(Category);
+}
 
 /// <summary>
 /// The right panel's category trends: every type of bad driving, busiest first, with a line of incidents per

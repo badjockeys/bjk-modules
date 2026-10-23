@@ -13,15 +13,18 @@ using Microsoft.Extensions.Options;
 
 namespace BJK.Modules.Posts.UseCases.Engagement;
 
+/// <summary>One answer a vote offers, and its wording for that vote.</summary>
+public sealed record VoteAnswerDto(VoteChoice Choice, string Label);
+
 /// <summary>
-/// A post's vote as the viewer may see it. <c>Kind</c> says which question it asks and <c>Choices</c> the answers in
-/// order. <c>Results</c> (votes per answer) is null while hidden: until the viewer votes, for everyone except the
+/// A post's vote as the viewer may see it. <c>Question</c> and <c>Answers</c> (in order) come from its main
+/// subcategory (owner, 23 Oct 2026: votes fit the category). <c>Results</c> (votes per answer) is null while hidden: until the viewer votes, for everyone except the
 /// author; for signed-out visitors until there are <see cref="PostVoting.PublicResultsAfter"/> votes. Closed votes show
 /// results to everyone. <c>ClosesAt</c> is null when the vote never closes.
 /// </summary>
 public sealed record VoteSummaryDto(
-    VoteKind Kind,
-    IReadOnlyList<VoteChoice> Choices,
+    string Question,
+    IReadOnlyList<VoteAnswerDto> Answers,
     int Total,
     IReadOnlyDictionary<VoteChoice, int>? Results,
     VoteChoice? MyChoice,
@@ -32,18 +35,24 @@ public sealed record VoteSummaryDto(
     /// <summary>The vote as this viewer sees it.</summary>
     public static VoteSummaryDto For(Post post, VoteTally tally, Guid? viewerId, DateTimeOffset now)
     {
+        var vote = post.Vote;
+
+        // Only answers to this question count: a vote cast before the categories changed (or before the author changed
+        // the main subcategory) answered a different question, so it's left out and that voter can vote again.
+        var mine = tally.Mine is { } m && vote.Offers(m) ? m : (VoteChoice?)null;
+        var total = vote.Answers.Sum(a => tally.Counts.GetValueOrDefault(a.Choice));
         var closed = post.IsVoteClosed(now);
         var isAuthor = viewerId == post.AuthorId;
         var show = closed
             || isAuthor
-            || tally.Mine is not null
-            || (viewerId is null && tally.Total >= PostVoting.PublicResultsAfter);
+            || mine is not null
+            || (viewerId is null && total >= PostVoting.PublicResultsAfter);
         return new VoteSummaryDto(
-            post.VoteKind,
-            PostVoting.ChoicesFor(post.VoteKind),
-            tally.Total,
-            show ? PostVoting.ChoicesFor(post.VoteKind).ToDictionary(c => c, c => tally.Counts.GetValueOrDefault(c)) : null,
-            tally.Mine,
+            vote.Question,
+            vote.Answers.Select(a => new VoteAnswerDto(a.Choice, a.Label)).ToList(),
+            total,
+            show ? vote.Answers.ToDictionary(a => a.Choice, a => tally.Counts.GetValueOrDefault(a.Choice)) : null,
+            mine,
             closed,
             post.VoteClosesAt,
             CanVote: viewerId is not null && !isAuthor && !closed && post.IsPublic);
@@ -86,7 +95,7 @@ public sealed class CastVoteCommandHandler(
             throw PostAccess.Invalid(nameof(request.Choice), "Voting on this post has closed.");
         }
 
-        if (!PostVoting.ChoicesFor(post.VoteKind).Contains(request.Choice))
+        if (!post.Vote.Offers(request.Choice))
         {
             throw PostAccess.Invalid(nameof(request.Choice), "That answer doesn't fit this post's vote.");
         }

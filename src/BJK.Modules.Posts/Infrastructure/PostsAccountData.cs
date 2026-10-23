@@ -67,6 +67,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
                 p.Description,
                 p.Category,
                 p.TypeFlags,
+                p.TypeFlagsHigh,
                 p.VehicleType,
                 p.VehicleMake,
                 p.VehicleModel,
@@ -164,7 +165,9 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .ToList();
 
         // Every type of bad driving on each post, by name.
-        var postTypes = posts.Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(p.TypeFlags, p.Category) }).ToList();
+        var postTypes = posts
+            .Select(p => new { PostId = p.Id, Types = IncidentTypeFlags.ToList(new TypeMask(p.TypeFlags, p.TypeFlagsHigh), p.Category) })
+            .ToList();
 
         // Custom timelines (their place is the owner's own choice).
         var timelines = (await db.Timelines.AsNoTracking()

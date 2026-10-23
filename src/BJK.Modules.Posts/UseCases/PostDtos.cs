@@ -104,6 +104,9 @@ public sealed record PostDto(
 {
     /// <summary>True while the post waits for its photos or video: the app shows a "processing" indicator.</summary>
     public bool IsProcessing => MediaState == PostMediaState.Pending;
+
+    /// <summary>The group the main subcategory is listed under.</summary>
+    public IncidentGroup Group => IncidentTaxonomy.GroupOf(Category);
 }
 
 /// <summary>

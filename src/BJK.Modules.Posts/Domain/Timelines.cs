@@ -26,8 +26,14 @@ public sealed class Timeline
 
     public string Name { get; private set; } = string.Empty;
 
-    /// <summary>The types of bad driving, as <see cref="IncidentTypeFlags"/> bits: posts with any of them.</summary>
-    public int TypeFlags { get; private set; }
+    /// <summary>The subcategories, as <see cref="IncidentTypeFlags"/> bits 0 to 63: posts with any of them.</summary>
+    public long TypeFlags { get; private set; }
+
+    /// <summary>Bits 64 to 127 of the subcategories.</summary>
+    public long TypeFlagsHigh { get; private set; }
+
+    /// <summary>All of its subcategories as one mask.</summary>
+    public TypeMask Mask => new(TypeFlags, TypeFlagsHigh);
 
     /// <summary>The place's name, as chosen (shown only to the owner).</summary>
     public string? PlaceName { get; private set; }
@@ -47,7 +53,7 @@ public sealed class Timeline
 
     /// <summary>The types, in the order of the enum.</summary>
     public IReadOnlyList<IncidentCategory> Types =>
-        Enum.GetValues<IncidentCategory>().Where(t => (TypeFlags & IncidentTypeFlags.Bit(t)) != 0).ToList();
+        IncidentTypeFlags.ToList(Mask);
 
     /// <summary>How many custom timelines a plan allows: Free 1, Premium 5, Premium + 10.</summary>
     public static int LimitFor(SubscriptionPlan plan) => plan switch
@@ -79,7 +85,7 @@ public sealed class Timeline
         }
 
         Name = details.Name.Trim();
-        TypeFlags = IncidentTypeFlags.From(details.Types);
+        (TypeFlags, TypeFlagsHigh) = IncidentTypeFlags.From(details.Types);
         if (details.Area is { } area)
         {
             PlaceName = area.PlaceName.Trim();

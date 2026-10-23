@@ -24,7 +24,8 @@ public sealed class ReelsController(ISender sender) : ControllerBase
     /// unlimited). When none are left: 403 with <c>code</c> = <c>daily_limit</c> and <c>resetsAt</c>.
     /// </summary>
     /// <param name="cursor">From the previous page's <c>nextCursor</c>.</param>
-    /// <param name="category">Only this kind of incident.</param>
+    /// <param name="category">Only this subcategory of bad driving.</param>
+    /// <param name="group">Only this group of subcategories.</param>
     /// <param name="pageSize">Reels per page, up to 20 (and at most the plays left today).</param>
     /// <param name="cancellationToken">Cancelled if the caller goes away.</param>
     [HttpGet]
@@ -36,8 +37,9 @@ public sealed class ReelsController(ISender sender) : ControllerBase
         [FromQuery] string? cursor,
         [FromQuery] IncidentCategory? category,
         [FromQuery] int pageSize = 10,
+        [FromQuery] IncidentGroup? group = null,
         CancellationToken cancellationToken = default) =>
-        await sender.Send(new ListReelsQuery(cursor, category, Viewer(), pageSize), cancellationToken);
+        await sender.Send(new ListReelsQuery(cursor, category, Viewer(), pageSize, group), cancellationToken);
 
     /// <summary>
     /// Report that the viewer has watched a reel for about 3 seconds. Idempotent per viewer, reel and UK day. 403

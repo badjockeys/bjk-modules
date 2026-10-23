@@ -5,14 +5,15 @@ namespace BJK.Modules.Posts.Infrastructure.Data;
 
 /// <summary>Which posts to list. Deleted posts are never included.</summary>
 /// <param name="AuthorId">Only this author's posts.</param>
-/// <param name="Category">Only posts with this type of bad driving (among their types).</param>
+/// <param name="Category">Only posts with this subcategory of bad driving (among their subcategories).</param>
 /// <param name="Area">Only incidents inside this box.</param>
 /// <param name="IncludeHidden">Include hidden and held posts, and ones still waiting for their media (for an author's own list).</param>
 /// <param name="ExcludeSensitive">Leave out sensitive posts. (The public feed no longer does: they show blurred.)</param>
 /// <param name="ExcludeAuthorIds">Leave out these authors' posts (people the viewer has blocked).</param>
 /// <param name="HashtagId">Only posts with this hashtag.</param>
 /// <param name="AuthorIds">Only posts by these authors (the Following timeline); empty means none.</param>
-/// <param name="TypeFlags">Only posts with any of these types of bad driving (<see cref="IncidentTypeFlags"/> bits; 0 = all).</param>
+/// <param name="Types">Only posts with any of these subcategories (empty = all).</param>
+/// <param name="Group">Only posts with a subcategory in this group.</param>
 public sealed record PostSearch(
     Guid? AuthorId,
     IncidentCategory? Category,
@@ -22,7 +23,8 @@ public sealed record PostSearch(
     IReadOnlyCollection<Guid>? ExcludeAuthorIds = null,
     Guid? HashtagId = null,
     IReadOnlyCollection<Guid>? AuthorIds = null,
-    int TypeFlags = 0);
+    TypeMask Types = default,
+    IncidentGroup? Group = null);
 
 /// <summary>
 /// The For you timeline: public posts from <paramref name="Since"/>, ranked by their score (reactions and comments,
@@ -266,11 +268,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             query = query.Where(p => p.AuthorId == authorId);
         }
 
-        if (search.Category is { } category)
-        {
-            var bit = IncidentTypeFlags.Bit(category);
-            query = query.Where(p => (p.TypeFlags & bit) != 0);
-        }
+        query = query.InCategory(search.Group, search.Category);
 
         if (search.HashtagId is { } hashtagId)
         {
@@ -287,11 +285,7 @@ internal sealed class PostRepository(PostsDbContext db) : IPostRepository
             query = query.Where(p => authorIds.Contains(p.AuthorId));
         }
 
-        if (search.TypeFlags != 0)
-        {
-            var flags = search.TypeFlags;
-            query = query.Where(p => (p.TypeFlags & flags) != 0);
-        }
+        query = query.WithAnyType(search.Types);
 
         if (search.Area is { } area)
         {

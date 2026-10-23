@@ -734,6 +734,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<Guid?>("FilmedFromCarId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<bool>("HasVideo")
                         .HasColumnType("bit");
 
@@ -844,8 +849,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
-                    b.Property<int>("TypeFlags")
-                        .HasColumnType("int");
+                    b.Property<long>("TypeFlags")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TypeFlagsHigh")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -881,7 +889,7 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_Posts_Heatmap")
                         .HasFilter("[Status] = N'Published' AND [MediaState] = N'Ready' AND [IsAuthorDeactivated] = 0");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "PlaceName", "VehicleType", "VehicleMake", "VehicleModel", "VehicleColour", "IsDark", "ReportedToPolice", "HasVideo" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("IncidentAt"), new[] { "Latitude", "Longitude", "Category", "TypeFlags", "TypeFlagsHigh", "PlaceName", "VehicleType", "VehicleMake", "VehicleModel", "VehicleColour", "IsDark", "ReportedToPolice", "HasVideo" });
 
                     b.HasIndex("VoteClosesAt")
                         .HasDatabaseName("IX_Posts_VoteResultPending")
@@ -965,8 +973,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
-                    b.Property<int>("TypeFlags")
-                        .HasColumnType("int");
+                    b.Property<long>("TypeFlags")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TypeFlagsHigh")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -1342,8 +1353,11 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.Property<int?>("RadiusKm")
                         .HasColumnType("int");
 
-                    b.Property<int>("TypeFlags")
-                        .HasColumnType("int");
+                    b.Property<long>("TypeFlags")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TypeFlagsHigh")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");

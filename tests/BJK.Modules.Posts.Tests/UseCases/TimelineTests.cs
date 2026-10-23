@@ -24,7 +24,7 @@ public sealed class TimelineTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static Timeline Existing(int position) =>
-        Timeline.Create(UserId, new TimelineDetails($"Mine {position}", [IncidentCategory.Speeding]), position, Now);
+        Timeline.Create(UserId, new TimelineDetails($"Mine {position}", [IncidentCategory.SpeedingInTown]), position, Now);
 
     [Theory]
     [InlineData(SubscriptionPlan.Free, 1)]
@@ -41,11 +41,11 @@ public sealed class TimelineTests
         var handler = new CreateTimelineCommandHandler(_timelines, _plans, _caller, _clock);
 
         var dto = await handler.Handle(
-            new CreateTimelineCommand("School run", [IncidentCategory.BadParking, IncidentCategory.Speeding, IncidentCategory.BadParking], "Prescot", 53.4291m, -2.8015m, 5),
+            new CreateTimelineCommand("School run", [IncidentCategory.DoubleYellows, IncidentCategory.SpeedingInTown, IncidentCategory.DoubleYellows], "Prescot", 53.4291m, -2.8015m, 5),
             Ct);
 
         Assert.Equal(4, dto.Position);
-        Assert.Equal(new[] { IncidentCategory.Speeding, IncidentCategory.BadParking }, dto.Types);
+        Assert.Equal(new[] { IncidentCategory.DoubleYellows, IncidentCategory.SpeedingInTown }, dto.Types);
         Assert.Equal(53.43m, dto.Latitude);
         Assert.Equal(5, dto.RadiusKm);
         _timelines.Received(1).Add(Arg.Any<Timeline>());

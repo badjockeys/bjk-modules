@@ -87,6 +87,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
         builder.Property(p => p.Title).HasMaxLength(Post.TitleMaxLength).IsRequired();
         builder.Property(p => p.Description).HasMaxLength(Post.DescriptionMaxLength);
         builder.Property(p => p.Category).HasConversion<string>().HasMaxLength(40);
+        builder.Property(p => p.Group).HasConversion<string>().HasMaxLength(30);
         builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.Latitude).HasPrecision(9, 6);
         builder.Property(p => p.Longitude).HasPrecision(9, 6);
@@ -153,6 +154,7 @@ internal sealed class PostConfiguration : IEntityTypeConfiguration<Post>
                 p.Longitude,
                 p.Category,
                 p.TypeFlags,
+                p.TypeFlagsHigh,
                 p.PlaceName,
                 p.VehicleType,
                 p.VehicleMake,

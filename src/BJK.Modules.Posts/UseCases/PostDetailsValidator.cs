@@ -56,6 +56,9 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
     /// <summary>Shown when no type of bad driving was chosen.</summary>
     public const string ChooseATypeMessage = "Choose at least one type of bad driving.";
 
+    /// <summary>Matches <see cref="IncidentTaxonomy.MaxPerPost"/>.</summary>
+    public const string TooManyTypesMessage = "Choose up to 3 types of bad driving.";
+
     protected PostDetailsValidator(TimeProvider clock, IOptions<PostsOptions> options)
     {
         var regions = options.Value.EffectiveRegions;
@@ -71,6 +74,10 @@ public abstract class PostDetailsValidator<T> : AbstractValidator<T>
             .Must(x => IncidentTypeFlags.Normalise(x.Types, x.Category).Count > 0)
             .OverridePropertyName(nameof(IPostDetails.Types))
             .WithMessage(ChooseATypeMessage);
+        RuleFor(x => x)
+            .Must(x => IncidentTypeFlags.Normalise(x.Types, x.Category).Count <= IncidentTaxonomy.MaxPerPost)
+            .OverridePropertyName(nameof(IPostDetails.Types))
+            .WithMessage(TooManyTypesMessage);
         RuleForEach(x => x.Types).IsInEnum().OverridePropertyName(nameof(IPostDetails.Types));
 
         // Vehicle details: chosen from lists only (never typed, never the registration).

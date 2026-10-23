@@ -115,10 +115,10 @@ public sealed class HeatmapTests
         _heatmap.CountByCategoryAsync(Arg.Any<HeatmapFilter>(), Arg.Any<CancellationToken>())
             .Returns(new List<HeatmapCountRow>
             {
-                new() { Key = "BadParking", Count = 13 },
+                new() { Key = "DoubleYellows", Count = 13 },
                 new() { Key = "Tailgating", Count = 9 },
-                new() { Key = "ClosePass", Count = 6 },
-                new() { Key = "Speeding", Count = 2 },
+                new() { Key = "ClosePassCyclist", Count = 6 },
+                new() { Key = "SpeedingInTown", Count = 2 },
             });
         _heatmap.CountByPlaceAsync(Arg.Any<HeatmapFilter>(), 3, Arg.Any<CancellationToken>())
             .Returns(new List<HeatmapCountRow> { new() { Key = "A57 Warrington Road, Prescot", Count = 14 }, new() { Key = "M57 J2", Count = 2 } });
@@ -130,7 +130,7 @@ public sealed class HeatmapTests
         Assert.Equal(38, stats.Total);
         Assert.Equal(12, stats.ChangePercent);
         Assert.Equal(8, stats.BusiestHour);
-        Assert.Equal(new[] { IncidentCategory.BadParking, IncidentCategory.Tailgating, IncidentCategory.ClosePass }, stats.TopCategories.Select(c => c.Category));
+        Assert.Equal(new[] { IncidentCategory.DoubleYellows, IncidentCategory.Tailgating, IncidentCategory.ClosePassCyclist }, stats.TopCategories.Select(c => c.Category));
         Assert.Equal(34, stats.TopCategories[0].Percent);
         Assert.Equal("A57 Warrington Road, Prescot", Assert.Single(stats.TopPlaces).Name);
         Assert.Equal("A57 Warrington Road, Prescot", stats.PlaceName);
@@ -180,7 +180,8 @@ public sealed class HeatmapTests
         Assert.Equal(new GeoBox(53.4m, 53.45m, -2.85m, -2.75m), HeatmapRequest.ParseBox(Prescot));
         Assert.Null(HeatmapRequest.ParseBox("-2.75,53.4,-2.85,53.45"));
         Assert.Null(HeatmapRequest.ParseBox("1,2,3"));
-        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.ClosePass }, HeatmapRequest.ParseCategories("tailgating, ClosePass"));
+        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.ClosePassCyclist }, HeatmapRequest.ParseCategories("tailgating, ClosePassCyclist"));
+        Assert.Equal(IncidentTaxonomy.In(IncidentGroup.Parking), HeatmapRequest.ParseCategories("parking"));
         Assert.Null(HeatmapRequest.ParseCategories("Tailgating,Joyriding"));
         Assert.Null(HeatmapRequest.ParseCategories("3"));
         Assert.Equal(new HourRange(22, 6), HourRange.Parse("22-6"));

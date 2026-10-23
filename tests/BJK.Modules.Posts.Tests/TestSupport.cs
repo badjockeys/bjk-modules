@@ -18,7 +18,7 @@ internal static class TestData
     public static PostDetails Details(string title = "Overtook on a blind bend") => new(
         title,
         "Came round the bend on the wrong side of the road.",
-        IncidentCategory.DangerousOvertaking,
+        IncidentCategory.Undertaking,
         Now.AddDays(-1),
         53.5933m,
         -2.2966m,

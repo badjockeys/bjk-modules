@@ -1,19 +1,9 @@
 namespace BJK.Modules.Posts.Domain;
 
 /// <summary>
-/// Which question a post's vote asks (owner, 21 Oct 2026). Incidents between road users ask "Who's at fault?"; posts
-/// about one driver (bad parking, phone use, speeding, red lights, lane hogging, other) ask "How bad was it?".
+/// An answer to a post's vote. Which answers a vote offers, and their wording, come from its main subcategory
+/// (<see cref="IncidentTaxonomy.VoteFor"/>). Stored by name: add new ones at the end.
 /// </summary>
-public enum VoteKind
-{
-    /// <summary>"Who's at fault?": the filming driver, the other road user, both, or nobody.</summary>
-    Fault,
-
-    /// <summary>"How bad was it?": minor, careless, dangerous or shocking.</summary>
-    Severity,
-}
-
-/// <summary>An answer to a post's vote. The first four answer <see cref="VoteKind.Fault"/>, the rest <see cref="VoteKind.Severity"/>.</summary>
 public enum VoteChoice
 {
     /// <summary>The driver who filmed it was at fault.</summary>
@@ -39,6 +29,64 @@ public enum VoteChoice
 
     /// <summary>Shocking: about as bad as it gets.</summary>
     Shocking,
+
+    No,
+
+    Maybe,
+
+    Yes,
+
+    Blocked,
+
+    PartlyBlocked,
+
+    RoomToPass,
+
+    BadParking,
+
+    FairEnough,
+
+    CantTell,
+
+    Safe,
+
+    Risky,
+
+    Unclear,
+
+    BadDriving,
+
+    FarTooClose,
+
+    TooClose,
+
+    Fine,
+
+    Clearly,
+
+    Probably,
+
+    NotReally,
+
+    ClearlyRanIt,
+
+    AmberGamble,
+
+    HardToTell,
+
+    GaveEnoughRoom,
+
+    Heated,
+
+    Aggressive,
+
+    Threatening,
+
+    Serious,
+
+    VerySerious,
+
+    FairMistake,
 }
 
 /// <summary>When the vote on an author's posts closes. A setting each author chooses for their own posts.</summary>
@@ -57,28 +105,8 @@ public enum VoteDuration
 /// <summary>The vote rules: which kind a post gets, which answers fit it, and when it closes.</summary>
 public static class PostVoting
 {
-    /// <summary>Types where two road users interact, so "Who's at fault?" makes sense.</summary>
-    public static readonly IReadOnlySet<IncidentCategory> InteractionTypes = new HashSet<IncidentCategory>
-    {
-        IncidentCategory.RoadRage,
-        IncidentCategory.DangerousOvertaking,
-        IncidentCategory.Tailgating,
-        IncidentCategory.CuttingUp,
-        IncidentCategory.Undertaking,
-        IncidentCategory.ClosePass,
-    };
-
     /// <summary>Results stay hidden from signed-out visitors until a post has this many votes.</summary>
     public const int PublicResultsAfter = 10;
-
-    /// <summary>A post with any interaction type gets the fault vote; every other post gets the severity vote.</summary>
-    public static VoteKind KindFor(IEnumerable<IncidentCategory> types) =>
-        types.Any(InteractionTypes.Contains) ? VoteKind.Fault : VoteKind.Severity;
-
-    /// <summary>The answers that fit a kind of vote.</summary>
-    public static IReadOnlyList<VoteChoice> ChoicesFor(VoteKind kind) => kind == VoteKind.Fault
-        ? [VoteChoice.FilmingDriver, VoteChoice.OtherRoadUser, VoteChoice.Both, VoteChoice.Nobody]
-        : [VoteChoice.Minor, VoteChoice.Careless, VoteChoice.Dangerous, VoteChoice.Shocking];
 
     /// <summary>When a vote closes for a post created at <paramref name="createdAt"/>; null when it never does.</summary>
     public static DateTimeOffset? ClosesAt(DateTimeOffset createdAt, VoteDuration duration) => duration switch

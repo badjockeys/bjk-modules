@@ -114,7 +114,7 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
                 10,
                 Ct);
             Assert.Equal(new[] { "Old", "Ancient" }, next.Select(p => p.Title));
-            Assert.Empty(await repository.ListAsync(new ReelSearch(IncidentCategory.BadParking, true, null, null, null), 10, Ct));
+            Assert.Empty(await repository.ListAsync(new ReelSearch(IncidentCategory.DoubleYellows, true, null, null, null), 10, Ct));
         }
     }
 
@@ -182,7 +182,7 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
 
         for (var i = 0; i < 3; i++)
         {
-            posts.Add(Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, saturday, IncidentCategory.BadParking, "Market Place, Prescot"), [Guid.NewGuid()], Now, isSensitive: true));
+            posts.Add(Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, saturday, IncidentCategory.DoubleYellows, "Market Place, Prescot"), [Guid.NewGuid()], Now, isSensitive: true));
         }
 
         var hidden = Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday), [Guid.NewGuid()], Now);
@@ -229,8 +229,8 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
     {
         var monday = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.FromHours(1));
         var posts = Enumerable.Range(0, 3)
-            .Select(i => Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday.AddHours(i)) with { Types = [IncidentCategory.Speeding, IncidentCategory.MobilePhoneUse] }, [Guid.NewGuid()], Now))
-            .Append(Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday, IncidentCategory.Speeding), [Guid.NewGuid()], Now))
+            .Select(i => Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday.AddHours(i)) with { Types = [IncidentCategory.SpeedingInTown, IncidentCategory.PhoneInHand] }, [Guid.NewGuid()], Now))
+            .Append(Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday, IncidentCategory.SpeedingInTown), [Guid.NewGuid()], Now))
             .ToArray();
         await SaveAsync(posts);
 
@@ -242,12 +242,39 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
         var heatmap = new HeatmapRepository(db);
 
         Assert.Equal(4, await heatmap.CountAsync(Filter(), Ct));
-        Assert.Equal(3, await heatmap.CountAsync(Filter(IncidentCategory.MobilePhoneUse), Ct));
-        Assert.Equal(4, await heatmap.CountAsync(Filter(IncidentCategory.MobilePhoneUse, IncidentCategory.Speeding), Ct));
-        Assert.Equal(0, await heatmap.CountAsync(Filter(IncidentCategory.BadParking), Ct));
+        Assert.Equal(3, await heatmap.CountAsync(Filter(IncidentCategory.PhoneInHand), Ct));
+        Assert.Equal(4, await heatmap.CountAsync(Filter(IncidentCategory.PhoneInHand, IncidentCategory.SpeedingInTown), Ct));
+        Assert.Equal(0, await heatmap.CountAsync(Filter(IncidentCategory.DoubleYellows), Ct));
 
         var types = await heatmap.CountByCategoryAsync(Filter(), Ct);
-        Assert.Equal(new[] { ("Speeding", 4), ("MobilePhoneUse", 3) }, types.Select(t => (t.Key, t.Count)));
+        Assert.Equal(new[] { ("SpeedingInTown", 4), ("PhoneInHand", 3) }, types.Select(t => (t.Key, t.Count)));
+    }
+
+    [Fact]
+    public async Task The_heat_map_counts_subcategories_in_both_halves_of_the_flags()
+    {
+        // NoLightsAtNight is bit 63 (the sign bit of the low half); UnsafeLoad and MotorwaysOther are in the high half.
+        var monday = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.FromHours(1));
+        await SaveAsync(
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday) with { Types = [IncidentCategory.NoLightsAtNight, IncidentCategory.UnsafeLoad] }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday, IncidentCategory.MotorwaysOther), [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, monday, IncidentCategory.DisabledBay), [Guid.NewGuid()], Now));
+
+        var box = new GeoBox(53.40m, 53.46m, -2.85m, -2.75m);
+        var (from, to) = (UkCalendar.StartOf(new DateOnly(2026, 10, 12)), UkCalendar.StartOf(new DateOnly(2026, 10, 19)));
+        HeatmapFilter Filter(params IncidentCategory[] types) => new(box, from, to, types, null, HeatmapDays.All);
+
+        await using var db = Context();
+        var heatmap = new HeatmapRepository(db);
+
+        Assert.Equal(1, await heatmap.CountAsync(Filter(IncidentCategory.NoLightsAtNight), Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter(IncidentCategory.UnsafeLoad, IncidentCategory.MotorwaysOther), Ct));
+        Assert.Equal(2, await heatmap.CountAsync(Filter(IncidentCategory.DisabledBay, IncidentCategory.NoLightsAtNight), Ct));
+
+        var types = await heatmap.CountByCategoryAsync(Filter(), Ct);
+        Assert.Equal(
+            new[] { ("DisabledBay", 1), ("MotorwaysOther", 1), ("NoLightsAtNight", 1), ("UnsafeLoad", 1) },
+            types.Select(t => (t.Key, t.Count)));
     }
 
     [Fact]
@@ -258,9 +285,9 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
         var tuesday = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(1));
         var september = new DateTimeOffset(2026, 9, 30, 9, 0, 0, TimeSpan.FromHours(1));
         await SaveAsync(
-            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, lateSunday) with { Types = [IncidentCategory.Speeding, IncidentCategory.Tailgating] }, [Guid.NewGuid()], Now),
-            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, tuesday, IncidentCategory.Speeding), [Guid.NewGuid()], Now),
-            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, september, IncidentCategory.Speeding), [Guid.NewGuid()], Now));
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, lateSunday) with { Types = [IncidentCategory.SpeedingInTown, IncidentCategory.Tailgating] }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, tuesday, IncidentCategory.SpeedingInTown), [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, september, IncidentCategory.SpeedingInTown), [Guid.NewGuid()], Now));
 
         var everywhere = new GeoBox(-90m, 90m, -180m, 180m);
         var filter = new HeatmapFilter(everywhere, UkCalendar.StartOf(new DateOnly(2026, 9, 1)), UkCalendar.StartOf(new DateOnly(2026, 10, 19)), [], null, HeatmapDays.All);
@@ -270,17 +297,17 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
 
         var days = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Day, Ct);
         Assert.Equal(
-            new[] { ("Speeding", "2026-09-30", 1), ("Speeding", "2026-10-12", 1), ("Tailgating", "2026-10-12", 1), ("Speeding", "2026-10-13", 1) },
+            new[] { ("SpeedingInTown", "2026-09-30", 1), ("SpeedingInTown", "2026-10-12", 1), ("Tailgating", "2026-10-12", 1), ("SpeedingInTown", "2026-10-13", 1) },
             days.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
 
         var weeks = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Week, Ct);
         Assert.Equal(
-            new[] { ("Speeding", "2026-09-28", 1), ("Speeding", "2026-10-12", 2), ("Tailgating", "2026-10-12", 1) },
+            new[] { ("SpeedingInTown", "2026-09-28", 1), ("SpeedingInTown", "2026-10-12", 2), ("Tailgating", "2026-10-12", 1) },
             weeks.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
 
         var months = await heatmap.CountByCategoryAndPeriodAsync(filter, TrendPeriod.Month, Ct);
         Assert.Equal(
-            new[] { ("Speeding", "2026-09-01", 1), ("Speeding", "2026-10-01", 2), ("Tailgating", "2026-10-01", 1) },
+            new[] { ("SpeedingInTown", "2026-09-01", 1), ("SpeedingInTown", "2026-10-01", 2), ("Tailgating", "2026-10-01", 1) },
             months.Select(r => (r.Key, r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
     }
 
