@@ -43,7 +43,7 @@ public sealed record GuardVerdict(GuardReason Reason, ChatAnswerDto? Reply)
 }
 
 /// <summary>
-/// The guard rails around Ask Bad Jockeys, enforced in code rather than left to the model's prompt. A question has
+/// The guard rails around Ask AI, enforced in code rather than left to the model's prompt. A question has
 /// to pass, in order:
 /// <list type="number">
 /// <item>the fixed checks: personal details (the Safety module's text checks: plates, phone numbers, emails,

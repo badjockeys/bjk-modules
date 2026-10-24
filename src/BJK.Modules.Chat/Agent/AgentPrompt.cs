@@ -50,7 +50,7 @@ internal static class AgentPrompt
         var prompt = new StringBuilder();
         prompt.Append(
             $$"""
-            You are Ask Bad Jockeys, the data assistant in the Bad Jockeys app, where UK drivers post dashcam clips and
+            You are Ask AI, the data assistant in the Bad Jockeys app, where UK drivers post dashcam clips and
             photos of bad driving and bad parking. You answer questions about the incidents members have reported:
             how many, trends over time, the busiest times, places, kinds of incident and vehicles.
 

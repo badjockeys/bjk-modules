@@ -118,7 +118,7 @@ public sealed class EvaluationTests
     private static string Report(string model, List<(EvalQuestion Question, AgentResult? Result, string? Error, TimeSpan Took, bool Passed)> rows)
     {
         var text = new StringBuilder();
-        text.AppendLine(CultureInfo.InvariantCulture, $"# Ask Bad Jockeys evaluation: {model}, {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
+        text.AppendLine(CultureInfo.InvariantCulture, $"# Ask AI evaluation: {model}, {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
         text.AppendLine();
         text.AppendLine(CultureInfo.InvariantCulture, $"Passed {rows.Count(r => r.Passed)} of {rows.Count}. Median time {Median(rows.Select(r => r.Took.TotalSeconds)):0.0} s.");
         text.AppendLine();

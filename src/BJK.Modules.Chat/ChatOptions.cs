@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Chat;
 
 /// <summary>
-/// Settings for Ask Bad Jockeys. Section <c>Chat</c>. The bjk_chat login's connection string is separate
+/// Settings for Ask AI. Section <c>Chat</c>. The bjk_chat login's connection string is separate
 /// (<c>ConnectionStrings:BadJockeysChat</c> in bjk-core).
 /// </summary>
 public sealed class ChatOptions

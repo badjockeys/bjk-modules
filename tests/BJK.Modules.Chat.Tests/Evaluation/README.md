@@ -1,4 +1,4 @@
-# Ask Bad Jockeys: the question set
+# Ask AI: the question set
 
 `questions.json` holds 205 real-style questions with the kind of reply a good answer has:
 

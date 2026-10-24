@@ -20,7 +20,7 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Chat;
 
 /// <summary>
-/// Registers Ask Bad Jockeys, the Premium AI chat. A model behind an OpenAI-compatible server (chosen by settings) writes
+/// Registers Ask AI, the Premium AI chat. A model behind an OpenAI-compatible server (chosen by settings) writes
 /// SQL over <c>reporting.Incidents</c> and <c>reporting.Subcategories</c>; every query is checked by a T-SQL parser,
 /// limited to the member's plan dates and run through the bjk_chat login, which can read nothing else. Counts under 3
 /// are hidden and single incidents can't be listed. Daily limits are kept in the <see cref="Schema"/> schema of the

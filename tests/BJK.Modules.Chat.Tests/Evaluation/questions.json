@@ -1,5 +1,5 @@
 {
-  "//": "Real-style questions for Ask Bad Jockeys. expect: the kind of reply a good answer has (answer, refuse, out_of_scope, clarify, too_few). near: the app sends the member's place (Prescot) with the question. Run with EvaluationTests (see Evaluation/README.md).",
+  "//": "Real-style questions for Ask AI. expect: the kind of reply a good answer has (answer, refuse, out_of_scope, clarify, too_few). near: the app sends the member's place (Prescot) with the question. Run with EvaluationTests (see Evaluation/README.md).",
   "questions": [
     {
       "id": 1,
