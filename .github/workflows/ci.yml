@@ -8,13 +8,41 @@ on:
 
 permissions:
   contents: read
+  packages: write   # the pull request's preview packages (below)
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Whether anything but documentation changed. When only Markdown files or docs/ changed, the jobs below are
+  # skipped, which still counts as passing for the required "build" check, so docs-only pull requests can merge
+  # without spending minutes on a build.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # No usable base (a new branch, or history that isn't here): build to be safe.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "$BASE" "$GITHUB_SHA")
+          if grep -qvE '(\.md$|^docs/)' <<< "$files"; then code=true; else code=false; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Changes::$( [ "$code" = true ] && echo 'Code changed: building.' || echo 'Documentation only: build skipped.')"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # For the SQL Server tests (migrations apply; outbox and segment progress updates under concurrency).
     services:
@@ -53,8 +81,17 @@ jobs:
           fi
           dotnet tool restore
 
+      # Pull requests publish preview packages from this build once everything below passes (the last steps), so
+      # the packages are built with their version. 1000 + the run number keeps clear of the numbers publish.yml
+      # used for previews before 24 Oct 2026 (up to 0.2.0-ci.216).
+      - name: Work out the preview version
+        id: version
+        run: |
+          prefix=$(dotnet msbuild src/BJK.Modules.Shared -getProperty:VersionPrefix)
+          echo "value=${prefix}-ci.$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+
       - name: Build
-        run: dotnet build BJK.Modules.slnx --configuration Release --no-restore
+        run: dotnet build BJK.Modules.slnx --configuration Release --no-restore -p:Version=${{ steps.version.outputs.value }}
 
       - name: Test
         env:
@@ -102,3 +139,18 @@ jobs:
           dotnet ef migrations has-pending-model-changes \
             --project src/BJK.Modules.Chat --context ChatDbContext \
             --configuration Release --no-build
+
+      # Preview packages for this pull request, so bjk-core and the identity server can use the branch before it
+      # merges. Not for pull requests from forks (no package access) or pushes to master.
+      - name: Pack the preview packages
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: dotnet pack BJK.Modules.slnx --configuration Release --no-build -p:Version=${{ steps.version.outputs.value }} --output artifacts
+
+      - name: Push the preview packages to GitHub Packages
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+          echo "::notice title=Preview packages::Published BJK.Modules.* ${{ steps.version.outputs.value }}"
+          echo "### Preview packages: \`${{ steps.version.outputs.value }}\`" >> "$GITHUB_STEP_SUMMARY"
