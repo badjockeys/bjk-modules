@@ -52,7 +52,7 @@ public sealed class DashboardTests
 
         var dto = await new GetDashboardQueryHandler(_dashboard, _plans, _caller).Handle(new GetDashboardQuery(), Ct);
 
-        Assert.Equal(new[] { "CategoryTrends", "Trending", "WhoToFollow" }, dto.Items.Select(i => i.Key));
+        Assert.Equal(new[] { "Trending", "WhoToFollow", "CategoryTrends" }, dto.Items.Select(i => i.Key));
         Assert.All(dto.Items, i => Assert.True(i.BuiltIn));
         Assert.Equal(0, dto.Limit);
         Assert.Equal(0, dto.Used);
@@ -82,7 +82,7 @@ public sealed class DashboardTests
             new CreateDashboardWidgetCommand(DashboardKind.TypeTrend, " Prescot ", 53.4291m, -2.8015m, 5, 90, [IncidentCategory.PhoneInHand]),
             Ct);
 
-        Assert.Equal(new[] { "CategoryTrends", "Trending", "WhoToFollow" }, dto.Items.Take(3).Select(i => i.Key));
+        Assert.Equal(new[] { "Trending", "WhoToFollow", "CategoryTrends" }, dto.Items.Take(3).Select(i => i.Key));
         var widget = dto.Items[3];
         Assert.Equal(DashboardKind.TypeTrend, widget.Kind);
         Assert.Equal("Prescot", widget.PlaceName);

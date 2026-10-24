@@ -41,8 +41,8 @@ public sealed class DashboardItem
     public const int PlaceNameMaxLength = 100;
     public const int MaxTypes = 3;
 
-    /// <summary>The built-in cards, in their default order.</summary>
-    public static readonly IReadOnlyList<DashboardKind> BuiltIns = [DashboardKind.CategoryTrends, DashboardKind.Trending, DashboardKind.WhoToFollow];
+    /// <summary>The built-in cards, in their default order (as the right-hand panel had them).</summary>
+    public static readonly IReadOnlyList<DashboardKind> BuiltIns = [DashboardKind.Trending, DashboardKind.WhoToFollow, DashboardKind.CategoryTrends];
 
     /// <summary>The radiuses offered, in km.</summary>
     public static readonly IReadOnlyList<int> Radiuses = [1, 2, 5, 10, 25];

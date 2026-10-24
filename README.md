@@ -826,7 +826,7 @@ Aggregated and privacy-safe: counts per grid cell built **only from the stored, 
 
 ### Dashboard (owner, 24 Oct 2026)
 
-Each member's own cards: the right-hand panel on desktop and the Dashboard tab on their profile on phones. The built-in cards (**Category trends**, **Trending**, **Who to follow**) can be moved or hidden on any plan; **widgets** are **Premium 3, Premium + 5** (`DashboardItem.LimitFor`); Free can't add them (**403**; the apps show a greyed-out card). Stored in `posts.DashboardItems`; with no rows a member has the default layout. Deleted with the account; in Download my data.
+Each member's own cards: the right-hand panel on desktop and the Dashboard tab on their profile on phones. The built-in cards (**Trending**, **Who to follow**, **Category trends**, in that order by default) can be moved or hidden on any plan; **widgets** are **Premium 3, Premium + 5** (`DashboardItem.LimitFor`); Free can't add them (**403**; the apps show a greyed-out card). Stored in `posts.DashboardItems`; with no rows a member has the default layout. Deleted with the account; in Download my data.
 
 | Endpoint | Access |
 |---|---|
