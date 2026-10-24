@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace BJK.Modules.Chat.UseCases;
 
 /// <summary>
-/// Ask Bad Jockeys a question. Premium and Premium + only, within the day's allowance, and through the guard rails
+/// Ask AI a question. Premium and Premium + only, within the day's allowance, and through the guard rails
 /// (<see cref="ChatGuard"/>): blocked questions don't use the allowance but count towards <c>Chat:MisuseLimit</c>.
 /// </summary>
 /// <param name="Question">The question, up to 500 characters.</param>
@@ -88,14 +88,14 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         var plan = _plans.CurrentPlan();
         if (plan is not (SubscriptionPlan.Premium or SubscriptionPlan.PremiumPlus))
         {
-            throw new ForbiddenException("Ask Bad Jockeys is part of Premium.");
+            throw new ForbiddenException("Ask AI is part of Premium.");
         }
 
         // The placeholder while no model is chosen: log it (no member id, no question text) and don't count it.
         if (!_options.UsesModel)
         {
             ChatLog.NotSwitchedOn(_logger, plan.Value);
-            throw new ServiceUnavailableException("Ask Bad Jockeys isn't switched on yet. That question didn't count.");
+            throw new ServiceUnavailableException("Ask AI isn't switched on yet. That question didn't count.");
         }
 
         var now = _clock.GetUtcNow();
@@ -205,11 +205,11 @@ public sealed class AskQuestionCommandHandler : IRequestHandler<AskQuestionComma
         UkDay.NextMidnight(now));
 
     private static TooManyRequestsException Paused() => new(
-        "Ask Bad Jockeys is paused until midnight: it's had too many questions today that it can't help with. It only answers questions about bad driving and parking reported on Bad Jockeys.",
+        "Ask AI is paused until midnight: it's had too many questions today that it can't help with. It only answers questions about bad driving and parking reported on Bad Jockeys.",
         ChatAllowance.PausedCode);
 
     private static ServiceUnavailableException Busy() =>
-        new("Ask Bad Jockeys is busy right now. Try again in a minute; that question didn't count.");
+        new("Ask AI is busy right now. Try again in a minute; that question didn't count.");
 }
 
 /// <summary>

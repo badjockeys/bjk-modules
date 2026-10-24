@@ -45,7 +45,7 @@ internal sealed class SqlIncidentQueries(ChatDatabase database) : IIncidentQueri
         if (string.IsNullOrWhiteSpace(database.ConnectionString))
         {
             throw new Shared.Exceptions.ServiceUnavailableException(
-                "Ask Bad Jockeys isn't set up here: ConnectionStrings:BadJockeysChat is missing.");
+                "Ask AI isn't set up here: ConnectionStrings:BadJockeysChat is missing.");
         }
 
         var watch = Stopwatch.StartNew();

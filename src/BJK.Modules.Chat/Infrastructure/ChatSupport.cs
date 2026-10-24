@@ -55,7 +55,7 @@ internal static class ChatLog
         LoggerMessage.Define<string, string, string, int, long, string>(
             LogLevel.Information,
             new EventId(AnsweredEventId, "ChatQuestionAnswered"),
-            "Ask Bad Jockeys ({Plan}) answered {Kind} to {Question} after {ModelCalls} model calls in {Milliseconds} ms. Steps: {Steps}");
+            "Ask AI ({Plan}) answered {Kind} to {Question} after {ModelCalls} model calls in {Milliseconds} ms. Steps: {Steps}");
 
     /// <summary>Event id of <see cref="NotSwitchedOn"/>: a question asked while no model is set (the placeholder).</summary>
     public const int NotSwitchedOnEventId = 4905;
@@ -64,7 +64,7 @@ internal static class ChatLog
         LoggerMessage.Define<string>(
             LogLevel.Information,
             new EventId(NotSwitchedOnEventId, "ChatNotSwitchedOn"),
-            "Ask Bad Jockeys ({Plan}) was asked a question, but no model is set (Chat:Model:Endpoint is empty), so it wasn't sent anywhere.");
+            "Ask AI ({Plan}) was asked a question, but no model is set (Chat:Model:Endpoint is empty), so it wasn't sent anywhere.");
 
     /// <summary>The placeholder's log line: the plan only, no member id or question.</summary>
     public static void NotSwitchedOn(ILogger logger, SubscriptionPlan plan) =>
@@ -77,7 +77,7 @@ internal static class ChatLog
         LoggerMessage.Define<string, string, string>(
             LogLevel.Information,
             new EventId(BlockedEventId, "ChatQuestionBlocked"),
-            "Ask Bad Jockeys ({Plan}) blocked a question ({Reason}): {Question}");
+            "Ask AI ({Plan}) blocked a question ({Reason}): {Question}");
 
     /// <summary>A blocked question, with the reason. No member id; questions with personal details aren't logged.</summary>
     public static void Blocked(ILogger logger, SubscriptionPlan plan, string reason, string question) =>
@@ -87,7 +87,7 @@ internal static class ChatLog
         LoggerMessage.Define<string>(
             LogLevel.Warning,
             new EventId(ModelUnavailableEventId, "ChatModelUnavailable"),
-            "Ask Bad Jockeys couldn't answer: {Reason}. The question was given back.");
+            "Ask AI couldn't answer: {Reason}. The question was given back.");
 
     public static void Answered(ILogger logger, SubscriptionPlan plan, string question, AgentResult result, TimeSpan duration) =>
         AnsweredMessage(
@@ -113,7 +113,7 @@ internal sealed class ChatUserLifecycleHandler(IChatUsage usage) : IUserLifecycl
 /// <summary>Adds today's question count to a member's data export (nothing else about the chat is kept).</summary>
 internal sealed class ChatPersonalDataExporter(IChatUsage usage, TimeProvider clock) : IPersonalDataExporter
 {
-    public string Section => "askBadJockeys";
+    public string Section => "askAi";
 
     public async Task<object?> ExportAsync(Guid userId, CancellationToken cancellationToken)
     {

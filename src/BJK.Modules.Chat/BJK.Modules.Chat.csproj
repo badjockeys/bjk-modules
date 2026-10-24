@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>BJK.Modules.Chat</PackageId>
-    <Description>Chat module for Bad Jockeys: Ask Bad Jockeys, the Premium AI chat. An open model writes read-only SQL over the reporting.Incidents and reporting.Subcategories views, checked by a T-SQL parser and run through the bjk_chat login with the member's plan date limits, small counts hidden and daily question limits. Hosted by the bjk-core API.</Description>
+    <Description>Chat module for Bad Jockeys: Ask AI, the Premium AI chat. An open model writes read-only SQL over the reporting.Incidents and reporting.Subcategories views, checked by a T-SQL parser and run through the bjk_chat login with the member's plan date limits, small counts hidden and daily question limits. Hosted by the bjk-core API.</Description>
   </PropertyGroup>
 
   <ItemGroup>

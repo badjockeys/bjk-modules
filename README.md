@@ -99,7 +99,7 @@ src/
     Templates/                   SMSTemplates: the wording of every text we send
     Infrastructure/              Twilio sender; Log sender for local development
     SMSModule.cs                 Module entry point
-  BJK.Modules.Chat/              Ask Bad Jockeys, the Premium AI chat. Hosted by bjk-core
+  BJK.Modules.Chat/              Ask AI, the Premium AI chat. Hosted by bjk-core
     API/Controllers/             POST /api/chat/questions, GET /api/chat/usage
     UseCases/                    AskQuestion (plan, daily limit, review log), allowance, answer and card DTOs
     Agent/                       ChatAgent (the tool loop), AgentPrompt (rules, schema, worked examples),
@@ -975,15 +975,15 @@ Both providers are called over their REST APIs with `HttpClient`, so there are n
 
 Phone numbers must be E.164 (`+447700900123`); use `PhoneNumbers.IsE164` to check numbers you collect.
 
-## Ask Bad Jockeys (Chat module)
+## Ask AI (Chat module)
 
-`BJK.Modules.Chat` is the Premium AI chat: members ask about reported bad driving in plain English ("Are close passes getting worse in Leeds?") and get a sentence or two plus a card drawn from the real figures. Plan and decisions: `claude/ai-chat-plan.md` in the project; wireframes: the "Ask Bad Jockeys: AI chat wireframes" design.
+`BJK.Modules.Chat` is the Premium AI chat: members ask about reported bad driving in plain English ("Are close passes getting worse in Leeds?") and get a sentence or two plus a card drawn from the real figures. Plan and decisions: `claude/ai-chat-plan.md` in the project; wireframes: the "Ask AI: AI chat wireframes" design.
 
 ```csharp
 builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJockeysDatabase", "BadJockeysChat"));
 ```
 
-**On hold (owner, 23 Oct 2026): no model is chosen yet.** With `Chat:Model:Endpoint` empty, in every environment, the chat is a placeholder: asking logs event **4905** `ChatNotSwitchedOn` (the plan only; no member id or question) and answers 503 "Ask Bad Jockeys isn't switched on yet. That question didn't count." Nothing is sent anywhere and nothing is counted. bjk-core's web app hides the chat for now. Everything below works as soon as the model settings are filled in.
+**On hold (owner, 23 Oct 2026): no model is chosen yet.** With `Chat:Model:Endpoint` empty, in every environment, the chat is a placeholder: asking logs event **4905** `ChatNotSwitchedOn` (the plan only; no member id or question) and answers 503 "Ask AI isn't switched on yet. That question didn't count." Nothing is sent anywhere and nothing is counted. bjk-core's web app hides the chat for now. Everything below works as soon as the model settings are filled in.
 
 **How it answers.** `ChatAgent` gives the model (any model behind an OpenAI-compatible `/v1/chat/completions`, set by `Chat:Model`) the rules, both views with every column described, the 74 subcategories and 22 worked examples (`AgentPrompt`), plus three tools: `run_sql`, `describe_table` and `answer`. The model writes a SELECT, reads the results (at most 50 rows), fixes and retries if the parser or the database sends a problem back, then calls `answer` with its text and the chart that fits. The card's figures come from the query's rows, never from the model's text. It stops after 8 model calls ("Sorry, I couldn't work that one out"; the question is given back). Members never see SQL: answers that show SQL or view names are sent back to the model.
 
@@ -997,7 +997,7 @@ builder.Services.AddBjkModules(builder.Configuration, ..., new ChatModule("BadJo
 - **5 seconds and 1,000 rows** per query.
 - **Counts under 3 hidden.** On any row whose incident count is 1 or 2, the count and every other aggregate column are blanked before the model sees them (it gets `"<3"`), and the card shows the row as hidden.
 
-**Guard rails: only questions it's built for.** Ask Bad Jockeys only answers questions about bad driving and parking reported on Bad Jockeys (counts, trends, times, places, kinds of incident, vehicles). `ChatGuard` enforces that in code before the agent sees a question:
+**Guard rails: only questions it's built for.** Ask AI only answers questions about bad driving and parking reported on Bad Jockeys (counts, trends, times, places, kinds of incident, vehicles). `ChatGuard` enforces that in code before the agent sees a question:
 
 1. **Fixed checks, no model call:** personal details (the Safety module's text checks: number plates, phone numbers, emails, street addresses, handles), web addresses, questions about specific people ("who owns…", "which member…", "names of the drivers…"), and prompt or SQL tricks ("ignore your instructions", "system prompt", "show me the SQL", `SELECT *`, `DROP TABLE`, view and schema names). "Hi" and "thanks" get a friendly reply.
 2. **The content screener** (shared with posts and comments) holds abuse, threats and slurs.

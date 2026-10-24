@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BJK.Modules.Chat.API.Controllers;
 
-/// <summary>Ask Bad Jockeys: questions about reported bad driving, answered from the incident data.</summary>
+/// <summary>Ask AI: questions about reported bad driving, answered from the incident data.</summary>
 [ApiController]
 [Route("api/chat")]
 public sealed class ChatController(ISender sender) : ControllerBase

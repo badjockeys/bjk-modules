@@ -19,7 +19,7 @@ internal sealed class ModelTopicGate(IChatModel model, ILogger<ModelTopicGate> l
 {
     internal const string Instructions =
         """
-        You check questions sent to Ask Bad Jockeys. It only answers questions about bad driving and bad parking
+        You check questions sent to Ask AI. It only answers questions about bad driving and bad parking
         incidents that members of Bad Jockeys (a UK dashcam app) have reported: how many, trends over time, times of
         day, days of the week, places, roads, towns, kinds of incident, vehicles, makes, colours, police reports and how
         many views or reactions they got.
@@ -35,7 +35,7 @@ internal sealed class ModelTopicGate(IChatModel model, ILogger<ModelTopicGate> l
     private static readonly Action<ILogger, string, Exception?> Unclear = LoggerMessage.Define<string>(
         LogLevel.Warning,
         new EventId(4904, "ChatTopicGateUnclear"),
-        "Ask Bad Jockeys' topic gate gave an unclear reply ({Reply}); the question was let through.");
+        "Ask AI's topic gate gave an unclear reply ({Reply}); the question was let through.");
 
     public async Task<bool> IsOnTopicAsync(string question, string? previousQuestion, CancellationToken cancellationToken)
     {

@@ -21,7 +21,7 @@ public sealed record AgentStep(string Sql, string? Problem, int Rows, int Hidden
 public sealed record AgentResult(ChatAnswerDto Answer, IReadOnlyList<AgentStep> Steps, int ModelCalls);
 
 /// <summary>
-/// Ask Bad Jockeys' loop: give the model the question and the tools, run the SQL it writes through
+/// Ask AI's loop: give the model the question and the tools, run the SQL it writes through
 /// <see cref="SqlGuard"/> and <see cref="IIncidentQueries"/>, feed the results back, and stop when it calls
 /// <c>answer</c> (or after <see cref="ChatOptions.MaxSteps"/> model calls). Cards are drawn from the last query's
 /// rows, never from figures the model writes, so a chart can't show a number the data doesn't have.
