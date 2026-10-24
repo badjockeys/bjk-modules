@@ -930,9 +930,9 @@ CI fails if the model has changed without a migration, and a unit test fails if 
 ## Branching and releases
 
 - Work happens on `feature/*` branches merged into `master` by pull request (protect `master` in the repo settings).
-- CI builds and tests every pull request.
+- CI builds and tests every pull request, and pushes to `master`. When a push only changes documentation (Markdown files or `docs/`), the build is skipped; that still counts as passing.
 - To publish a release, tag a commit on `master`: `git tag v0.2.0 && git push origin v0.2.0`.
-- Every push to a `feature/*` branch publishes a preview package, `<VersionPrefix>-ci.<run number>` (e.g. `0.2.0-ci.7`), so other repos can test a branch before it merges. Bump `VersionPrefix` in `Directory.Build.props` after each release.
+- **Preview packages come from pull requests:** once a pull request's CI run passes, it publishes `<VersionPrefix>-ci.<1000 + run number>` (e.g. `0.2.0-ci.1205`; the version is in the run's summary and notices), so other repos can test a branch before it merges. Open the pull request (a draft is fine) to get one; pushing to a branch without a pull request publishes nothing. Previews up to `0.2.0-ci.216` came from the old publish-on-every-push workflow. Bump `VersionPrefix` in `Directory.Build.props` after each release.
 
 ## Email and SMS modules
 

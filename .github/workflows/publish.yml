@@ -1,12 +1,11 @@
 name: Publish packages
 
 # Releases: tag a commit on master, e.g.  git tag v0.2.0 && git push origin v0.2.0
-# Previews: every push to a feature/* branch publishes <VersionPrefix>-ci.<run number>
-#           (VersionPrefix is in Directory.Build.props), so other repos can test a branch before it merges.
+# Previews used to be published here on every push to a feature/* branch. Since 24 Oct 2026 they come from the pull
+# request's CI run instead (ci.yml, <VersionPrefix>-ci.<1000 + run number>), so each push is built and tested once.
 on:
   push:
     tags: ['v*.*.*']
-    branches: ['feature/**']
 
 permissions:
   contents: read
