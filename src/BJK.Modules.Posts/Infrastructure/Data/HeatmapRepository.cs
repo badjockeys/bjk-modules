@@ -94,6 +94,15 @@ public interface IHeatmapRepository
     /// <summary>The most common place names, busiest first (posts without one are left out).</summary>
     Task<IReadOnlyList<HeatmapCountRow>> CountByPlaceAsync(HeatmapFilter filter, int top, CancellationToken cancellationToken);
 
+    /// <summary>Counts by UK period (a day, a week from Monday, or a month), for dashboard widgets. Empty periods aren't returned.</summary>
+    Task<IReadOnlyList<HeatmapTrendRow>> CountByPeriodAsync(
+        HeatmapFilter filter,
+        UseCases.Heatmap.TrendPeriod period,
+        CancellationToken cancellationToken);
+
+    /// <summary>Counts by UK day of the week (keys "0" Monday to "6" Sunday).</summary>
+    Task<IReadOnlyList<HeatmapCountRow>> CountByWeekdayAsync(HeatmapFilter filter, CancellationToken cancellationToken);
+
     /// <summary>
     /// Counts by type of bad driving and UK period (a day, a week from Monday, or a month), for the category trends. A
     /// post with several types counts once for each. Periods with no incidents aren't returned.
@@ -190,6 +199,37 @@ internal sealed class HeatmapRepository(PostsDbContext db) : IHeatmapRepository
             ORDER BY [x].[Period], [t].[Name]
             """;
         return await db.Database.SqlQueryRaw<HeatmapTrendRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HeatmapTrendRow>> CountByPeriodAsync(
+        HeatmapFilter filter,
+        UseCases.Heatmap.TrendPeriod period,
+        CancellationToken cancellationToken)
+    {
+        var (where, parameters) = Where(filter);
+        var start = PeriodStart(period);
+        var sql = $"""
+            SELECT N'' AS [Key], CAST([x].[Period] AS datetime2) AS [Period], COUNT(*) AS [Count]
+            FROM (SELECT {start} AS [Period] FROM [posts].[Posts] WHERE {where}) AS [x]
+            GROUP BY [x].[Period]
+            ORDER BY [x].[Period]
+            """;
+        return await db.Database.SqlQueryRaw<HeatmapTrendRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+    }
+
+    // Days since Monday 1 January 1900, modulo 7, is 0 on a Monday (independent of DATEFIRST).
+    public Task<IReadOnlyList<HeatmapCountRow>> CountByWeekdayAsync(HeatmapFilter filter, CancellationToken cancellationToken) =>
+        CountByAsync(filter, $"CAST(DATEDIFF(day, CAST('19000101' AS date), CAST({UkTime} AS date)) % 7 AS nvarchar(40))", top: null, cancellationToken);
+
+    private static string PeriodStart(UseCases.Heatmap.TrendPeriod period)
+    {
+        const string Day = $"CAST({UkTime} AS date)";
+        return period switch
+        {
+            UseCases.Heatmap.TrendPeriod.Week => $"DATEADD(day, -(DATEDIFF(day, CAST('19000101' AS date), {Day}) % 7), {Day})",
+            UseCases.Heatmap.TrendPeriod.Month => $"DATEFROMPARTS(YEAR({Day}), MONTH({Day}), 1)",
+            _ => Day,
+        };
     }
 
     public Task<IReadOnlyList<HeatmapCountRow>> CountByPlaceAsync(HeatmapFilter filter, int top, CancellationToken cancellationToken) =>

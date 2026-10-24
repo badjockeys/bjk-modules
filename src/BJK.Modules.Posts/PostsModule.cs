@@ -137,6 +137,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
         services.AddScoped<IHeatmapRepository, HeatmapRepository>();
         services.AddScoped<ReelAllowances>();
         services.AddScoped<HeatmapAccess>();
+        services.AddScoped<UseCases.Dashboard.DashboardFigures>();
         services.AddHostedService<ReelsMaintenance>();
 
         // Hashtags and Trending: tags linked when posts are saved, hourly counts rebuilt in the background.
@@ -150,6 +151,7 @@ public sealed class PostsModule(string connectionStringName) : IModule
 
         // Home timelines: For you (ranked, boosted near the home area), Following and custom timelines.
         services.AddScoped<ITimelineRepository, TimelineRepository>();
+        services.AddScoped<IDashboardRepository, DashboardRepository>();
 
         // Communities (owner, 23 Oct 2026).
         services.AddScoped<ICommunityRepository, CommunityRepository>();
