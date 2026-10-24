@@ -12,7 +12,8 @@ internal sealed class PostsUserLifecycleHandler(
     IDraftRepository drafts,
     ITimelineRepository? timelines = null,
     ICommunityRepository? communities = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+    IDashboardRepository? dashboard = null)
     : IUserLifecycleHandler
 {
     public async Task HandleAsync(UserLifecycleEvent userEvent, CancellationToken cancellationToken)
@@ -31,6 +32,11 @@ internal sealed class PostsUserLifecycleHandler(
                 if (timelines is not null)
                 {
                     await timelines.DeleteForUserAsync(userEvent.UserId, cancellationToken);
+                }
+
+                if (dashboard is not null)
+                {
+                    await dashboard.DeleteForUserAsync(userEvent.UserId, cancellationToken);
                 }
 
                 if (communities is not null)
@@ -170,6 +176,18 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
             .Select(t => new { t.Id, t.Name, Types = t.Types.Select(x => x.ToString()).ToList(), t.PlaceName, t.Latitude, t.Longitude, t.RadiusKm, t.CreatedAt })
             .ToList();
 
+        // Dashboard: the built-in cards' order and the widgets (their place is the owner's own choice).
+        var dashboard = (await db.DashboardItems.AsNoTracking()
+                .Where(d => d.UserId == userId)
+                .OrderBy(d => d.Position)
+                .ToListAsync(cancellationToken))
+            .Select(d => new
+            {
+                d.Id, Kind = d.Kind.ToString(), d.Hidden, d.Position, d.PlaceName, d.Latitude, d.Longitude, d.RadiusKm, d.PeriodDays,
+                Types = d.Types.Select(x => x.ToString()).ToList(), d.CreatedAt, d.UpdatedAt,
+            })
+            .ToList();
+
         var votes = await db.PostVotes.AsNoTracking()
             .Where(v => v.UserId == userId)
             .OrderBy(v => v.CreatedAt)
@@ -198,7 +216,7 @@ internal sealed class PostsPersonalDataExporter(PostsDbContext db) : IPersonalDa
         return new
         {
             posts, postTypes, drafts, passengerTags, comments, reactions, commentReactions, reportsMade = reports, appeals,
-            reelPlays, timelines, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences,
+            reelPlays, timelines, dashboard, votes, followedPosts, bookmarks, postsViewed, postPreferences = preferences,
         };
     }
 }

@@ -40,6 +40,8 @@ public sealed class PostsDbContext(DbContextOptions<PostsDbContext> options) : D
 
     public DbSet<Timeline> Timelines => Set<Timeline>();
 
+    public DbSet<DashboardItem> DashboardItems => Set<DashboardItem>();
+
     /// <summary>Web addresses that mustn't be shared (<c>posts.BlockedUrls</c>).</summary>
     public DbSet<BlockedUrl> BlockedUrls => Set<BlockedUrl>();
 
@@ -208,6 +210,23 @@ internal sealed class TimelineConfiguration : IEntityTypeConfiguration<Timeline>
         builder.Property(t => t.Longitude).HasPrecision(9, 6);
         builder.Ignore(t => t.Types);
         builder.HasIndex(t => new { t.UserId, t.Position });
+    }
+}
+
+internal sealed class DashboardItemConfiguration : IEntityTypeConfiguration<DashboardItem>
+{
+    public void Configure(EntityTypeBuilder<DashboardItem> builder)
+    {
+        builder.ToTable("DashboardItems");
+        builder.HasKey(d => d.Id);
+        builder.Property(d => d.Id).ValueGeneratedNever();
+        builder.Property(d => d.Kind).HasConversion<string>().HasMaxLength(30);
+        builder.Property(d => d.PlaceName).HasMaxLength(DashboardItem.PlaceNameMaxLength);
+        builder.Property(d => d.Latitude).HasPrecision(9, 6);
+        builder.Property(d => d.Longitude).HasPrecision(9, 6);
+        builder.Ignore(d => d.Types);
+        builder.Ignore(d => d.IsBuiltIn);
+        builder.HasIndex(d => new { d.UserId, d.Position });
     }
 }
 

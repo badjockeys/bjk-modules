@@ -520,6 +520,62 @@ namespace BJK.Modules.Posts.Infrastructure.Data.Migrations
                     b.ToTable("CommunityReplies", "posts");
                 });
 
+            modelBuilder.Entity("BJK.Modules.Posts.Domain.DashboardItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<int?>("PeriodDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlaceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RadiusKm")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TypeFlags")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TypeFlagsHigh")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Position");
+
+                    b.ToTable("DashboardItems", "posts");
+                });
+
             modelBuilder.Entity("BJK.Modules.Posts.Domain.DraftMedia", b =>
                 {
                     b.Property<Guid>("DraftId")

@@ -824,6 +824,22 @@ Aggregated and privacy-safe: counts per grid cell built **only from the stored, 
 - **Performance: an index, not an aggregate table.** The pins are already rounded to a 500 m grid and incident times are spread out, so a daily aggregate table (day × pin × category × hour) would have about as many rows as posts and need a refresh job and backfills, for little gain. Instead the filtered covering index `IX_Posts_Heatmap` (public posts by `IncidentAt`, including latitude, longitude, category and place name) turns any period into one range seek with no lookups; the grouping is done in SQL. Queries are raw SQL with the index's filter written as literals, so SQL Server can match it. Revisit (a nightly aggregate per cell and day) if national 5-year queries become slow at millions of posts.
 - Not built yet: area alerts, saved searches and Premium + monthly reports (in the plan matrix); a spatial index (the bounding box is a residual filter after the time seek).
 
+### Dashboard (owner, 24 Oct 2026)
+
+Each member's own cards: the right-hand panel on desktop and the Dashboard tab on their profile on phones. The built-in cards (**Trending**, **Who to follow**, **Category trends**, in that order by default) can be moved or hidden on any plan; **widgets** are **Premium 3, Premium + 5** (`DashboardItem.LimitFor`); Free can't add them (**403**; the apps show a greyed-out card). Stored in `posts.DashboardItems`; with no rows a member has the default layout. Deleted with the account; in Download my data.
+
+| Endpoint | Access |
+|---|---|
+| `GET /api/dashboard` | Signed-in user: `items` in order (`key`, `kind`, `builtIn`, `hidden`, `locked`, `id`, `placeName`, `latitude`, `longitude`, `radiusKm`, `periodDays`, `types`, `position`), `limit`, `used`, `plan` |
+| `POST /api/dashboard/widgets`, `PUT` / `DELETE /api/dashboard/widgets/{id}` | Add (at the end) and change: Premium and Premium + (403 on Free; 400 at the limit). Delete: any plan |
+| `PUT /api/dashboard/order` `{ "keys": [...] }` | Every card once, in the new order: built-in cards by kind, widgets by id |
+| `PUT /api/dashboard/cards/{kind}` `{ "hidden": true }` | Hide or show a built-in card |
+| `GET /api/dashboard/widgets/{id}/data`, `POST /api/dashboard/preview` | A widget's figures, or a draft's (the "Add a widget" preview): Premium and Premium + (403 on Free, or for a `locked` widget) |
+
+- **Widgets** (`kind`): `AreaIncidents` (total, change on the previous period, `counts` per `periodStarts`, top 3 types), `TypeTrend` (the same for exactly one type), `WhenItHappens` (six 4-hour `timesOfDay` bands, `weekdays` Monday first, `busiestHour`) and `TopRoads` (up to 5 `topPlaces`). Each has a place (`placeName`, a point stored to 2 dp, about 1 km), a radius (1, 2, 5, 10 or 25 km), a period (7, 30, 90 or 365 days, ending today) and optionally up to 3 types.
+- **Privacy: the heat map's rules.** Counted from public posts' rounded pins, never single posts. Under 3 incidents a widget is `suppressed`; bands, days, types and roads under 3 are left out (null counts); the change only shows if the previous period had at least 3. The place is only ever shown to its owner.
+- **Downgrades:** widgets past the new limit are kept but `locked` (no figures) until the member upgrades or deletes some.
+
 ### Hashtags and Trending
 
 UI overhaul step 5 (decided 20 Oct 2026).

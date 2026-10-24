@@ -312,6 +312,55 @@ public sealed class ReelsHeatmapSqlServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Dashboard_widgets_count_by_UK_period_and_day_of_the_week()
+    {
+        // 23:30 UTC on Sunday 11 October is 00:30 on Monday 12 October in the UK (British Summer Time).
+        var lateSunday = new DateTimeOffset(2026, 10, 11, 23, 30, 0, TimeSpan.Zero);
+        var tuesday = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.FromHours(1));
+        var sunday = new DateTimeOffset(2026, 10, 18, 9, 0, 0, TimeSpan.FromHours(1));
+        await SaveAsync(
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, lateSunday) with { Types = [IncidentCategory.SpeedingInTown, IncidentCategory.Tailgating] }, [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, tuesday), [Guid.NewGuid()], Now),
+            Post.Create(Guid.NewGuid(), At(53.4291m, -2.8015m, sunday), [Guid.NewGuid()], Now));
+
+        var everywhere = new GeoBox(-90m, 90m, -180m, 180m);
+        var filter = new HeatmapFilter(everywhere, UkCalendar.StartOf(new DateOnly(2026, 10, 1)), UkCalendar.StartOf(new DateOnly(2026, 10, 19)), [], null, HeatmapDays.All);
+
+        await using var db = Context();
+        var heatmap = new HeatmapRepository(db);
+
+        // A post with two types counts once.
+        var days = await heatmap.CountByPeriodAsync(filter, TrendPeriod.Day, Ct);
+        Assert.Equal(
+            new[] { ("2026-10-12", 1), ("2026-10-13", 1), ("2026-10-18", 1) },
+            days.Select(r => (r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
+        var weeks = await heatmap.CountByPeriodAsync(filter, TrendPeriod.Week, Ct);
+        Assert.Equal(new[] { ("2026-10-12", 3) }, weeks.Select(r => (r.Period.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.Count)));
+
+        // Monday is "0" and Sunday "6", whatever the server's DATEFIRST.
+        var weekdays = await heatmap.CountByWeekdayAsync(filter, Ct);
+        Assert.Equal(new[] { ("0", 1), ("1", 1), ("6", 1) }, weekdays.OrderBy(r => r.Key).Select(r => (r.Key, r.Count)));
+    }
+
+    [Fact]
+    public async Task Dashboard_items_are_saved_with_their_place_and_types()
+    {
+        var widget = DashboardItem.Widget(
+            UserId,
+            new DashboardWidgetDetails(DashboardKind.AreaIncidents, "L34 5", 53.4291m, -2.8015m, 2, 30, [IncidentCategory.Tailgating, IncidentCategory.ClosePassCyclist]),
+            3,
+            Now);
+        await SaveAsync(DashboardItem.BuiltIn(UserId, DashboardKind.Trending, 0, Now), widget);
+
+        await using var db = Context();
+        var items = await new DashboardRepository(db).ListAsync(UserId, Ct);
+
+        Assert.Equal(new[] { DashboardKind.Trending, DashboardKind.AreaIncidents }, items.Select(i => i.Kind));
+        Assert.Equal(53.43m, items[1].Latitude);
+        Assert.Equal(new[] { IncidentCategory.Tailgating, IncidentCategory.ClosePassCyclist }.Order(), items[1].Types.Order());
+    }
+
+    [Fact]
     public async Task The_heat_map_filters_by_vehicle_light_school_run_reported_and_video()
     {
         // Monday 12 Oct 2026: 08:30 BST (school run, daylight) and 19:30 BST (dark).
